@@ -15,6 +15,7 @@ import devChecks from './scripts/dev-checks.mjs';
 import settingsSearchPlugin from './scripts/settings-search-plugin.mjs';
 import watchTransformCache from './scripts/watch-transform-cache.mjs';
 import hotReloadPlugin from './scripts/hot-reload-plugin.mjs';
+import {blahPlugin} from './scripts/blah-config.mjs';
 import path from 'path';
 import {createRequire} from 'module';
 import {fileURLToPath} from 'url';
@@ -255,6 +256,7 @@ function __waitForPreloadedCss(link, dep) {
 
 export default defineConfig({
   plugins: [
+    blahPlugin(rootDir),
     // devtools({
     //   /* features options - all disabled by default */
     //   autoname: true // e.g. enable autoname
