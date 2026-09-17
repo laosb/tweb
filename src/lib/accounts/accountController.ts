@@ -1,5 +1,6 @@
 import {MOUNT_CLASS_TO} from '@config/debug';
 import App from '@config/app';
+import {DC_IDS} from '@config/dc';
 import tsNow from '@helpers/tsNow';
 import type {TrueDcId} from '@types';
 
@@ -113,9 +114,9 @@ export class AccountController extends StaticUtilityClass {
 
     this.fillMissingData(updatedData);
 
-    await sessionStorage.set({
-      [`account${accountNumber}`]: updatedData
-    });
+    const storageUpdate: Parameters<typeof sessionStorage.set>[0] = {};
+    storageUpdate[`account${accountNumber}`] = updatedData;
+    await sessionStorage.set(storageUpdate);
 
     if(accountNumber === 1) {
       await this.updateStorageForLegacy(updatedData);
@@ -169,7 +170,7 @@ export class AccountController extends StaticUtilityClass {
       else toClear.push(key);
     };
 
-    for(let i = 1; i <= 5; i++) {
+    for(const i of DC_IDS) {
       const authKeyKey = `dc${i as TrueDcId}_auth_key` as const;
       const serverSaltKey = `dc${i as TrueDcId}_server_salt` as const;
 
