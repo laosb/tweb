@@ -23,6 +23,9 @@ import App from '@config/app';
 import apiManagerProxy from '@lib/apiManagerProxy';
 import appNavigationController from '@components/appNavigationController';
 import Modes from '@config/modes';
+import Blah from '@config/blah';
+import base64ToBytes from '@helpers/string/base64ToBytes';
+import bytesCmp from '@helpers/bytes/bytesCmp';
 
 export type PushSubscriptionNotifyType = 'init' | 'subscribe' | 'unsubscribe';
 export type PushSubscriptionNotifyEvent = `push_${PushSubscriptionNotifyType}`;
@@ -74,13 +77,29 @@ export class WebPushApiManager extends EventListenerBase<{
     this.localNotificationsAvailable = false;
   }
 
+  private async getValidSubscription(pushManager: PushManager) {
+    const subscription = await pushManager.getSubscription();
+    if(Blah && subscription) {
+      const key = subscription.options.applicationServerKey;
+      if(!App.pushServerKey || !key || !bytesCmp(new Uint8Array(key), base64ToBytes(App.pushServerKey))) {
+        // Never register a token belonging to an earlier build's VAPID key.
+        await subscription.unsubscribe();
+        return;
+      }
+    }
+
+    return subscription;
+  }
+
   public getSubscription() {
+    // Keep the service-worker channel available for local notifications even
+    // when this Blah deployment does not offer remote push.
     if(!this.isAvailable) {
       return;
     }
 
     return navigator.serviceWorker.ready.then((reg) => {
-      return reg.pushManager.getSubscription().then((subscription) => {
+      return this.getValidSubscription(reg.pushManager).then((subscription) => {
         return this.makeTokenData(subscription);
       }).catch((err) => {
         this.log.error('error during getSubscription()', err);
@@ -95,9 +114,16 @@ export class WebPushApiManager extends EventListenerBase<{
 
     this.log('subscribing');
     return navigator.serviceWorker.ready.then((reg) => {
-      return reg.pushManager.subscribe({
-        userVisibleOnly: this.userVisibleOnly,
-        applicationServerKey: App.pushServerKey
+      const existing = Blah ? this.getValidSubscription(reg.pushManager) : Promise.resolve(undefined);
+      return existing.then((subscription) => {
+        if(Blah && !App.pushServerKey) {
+          return;
+        }
+
+        return subscription || reg.pushManager.subscribe({
+          userVisibleOnly: this.userVisibleOnly,
+          applicationServerKey: App.pushServerKey
+        });
       }).then((subscription) => {
         this.log('subscribed');
         return this.makeTokenData(subscription);
