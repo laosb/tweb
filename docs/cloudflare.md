@@ -72,8 +72,9 @@ The helper rebuilds `.cloudflare/assets/` from scratch:
 2. Overlay the freshly generated `dist/`, which always wins on collisions.
    Omit `.map` files from this build: they are unnecessary at runtime and can
    exceed Cloudflare's per-asset size limit.
-3. Remove Telegram's legacy `gcm_sender_id` from the assembled web manifests
-   without changing the upstream files.
+3. The Blah Vite plugin supplies branded icons and web manifests in `dist/`,
+   including removal of Telegram's legacy `gcm_sender_id`. The overlay uses
+   these without changing the upstream files.
 4. Generate `_headers` with `Cache-Control: no-store`, matching `server.js`,
    plus `X-Content-Type-Options: nosniff` and
    `Referrer-Policy: strict-origin-when-cross-origin`. Do not blindly enable
