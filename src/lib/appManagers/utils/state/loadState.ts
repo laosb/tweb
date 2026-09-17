@@ -14,6 +14,7 @@ import StateStorage from '@lib/stateStorage';
 import AccountController from '@lib/accounts/accountController';
 import commonStateStorage from '@lib/commonStateStorage';
 import {TrueDcId} from '@types';
+import {DC_IDS} from '@config/dc';
 import {getOldDatabaseState} from '@config/databases/state';
 import {IDB} from '@lib/files/idb';
 import createStorages from '@appManagers/utils/storages/createStorages';
@@ -32,8 +33,6 @@ export type LoadStateResult = {
 };
 
 const TEST_MULTI_MIGRATION = false;
-
-const DC_IDS: TrueDcId[] = [1, 2, 3, 4, 5];
 
 const REFRESH_EVERY = 24 * 60 * 60 * 1000; // 1 day
 // const REFRESH_EVERY = 1e3;
@@ -425,7 +424,7 @@ async function moveAccessKeysToMultiAccountFormat() {
 
   const resetKeysPromise = (async() => {
     const callbacks: (() => Promise<any>)[] = [];
-    for(let i = 1; i <= 5; i++) {
+    for(const i of DC_IDS) {
       const authKeyKey = `dc${i as TrueDcId}_auth_key` as const;
       const serverSaltKey = `dc${i as TrueDcId}_server_salt` as const;
 
