@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "blah",
+  "compatibility_date": "2026-07-18",
+  "build": {
+    "command": "pnpm exec vite build --mode blah && node scripts/prepare-cloudflare-assets.mjs"
+  },
+  "assets": {
+    "directory": "./.cloudflare/assets",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  }
+}
