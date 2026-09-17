@@ -1,6 +1,7 @@
 import {createPublicKey} from 'node:crypto';
 import {isIP} from 'node:net';
 import {loadEnv} from 'vite';
+import blahBrandingPlugin from './blah-branding.mjs';
 
 /**
  * C3 is the release-time trust root, as in laosb/telegram-tt. Embed only transport
@@ -92,12 +93,12 @@ export default async function blahBuildDefines(mode, root) {
   };
 }
 
-/** @returns {import('vite').Plugin} */
+/** @returns {import('vite').Plugin[]} */
 export function blahPlugin(root) {
-  return {
+  return [{
     name: 'blah-config',
     async config(_config, {mode}) {
       return {define: await blahBuildDefines(mode, root)};
     }
-  };
+  }, blahBrandingPlugin(root)];
 }
