@@ -1,4 +1,4 @@
-import {cp, mkdir, readFile, readdir, rm, stat, writeFile} from 'node:fs/promises';
+import {cp, mkdir, readdir, rm, stat, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import keepAsset from '../keepAsset.js';
@@ -29,15 +29,6 @@ await cp(dist, output, {
   recursive: true,
   filter: (source) => !source.endsWith('.map')
 });
-
-// Do not advertise Telegram's legacy push sender on a Blah deployment.
-for(const entry of await readdir(output)) {
-  if(!entry.endsWith('.webmanifest')) continue;
-  const filename = path.join(output, entry);
-  const manifest = JSON.parse(await readFile(filename, 'utf8'));
-  delete manifest.gcm_sender_id;
-  await writeFile(filename, JSON.stringify(manifest, null, 2) + '\n');
-}
 
 // Match server.js's browser-cache policy, including worker scripts and manifests.
 // Avoid cross-origin isolation/CSP rules here: media and calls use remote resources.

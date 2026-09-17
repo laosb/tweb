@@ -60,11 +60,27 @@ The same applies when switching between unrelated Blah installations.
   code/password/signup cards are reused, including the server's code length
   and Fragment URL. Email codes use `email_verification`.
 - Without a VAPID key, remote push is disabled; local notifications remain
-  available. Changing the build key renews an old subscription. The deployment
-  artifact omits Telegram's legacy `gcm_sender_id`.
+  available. Changing the build key renews an old subscription. The active Blah
+  manifests omit Telegram's legacy `gcm_sender_id`.
+- The page title, favicon, touch icon and installed-app metadata use Blah
+  branding in this profile only. The logo comes from the referenced Web A fork;
+  no runtime download or global replacement of Telegram strings is involved.
+  Separate `site.blah.webmanifest` and `site_apple.blah.webmanifest` outputs
+  leave the upstream manifests intact even with the legacy `build.js` workflow.
 
 Rebuild after topology, RSA-key or VAPID-key changes. This is not a runtime
 server selector and it does not proxy traffic through Cloudflare.
+
+### Updating icons
+
+`public/assets/blah/logo.svg` is the source. PNG fallbacks and install icons are
+checked in so production builds need no image-rendering dependency. After
+changing the SVG, regenerate them with the existing Playwright dependency:
+
+```sh
+pnpm exec playwright install chromium --only-shell
+node scripts/generate-blah-icons.mjs
+```
 
 ## Keeping rebases small
 
@@ -72,7 +88,7 @@ Blah-specific policy lives in `scripts/blah-config.mjs`, `src/config/blah.ts`
 and the identifier card/helper. Upstream touchpoints are deliberately limited
 to build defines, endpoint/key selection, the auth entry/default, shared login
 manager methods, push validation, and the DC range used by account storage.
-Generated API schemas, protocol/crypto code, global branding, compiled `public/`
+Generated API schemas, protocol/crypto code, upstream branding assets, compiled `public/`
 bundles, dependencies and lockfiles are not forked.
 
 The Workers artifact builder reuses `keepAsset.js` instead of duplicating
