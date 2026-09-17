@@ -21,7 +21,7 @@ import classNames from '@helpers/string/classNames';
 import {fastRaf} from '@helpers/schedulers';
 import toHHMMSS from '@helpers/string/toHHMMSS';
 import tsNow from '@helpers/tsNow';
-import {AuthSentCodeType, AuthSignIn} from '@layer';
+import {AuthSentCodeType} from '@layer';
 import I18n, {LangPackKey, i18n} from '@lib/langPack';
 import setBlankToAnchor from '@lib/richTextProcessor/setBlankToAnchor';
 import lottieLoader from '@lib/lottie/lottieLoader';
@@ -94,6 +94,7 @@ function wrapLeftToRight(text: string) {
  */
 export default function AuthCodeCard(props: {spec: Spec}) {
   const {managers, navigate, toIm} = useAuthFlow();
+  let cancelled = false;
 
   /* ---------- state ---------- */
 
@@ -231,21 +232,12 @@ export default function AuthCodeCard(props: {spec: Spec}) {
     setSubmitting(true);
     setInputDisabled(true);
 
-    const params: AuthSignIn = {
-      phone_number: sentCode.phone_number,
-      phone_code_hash: sentCode.phone_code_hash
-    };
-
-    if(isEmailCode(sentCode.type)) {
-      params.email_verification = {_: 'emailVerificationCode', code};
-    } else {
-      params.phone_code = code;
-    }
-
-    managers.apiManager.invokeApi('auth.signIn', params, {ignoreErrors: true}).then(async(response) => {
+    managers.appAccountManager.signInWithCode(
+      sentCode.phone_number, sentCode.phone_code_hash, sentCode.type._, code
+    ).then((response) => {
+      if(cancelled) return;
       switch(response._) {
         case 'auth.authorization':
-          await managers.apiManager.setUser(response.user);
           toIm();
           break;
         case 'auth.authorizationSignUpRequired':
@@ -259,6 +251,7 @@ export default function AuthCodeCard(props: {spec: Spec}) {
           break;
       }
     }).catch((err) => {
+      if(cancelled) return;
       let good = false;
       switch(err.type) {
         case 'SESSION_PASSWORD_NEEDED':
@@ -588,6 +581,7 @@ export default function AuthCodeCard(props: {spec: Spec}) {
   });
 
   onCleanup(() => {
+    cancelled = true;
     cancelFocus?.();
     if(resetEmailTimer) clearTimeout(resetEmailTimer);
     stopResendTimer();

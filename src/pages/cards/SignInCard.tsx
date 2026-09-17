@@ -7,7 +7,6 @@ import PasskeyLoginButton from '@components/passkeyLoginButton';
 import MediaHeader from '@components/mediaHeader';
 import TelInputField from '@components/telInputField';
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport';
-import App from '@config/app';
 import cancelEvent from '@helpers/dom/cancelEvent';
 import focusWhenSettled from '@helpers/dom/focusWhenSettled';
 import placeCaretAtEnd from '@helpers/dom/placeCaretAtEnd';
@@ -22,7 +21,7 @@ import {TrueDcId} from '@types';
 
 import AuthCard from '@/pages/AuthCard';
 import {CardSpec, useAuthFlow} from '@/pages/authFlow';
-import {continueLogin} from '@/pages/continueLogin';
+import requestLoginCode from '@/pages/requestLoginCode';
 import styles from '@/pages/authFlow.module.scss';
 import {preloadTrackingMonkey} from '@components/monkeys/tracking';
 
@@ -108,6 +107,7 @@ export default function SignInCard(_props: {spec: Spec}) {
 
   function onSubmit(e?: Event) {
     if(e) cancelEvent(e);
+    if(submitting() || !hasValidInput()) return;
 
     setSubmitting(true);
     setNextContent(
@@ -123,18 +123,8 @@ export default function SignInCard(_props: {spec: Spec}) {
     // * the code card's sticker is fetched alongside the code itself, not when that card mounts: by
     // * then the card is already open, and the monkey turns up in it a moment later
     preloadTrackingMonkey().catch(() => {});
-    managers.apiManager.invokeApi('auth.sendCode', {
-      phone_number,
-      api_id: App.id,
-      api_hash: App.hash,
-      settings: {
-        _: 'codeSettings',
-        pFlags: {}
-      }
-    }).then((code) => {
-      // the very first send has no previous `phone_code_hash` to sign up with
-      return continueLogin(code, {managers, navigate, toIm, phone_number});
-    }).catch((err) => {
+    requestLoginCode({managers, navigate, toIm}, phone_number, () => !cancelled).catch((err) => {
+      if(cancelled) return;
       setSubmitting(false);
 
       switch(err.type) {
@@ -146,7 +136,7 @@ export default function SignInCard(_props: {spec: Spec}) {
           break;
         default:
           console.error('auth.sendCode error:', err);
-          setNextContent(err.type);
+          setNextContent(err.type || err.message);
           break;
       }
     });

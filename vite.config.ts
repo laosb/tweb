@@ -16,6 +16,7 @@ import {vitestWorkers} from './scripts/testQueue';
 import devChecks from './scripts/dev-checks.mjs';
 import settingsSearchPlugin from './scripts/settings-search-plugin.mjs';
 import watchTransformCache from './scripts/watch-transform-cache.mjs';
+import {blahPlugin} from './scripts/blah-config.mjs';
 import path from 'path';
 
 const rootDir = resolve(__dirname);
@@ -185,6 +186,7 @@ if(USE_OWN_SOLID) {
 
 export default defineConfig({
   plugins: [
+    blahPlugin(rootDir),
     // devtools({
     //   /* features options - all disabled by default */
     //   autoname: true // e.g. enable autoname
