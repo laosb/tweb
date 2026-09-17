@@ -10,7 +10,8 @@ import StaticUtilityClass from '@lib/staticUtilityClass';
 
 import {AccountSessionData, ActiveAccountNumber, SessionUserFields, StoredAccountSessionData} from '@lib/accounts/types';
 import getAuthKeyFingerprint from '@lib/accounts/authKeyFingerprint';
-import {DC_IDS, MAX_ACCOUNTS} from '@lib/accounts/constants';
+import {MAX_ACCOUNTS} from '@lib/accounts/constants';
+import {DC_IDS} from '@config/dc';
 import bytesToHex from '@helpers/bytes/bytesToHex';
 import randomize from '@helpers/array/randomize';
 import noop from '@helpers/noop';
@@ -210,9 +211,9 @@ export class AccountController extends StaticUtilityClass {
       stored.userId = '' + updatedData.userId;
     }
 
-    await sessionStorage.set({
-      [`account${accountNumber}`]: stored
-    });
+    const storageUpdate: Parameters<typeof sessionStorage.set>[0] = {};
+    storageUpdate[`account${accountNumber}`] = stored;
+    await sessionStorage.set(storageUpdate);
 
     if(accountNumber === 1) {
       await this.updateStorageForLegacy(updatedData);

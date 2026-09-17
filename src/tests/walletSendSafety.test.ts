@@ -48,6 +48,7 @@ describe('a request that must never run twice', () => {
     const networker = {wrapApiCall, attachPromise: vi.fn(), isStopped: () => false};
     const api = {
       baseDcId: 2,
+      getAccountNumber: () => 1,
       afterMessageTempIds: {},
       cachedExportPromise: {},
       log: Object.assign(vi.fn(), {error: vi.fn(), warn: vi.fn()}),

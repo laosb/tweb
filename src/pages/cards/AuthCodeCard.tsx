@@ -253,6 +253,7 @@ export default function AuthCodeCard(props: {spec: Spec}) {
     }
 
     managers.appAccountManager.signIn(params).then(async(response) => {
+      if(gone) return;
       switch(response._) {
         case 'auth.authorization':
           await managers.apiManager.setUser(response.user);
@@ -269,6 +270,7 @@ export default function AuthCodeCard(props: {spec: Spec}) {
           break;
       }
     }).catch((err: ApiError) => {
+      if(gone) return;
       let good = false;
       switch(err.type) {
         case 'SESSION_PASSWORD_NEEDED':

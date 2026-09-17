@@ -11,6 +11,7 @@ import Modes from '@config/modes';
 import bytesFromHex from '@helpers/bytes/bytesFromHex';
 import bytesToHex from '@helpers/bytes/bytesToHex';
 import bigInt from 'big-integer';
+import blah from '@config/blah';
 
 export type RSAPublicKeyHex = {
   modulus: string,
@@ -80,7 +81,9 @@ export class RSAKeysManager {
   private preparePromise: Promise<void> = null;
 
   constructor() {
-    if(Modes.test) {
+    if(blah) {
+      this.publisKeysHex = blah.dcs.map((dc) => dc.rsaKey);
+    } else if(Modes.test) {
       this.publisKeysHex = this.testPublicKeysHex;
     }
   }
