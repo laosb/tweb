@@ -1,6 +1,7 @@
 import {MOUNT_CLASS_TO} from '@config/debug';
 import App from '@config/app';
 import Modes from '@config/modes';
+import {DC_IDS} from '@config/dc';
 import tsNow from '@helpers/tsNow';
 import type {TrueDcId} from '@types';
 import type {EmojiStatus, User} from '@layer';
@@ -204,9 +205,9 @@ export class AccountController extends StaticUtilityClass {
       stored.userId = '' + updatedData.userId;
     }
 
-    await sessionStorage.set({
-      [`account${accountNumber}`]: stored
-    });
+    const storageUpdate: Parameters<typeof sessionStorage.set>[0] = {};
+    storageUpdate[`account${accountNumber}`] = stored;
+    await sessionStorage.set(storageUpdate);
 
     if(accountNumber === 1) {
       await this.updateStorageForLegacy(updatedData);
@@ -260,7 +261,7 @@ export class AccountController extends StaticUtilityClass {
       else toClear.push(key);
     };
 
-    for(let i = 1; i <= 5; i++) {
+    for(const i of DC_IDS) {
       const authKeyKey = `dc${i as TrueDcId}_auth_key` as const;
       const serverSaltKey = `dc${i as TrueDcId}_server_salt` as const;
 
