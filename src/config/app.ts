@@ -7,6 +7,7 @@
 
 import type {TrueDcId} from '@types';
 import langPackLocalVersion from '@/langPackLocalVersion';
+import blah from '@config/blah';
 
 export const MAIN_DOMAINS = ['web.telegram.org', 'webk.telegram.org'];
 export const DEFAULT_BACKGROUND_SLUG = 'pattern';
@@ -25,7 +26,7 @@ const App = {
   langPack: 'webk',
   langPackCode: 'en',
   domains: MAIN_DOMAINS,
-  baseDcId: 2 as TrueDcId,
+  baseDcId: (blah?.defaultDcId ?? 2) as TrueDcId,
   isMainDomain: MAIN_DOMAINS.includes(location.hostname),
   suffix: 'K',
   threads,
@@ -34,7 +35,7 @@ const App = {
   interclientBroadcastChannel: 'tgweb'
 };
 
-if(App.isMainDomain) { // use Webogram credentials then
+if(App.isMainDomain && !blah) { // use Webogram credentials then
   App.id = 2496;
   App.hash = '8da85b0d5bfe62527e5b244c209159c3';
   App.pushServerKey = 'BHEbKOXt-GD8MCTTYiAYT3I5R4MB0epIE7Tbbymj1uR0xJRE_7m27eXTVAC_P19TeZnO9413lRz-0oZ87JRPKPM';

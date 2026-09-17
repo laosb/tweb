@@ -2,7 +2,7 @@ import App from '@config/app';
 import ctx from '@environment/ctx';
 import {bigIntFromBytes} from '@helpers/bigInt/bigIntConversion';
 import tsNow from '@helpers/tsNow';
-import {AccountAuthorizations, Authorization, EmailVerification, EmailVerifyPurpose, InputCheckPasswordSRP, InputPasskeyCredential, Update} from '@layer';
+import {AccountAuthorizations, AuthSentCodeType, Authorization, EmailVerification, EmailVerifyPurpose, InputCheckPasswordSRP, InputPasskeyCredential, Update} from '@layer';
 import {DcId, TrueDcId} from '@types';
 import AccountController from '@lib/accounts/accountController';
 import {AppManager} from '@appManagers/manager';
@@ -267,6 +267,33 @@ export default class AppAccountManager extends AppManager {
       api_hash: App.hash,
       api_id: App.id
     });
+  }
+
+  public async sendLoginCode(phone_number: string) {
+    const result = await this.apiManager.invokeApi('auth.sendCode', {
+      phone_number,
+      api_id: App.id,
+      api_hash: App.hash,
+      settings: {_: 'codeSettings', pFlags: {}}
+    });
+    if(result._ === 'auth.sentCodeSuccess' && result.authorization._ === 'auth.authorization') {
+      await this.apiManager.setUser(result.authorization.user);
+    }
+    return result;
+  }
+
+  public async signInWithCode(phone_number: string, phone_code_hash: string, type: AuthSentCodeType['_'], code: string) {
+    const result = await this.apiManager.invokeApi('auth.signIn', {
+      phone_number,
+      phone_code_hash,
+      ...(type === 'auth.sentCodeTypeEmailCode' ?
+        {email_verification: {_: 'emailVerificationCode' as const, code}} :
+        {phone_code: code})
+    }, {ignoreErrors: true});
+    if(result._ === 'auth.authorization') {
+      await this.apiManager.setUser(result.user);
+    }
+    return result;
   }
 
   public async finishPasskeyLogin(credential: InputPasskeyCredential, fromDcId?: TrueDcId) {

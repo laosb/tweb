@@ -7,7 +7,6 @@ import PasskeyLoginButton from '@components/passkeyLoginButton';
 import MediaHeader from '@components/mediaHeader';
 import TelInputField from '@components/telInputField';
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport';
-import App from '@config/app';
 import cancelEvent from '@helpers/dom/cancelEvent';
 import focusWhenConnected from '@helpers/dom/focusWhenConnected';
 import placeCaretAtEnd from '@helpers/dom/placeCaretAtEnd';
@@ -22,6 +21,7 @@ import {TrueDcId} from '@types';
 
 import AuthCard from '@/pages/AuthCard';
 import {CardSpec, useAuthFlow} from '@/pages/authFlow';
+import requestLoginCode from '@/pages/requestLoginCode';
 import styles from '@/pages/authFlow.module.scss';
 
 if(import.meta.hot) import.meta.hot.accept();
@@ -104,6 +104,7 @@ export default function SignInCard(_props: {spec: Spec}) {
 
   function onSubmit(e?: Event) {
     if(e) cancelEvent(e);
+    if(submitting() || !hasValidInput()) return;
 
     setSubmitting(true);
     setNextContent(
@@ -116,29 +117,8 @@ export default function SignInCard(_props: {spec: Spec}) {
     );
 
     const phone_number = telInputField.value;
-    managers.apiManager.invokeApi('auth.sendCode', {
-      phone_number,
-      api_id: App.id,
-      api_hash: App.hash,
-      settings: {
-        _: 'codeSettings',
-        pFlags: {}
-      }
-    }).then(async(code) => {
-      if(code._ === 'auth.sentCodeSuccess') {
-        const {authorization} = code;
-        if(authorization._ === 'auth.authorization') {
-          await managers.apiManager.setUser(authorization.user);
-          toIm();
-          return;
-        }
-      }
-
-      navigate({
-        name: 'authCode',
-        payload: Object.assign(code as any, {phone_number}) // sentCode + phone_number
-      });
-    }).catch((err) => {
+    requestLoginCode({managers, navigate, toIm}, phone_number, () => !cancelled).catch((err) => {
+      if(cancelled) return;
       setSubmitting(false);
 
       switch(err.type) {
@@ -150,7 +130,7 @@ export default function SignInCard(_props: {spec: Spec}) {
           break;
         default:
           console.error('auth.sendCode error:', err);
-          setNextContent(err.type);
+          setNextContent(err.type || err.message);
           break;
       }
     });

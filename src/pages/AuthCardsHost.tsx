@@ -1,6 +1,7 @@
 import {JSX, Match, Show, Switch, children, createMemo, lazy, onMount} from 'solid-js';
 
 import Scrollable from '@components/scrollable2';
+import blah from '@config/blah';
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport';
 import {IS_MOBILE_SAFARI} from '@environment/userAgent';
 import loadFonts from '@helpers/dom/loadFonts';
@@ -34,6 +35,7 @@ if(import.meta.hot) import.meta.hot.accept();
 /* ------------------------------------------------------------------ */
 
 const SignInCard = lazy(() => import('@/pages/cards/SignInCard'));
+const BlahSignInCard = lazy(() => import('@/pages/cards/BlahSignInCard'));
 const AuthCodeCard = lazy(() => import('@/pages/cards/AuthCodeCard'));
 const PasswordCard = lazy(() => import('@/pages/cards/PasswordCard'));
 const SignUpCard = lazy(() => import('@/pages/cards/SignUpCard'));
@@ -196,7 +198,7 @@ function CardsTransition(): JSX.Element {
   const cardChild = children(() => (
     <Switch>
       <Match when={matchCard('signIn')} keyed>
-        {(spec) => <SignInCard spec={spec} />}
+        {(spec) => blah ? <BlahSignInCard /> : <SignInCard spec={spec} />}
       </Match>
       <Match when={matchCard('authCode')} keyed>
         {(spec) => <AuthCodeCard spec={spec} />}

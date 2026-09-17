@@ -1,4 +1,4 @@
-import type {DcId} from '@types';
+import type {DcId, DcAuthKey, DcServerSalt} from '@types';
 import {MOUNT_CLASS_TO} from '@config/debug';
 
 import type {AppInstance} from '@lib/singleInstance';
@@ -39,27 +39,9 @@ type StorageValues = {
 /**
  * @deprecated use these keys only for going to and from 'A' (a.k.a. 'Z') version
  */
-type DeprecatedStorageValues = {
+type DeprecatedStorageValues = Record<DcAuthKey | DcServerSalt | `dc${DcId}_hash`, string> & {
   dc: DcId,
   user_auth: UserAuth,
-
-  dc1_auth_key: string,
-  dc2_auth_key: string,
-  dc3_auth_key: string,
-  dc4_auth_key: string,
-  dc5_auth_key: string,
-
-  dc1_server_salt: string,
-  dc2_server_salt: string,
-  dc3_server_salt: string,
-  dc4_server_salt: string,
-  dc5_server_salt: string,
-
-  dc1_hash: string, // WebA only
-  dc2_hash: string, // WebA only
-  dc3_hash: string, // WebA only
-  dc4_hash: string, // WebA only
-  dc5_hash: string, // WebA only
 
   auth_key_fingerprint: string // = dc${App.baseDcId}_auth_key.slice(0, 8)
 };

@@ -9,6 +9,7 @@ import type {ShortcutKey as PasscodeLockShortcutKey} from '@components/sidebarLe
 import {IS_MOBILE} from '@environment/userAgent';
 import getTimeFormat from '@helpers/getTimeFormat';
 import App from '@config/app';
+import blah from '@config/blah';
 import {getAccentPresetsForBase} from '@config/themePresets';
 import {ColoredBrushType} from '@components/mediaEditor/context';
 import {FontKey} from '@components/mediaEditor/types';
@@ -601,7 +602,7 @@ export const STATE_INIT: State = {
   version: STATE_VERSION,
   build: BUILD,
   authState: {
-    _: IS_MOBILE ? 'authStateSignIn' : 'authStateSignQr'
+    _: blah || IS_MOBILE ? 'authStateSignIn' : 'authStateSignQr'
   },
   hiddenPinnedMessages: {},
   hideChatJoinRequests: {},

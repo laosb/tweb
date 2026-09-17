@@ -1,6 +1,11 @@
 ## Telegram Web K
 Based on Webogram, patched and improved. Available for everyone here: https://web.telegram.org/k/
 
+### Blah
+
+This fork also supports Blah through an opt-in build profile. See
+[Blah configuration and maintenance](docs/blah.md) and
+[Cloudflare Workers deployment](docs/cloudflare.md). Normal builds still use Telegram.
 
 ### Developing
 Install dependencies with:

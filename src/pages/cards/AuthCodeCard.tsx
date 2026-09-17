@@ -16,7 +16,7 @@ import formatDuration from '@helpers/formatDuration';
 import mediaSizes from '@helpers/mediaSizes';
 import {fastRaf} from '@helpers/schedulers';
 import tsNow from '@helpers/tsNow';
-import {AuthSentCode, AuthSentCodeType, AuthSignIn} from '@layer';
+import {AuthSentCode, AuthSentCodeType} from '@layer';
 import {LangPackKey, i18n} from '@lib/langPack';
 import setBlankToAnchor from '@lib/richTextProcessor/setBlankToAnchor';
 import lottieLoader from '@lib/lottie/lottieLoader';
@@ -45,6 +45,7 @@ type Spec = Extract<CardSpec, {name: 'authCode'}>;
  */
 export default function AuthCodeCard(props: {spec: Spec}) {
   const {managers, navigate, toIm} = useAuthFlow();
+  let cancelled = false;
 
   /* ---------- state ---------- */
 
@@ -94,16 +95,12 @@ export default function AuthCodeCard(props: {spec: Spec}) {
   function submitCode(code: string) {
     codeInputField.disabled = true;
 
-    const params: AuthSignIn = {
-      phone_number: sentCode.phone_number,
-      phone_code_hash: sentCode.phone_code_hash,
-      phone_code: code
-    };
-
-    managers.apiManager.invokeApi('auth.signIn', params, {ignoreErrors: true}).then(async(response) => {
+    managers.appAccountManager.signInWithCode(
+      sentCode.phone_number, sentCode.phone_code_hash, sentCode.type._, code
+    ).then((response) => {
+      if(cancelled) return;
       switch(response._) {
         case 'auth.authorization':
-          await managers.apiManager.setUser(response.user);
           toIm();
           break;
         case 'auth.authorizationSignUpRequired':
@@ -117,13 +114,14 @@ export default function AuthCodeCard(props: {spec: Spec}) {
           break;
       }
     }).catch((err) => {
+      if(cancelled) return;
       let good = false;
       switch(err.type) {
         case 'SESSION_PASSWORD_NEEDED':
           good = true;
           navigate({name: 'password'});
           setTimeout(() => {
-            codeInputField.value = '';
+            if(!cancelled) codeInputField.value = '';
           }, 300);
           break;
         case 'PHONE_CODE_EXPIRED':
@@ -145,7 +143,9 @@ export default function AuthCodeCard(props: {spec: Spec}) {
 
       if(!good) {
         codeInputField.value = '';
-        fastRaf(() => codeInputField.input.focus());
+        fastRaf(() => {
+          if(!cancelled) codeInputField.input.focus();
+        });
       }
     });
   }
@@ -309,6 +309,7 @@ export default function AuthCodeCard(props: {spec: Spec}) {
   });
 
   onCleanup(() => {
+    cancelled = true;
     cancelFocus?.();
     if(resetEmailTimer) clearTimeout(resetEmailTimer);
     monkey?.remove();

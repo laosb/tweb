@@ -13,6 +13,7 @@ import {watchLangFile} from './watch-lang.js';
 import {watchScssTypes} from './scss-types.js';
 import devChecks from './scripts/dev-checks.mjs';
 import settingsSearchPlugin from './scripts/settings-search-plugin.mjs';
+import {blahPlugin} from './scripts/blah-config.mjs';
 import path from 'path';
 
 const rootDir = resolve(__dirname);
@@ -150,6 +151,7 @@ if(USE_OWN_SOLID) {
 
 export default defineConfig({
   plugins: [
+    blahPlugin(rootDir),
     // devtools({
     //   /* features options - all disabled by default */
     //   autoname: true // e.g. enable autoname

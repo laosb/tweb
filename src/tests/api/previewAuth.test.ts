@@ -225,7 +225,7 @@ describeOrSkip('preview auth', () => {
       // ---- Phase 4: emit the preview seed ----
       let timeOffset: number;
       try {
-        timeOffset = await sessionStorage.get('server_time_offset' as any) as number;
+        timeOffset = await sessionStorage.get('server_time_offset');
       } catch{}
       const previewSeed: AccountSeed = {
         userId: seed.userId,

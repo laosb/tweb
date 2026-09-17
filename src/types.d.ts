@@ -3,7 +3,8 @@ import type {ApiError} from '@appManagers/apiManager';
 import {ActiveAccountNumber} from '@lib/sessionStorage';
 
 export type DcId = number;
-export type TrueDcId = 1 | 2 | 3 | 4 | 5;
+// Validated at the transport boundary: Telegram 1–5, Blah 1–255.
+export type TrueDcId = number;
 export type DcAuthKey = `dc${TrueDcId}_auth_key`;
 export type DcServerSalt = `dc${TrueDcId}_server_salt`;
 

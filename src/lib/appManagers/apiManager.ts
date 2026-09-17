@@ -14,6 +14,7 @@ import MTPNetworker, {MTMessage} from '@lib/mtproto/networker';
 import {ConnectionType, constructTelegramWebSocketUrl, DcConfigurator, TransportType} from '@lib/mtproto/dcConfigurator';
 import deferredPromise, {CancellablePromise} from '@helpers/cancellablePromise';
 import App from '@config/app';
+import {DC_IDS} from '@config/dc';
 import {MOUNT_CLASS_TO} from '@config/debug';
 import {IDB} from '@lib/files/idb';
 import CryptoWorker from '@lib/crypto/cryptoMessagePort';
@@ -302,7 +303,7 @@ export class ApiManager extends ApiManagerMethods {
 
     const logoutPromises: Promise<any>[] = [];
 
-    for(let dcId = 1; dcId <= 5; dcId++) {
+    for(const dcId of DC_IDS) {
       const key = `dc${dcId as TrueDcId}_auth_key` as const;
       if(accountData[key]) {
         logoutPromises.push(this.invokeApi('auth.logOut', {}, {dcId, ignoreErrors: true}));
@@ -329,7 +330,7 @@ export class ApiManager extends ApiManagerMethods {
               'k_build',
               'auth_key_fingerprint'
             ];
-            for(let i = 1; i <= 5; ++i) {
+            for(const i of DC_IDS) {
               keys.push(`dc${i as TrueDcId}_server_salt`);
               keys.push(`dc${i as TrueDcId}_auth_key`);
               keys.push(`dc${i as TrueDcId}_hash`); // only for WebA
