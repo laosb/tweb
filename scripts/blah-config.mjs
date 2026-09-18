@@ -98,7 +98,10 @@ export function blahPlugin(root) {
   return [{
     name: 'blah-config',
     async config(_config, {mode}) {
-      return {define: await blahBuildDefines(mode, root)};
+      return {
+        define: await blahBuildDefines(mode, root),
+        worker: {plugins: () => [blahBrandingPlugin(root)]}
+      };
     }
   }, blahBrandingPlugin(root)];
 }
