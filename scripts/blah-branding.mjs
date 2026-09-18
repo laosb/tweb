@@ -10,7 +10,38 @@ const MANIFEST_FILES = {
 const TITLE = 'Blah';
 const DESCRIPTION = 'Blah messaging.';
 
-// Touch metadata only, never shipped JavaScript, language strings or API names.
+// Build-time replacements, like laosb/Telegram-iOS's resource transform.
+// Keep upstream sources untouched and keep protocol strings out of the scope.
+const SOURCE_TEXT = {
+  'src/lib/serviceWorker/push.ts': ['\'Telegram\'', '\'Telegram Web\'', '\'Telegram is syncing in the background...\''],
+  'src/lib/appManagers/appMessagesManager.ts': ['first_name: \'Telegram\''],
+  'src/lib/appManagers/apiUpdatesManager.ts': ['Telegram Web${App.suffix}'],
+  'src/components/sidebarLeft/index.ts': ['Telegram Web${App.suffix}'],
+  'src/lib/appManagers/appEmojiManager.ts': ['title: \'Premium\''],
+  'src/components/popupSandbox/stories/premium.ts': ['\'Premium & Stars\'', '\'Telegram Premium\'', '\'Telegram Premium — one feature\'', '\'Gift Premium\'']
+};
+
+export function brandBlahText(text) {
+  return text.replace(
+    /(\]\((?:[^()]|\([^()]*\))*\)|(?:https?:\/\/|tg:\/\/|mailto:|@)[^\s<>"\\]+)|(?:(?<![\w./@])|(?<=\\[nrt]))(?:Telegram[ \t\u00a0\u202f]+Premium|Telegram(?: Web(?: ?K)?)?|[Pp]remium)(?![\w@]|\.\w)/g,
+    (match, literal) => literal ? match :
+      match.endsWith('Premium') && match.startsWith('Telegram') ? 'Blah Beyond' :
+      /^[Pp]remium$/.test(match) ? 'Beyond' : TITLE
+  );
+}
+
+export function brandBlahSource(code, filename) {
+  if(filename === 'src/lang.ts' || filename === 'src/langSign.ts') {
+    // Value side only, including plural forms; never localization keys.
+    return code.replace(/(:\s*')((?:\\.|[^'\\])*)'/g, (_, prefix, value) => prefix + brandBlahText(value) + '\'');
+  }
+  for(const text of SOURCE_TEXT[filename] || []) {
+    code = code.replaceAll(text, brandBlahText(text).replace('${App.suffix}', ''));
+  }
+  return code;
+}
+
+// HTML metadata is separate from the scoped display-text replacements above.
 export function brandBlahHtml(html) {
   return html.replace(/<title>[^<]*<\/title>/, `<title>${TITLE}</title>`)
   .replace(/<meta\b[^>]*>/g, (tag) => {
@@ -53,6 +84,7 @@ export function brandBlahManifest(manifest) {
 /** @returns {import('vite').Plugin} */
 export default function blahBrandingPlugin(root) {
   let enabled = false;
+  let isWorker = false;
   const publicPath = (filename) => path.join(root, 'public', filename);
   const manifestSource = (filename) => JSON.stringify(
     brandBlahManifest(JSON.parse(readFileSync(publicPath(filename), 'utf8'))), null, 2
@@ -60,15 +92,23 @@ export default function blahBrandingPlugin(root) {
 
   return {
     name: 'blah-branding',
+    enforce: 'pre',
     configResolved(config) {
       enabled = !!config.define.__BLAH_CONFIG__ && config.define.__BLAH_CONFIG__ !== 'undefined';
+      isWorker = config.isWorker;
+    },
+    transform(code, id) {
+      if(!enabled) return;
+      const filename = path.relative(root, id.split('?')[0]).split(path.sep).join('/');
+      const branded = brandBlahSource(code, filename);
+      if(branded !== code) return {code: branded, map: null};
     },
     transformIndexHtml: {
       order: 'post', // After the upstream Handlebars title has been expanded.
       handler: (html) => enabled ? brandBlahHtml(html) : html
     },
     generateBundle() {
-      if(!enabled) return;
+      if(!enabled || isWorker) return;
       // copyPublicDir is false. Dist must contain the icons and manifests, using
       // distinct names so even legacy build.js's dist -> public copy is harmless.
       for(const file of ICON_FILES) {
