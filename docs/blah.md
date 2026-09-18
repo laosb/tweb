@@ -63,10 +63,21 @@ The same applies when switching between unrelated Blah installations.
   available. Changing the build key renews an old subscription. The active Blah
   manifests omit Telegram's legacy `gcm_sender_id`.
 - The page title, favicon, touch icon and installed-app metadata use Blah
-  branding in this profile only. The logo comes from the referenced Web A fork;
-  no runtime download or global replacement of Telegram strings is involved.
+  branding in this profile only. The logo comes from the referenced Web A fork.
   Separate `site.blah.webmanifest` and `site_apple.blah.webmanifest` outputs
   leave the upstream manifests intact even with the legacy `build.js` workflow.
+- UI copy uses **Blah** instead of Telegram (including Telegram Web/WebK),
+  **Blah Beyond** instead of Telegram Premium, and **Beyond** for standalone
+  Premium labels. `scripts/blah-branding.mjs` applies replacements through
+  Vite's build/dev transform hook, including worker builds. Like the build-time
+  branding in `laosb/Telegram-iOS` and `laosb/telegram-tt`, it never writes to
+  upstream sources and needs no Git hook. Replacing before bundling also keeps
+  output hashes in sync with branded content.
+- The script transforms only bundled dictionary **values** and an explicit list
+  of app-owned display literals. Keys, API/protocol identifiers, URLs, legal
+  attribution and user content remain unchanged. Normal Telegram builds are
+  untouched. Blah does not support downloaded language packs yet; there is no
+  runtime language-pack rebranding.
 
 Rebuild after topology, RSA-key or VAPID-key changes. This is not a runtime
 server selector and it does not proxy traffic through Cloudflare.
@@ -84,10 +95,12 @@ node scripts/generate-blah-icons.mjs
 
 ## Keeping rebases small
 
-Blah-specific policy lives in `scripts/blah-config.mjs`, `src/config/blah.ts`
-and the identifier card/helper. Upstream touchpoints are deliberately limited
+Blah-specific policy lives in `scripts/blah-config.mjs`,
+`scripts/blah-branding.mjs`, `src/config/blah.ts` and the identifier card/helper.
+Upstream touchpoints are deliberately limited
 to build defines, endpoint/key selection, the auth entry/default, shared login
 manager methods, push validation, and the DC range used by account storage.
+Branding needs no edits to UI components, managers or the runtime formatter.
 Generated API schemas, protocol/crypto code, upstream branding assets, compiled `public/`
 bundles, dependencies and lockfiles are not forked.
 
