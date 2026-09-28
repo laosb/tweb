@@ -104,10 +104,12 @@ its build needs no Swift, Binaryen or WASI shim dependency. WASM loads lazily in
 the account manager's worker (and supports the in-process fallback). Vite resolves
 asset URLs for both workers and pages, including deployments under a URL prefix.
 
-To update from a specific published release, or a local BlahDiem build:
+The release tag and manifest hash in `public/assets/blah/source.json` pin the bundle.
+To restore that release, update to another dated release, or test a local build:
 
 ```sh
-node scripts/update-blah-wasm.mjs --release web-vVERSION
+node scripts/update-blah-wasm.mjs
+node scripts/update-blah-wasm.mjs --release YYYYMMDD-sha4
 # Local development: build Web/ in the BlahDiem checkout first.
 node scripts/update-blah-wasm.mjs --from-dir ../BlahDiem/Web/dist
 
@@ -136,6 +138,9 @@ already built. This validates identity/login support, not every post-login Teleg
 BlahDiem owns the Swift bridge, minimization and release workflow.
 `public/assets/blah/manifest.json` identifies the vendored build and checksums.
 `source.json` distinguishes a published release from an unpublished local build.
+The importer verifies every asset before replacing the bundle, and restoring the pin
+also verifies the manifest hash. User identity requests explicitly select `kind: 'user'`;
+invocation proofs carry the reviewed challenge bytes and the current transport binding.
 There is no separate Swift package or copy of protocol rules in tweb.
 Do not duplicate Diem's CBOR, certificate or proof implementation in TypeScript.
 The Telegram schema is extended in memory, leaving generated upstream files intact.
