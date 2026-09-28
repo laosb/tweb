@@ -468,6 +468,11 @@ export default class MTPNetworker {
     return this.pushMessage(message, options);
   }
 
+  /** Only public transport identifiers cross the application proof boundary. */
+  public getIdentityBinding() {
+    return {keyID: longFromBytes(this.authKey.id), sessionID: longFromBytes(this.sessionId)};
+  }
+
   /**
    * Bind the temporary key this networker talks over to the permanent one.
    * The inner message is MTProto 1.0 encrypted with the permanent key and
