@@ -21,6 +21,7 @@ await build({entryPoints: ['tests/blah/browser-entry.ts'], bundle: true, format:
 const server = createServer(async(req, res) => {
   try {
     const path = req.url === '/fixture.js' ? join(directory, 'fixture.js') :
+      req.url === '/cbor.mjs' ? 'tests/blah/cbor.mjs' :
       req.url === '/assets/blah/diem.js' ? 'public/assets/blah/diem.js' :
       req.url === '/assets/blah/diem.wasm' ? 'public/assets/blah/diem.wasm' : undefined;
     res.setHeader('Content-Type', req.url.endsWith('.wasm') ? 'application/wasm' : path ? 'text/javascript' : 'text/html');
@@ -46,21 +47,7 @@ try {
   assert(!created.backup.includes('privateKey'));
   assert(!created.backup.includes('test identity password'));
   const checked = await page.evaluate(async() => {
-    // Independent canonical-CBOR encoder, fixture-only; production encoding is Swift.
-    const head = (major, input) => {
-      let n = BigInt(input);
-      if(n < 24n) return [major * 32 + Number(n)];
-      const size = n <= 255n ? 1 : n <= 65535n ? 2 : n <= 4294967295n ? 4 : 8;
-      const bytes = new Array(size);
-      for(let i = size - 1; i >= 0; --i) { bytes[i] = Number(n & 255n); n >>= 8n; }
-      return [major * 32 + ({1: 24, 2: 25, 4: 26, 8: 27})[size], ...bytes];
-    };
-    const cbor = (value) => {
-      if(typeof value === 'number' || typeof value === 'bigint') return head(0, value);
-      if(typeof value === 'string') { const bytes = [...new TextEncoder().encode(value)]; return [...head(3, bytes.length), ...bytes]; }
-      if(value instanceof Uint8Array) return [...head(2, value.length), ...value];
-      return [...head(4, value.length), ...value.flatMap(cbor)];
-    };
+    const {cbor} = await import('/cbor.mjs');
     const expiresAt = Math.floor(Date.now() / 1000) + 60;
     const challenge = cbor([4, 1, 'alice.example.org', new Uint8Array(32).fill(7), expiresAt,
       new Uint8Array(32).fill(0xab), 18446744073709551614n, 18446744073709551613n]);

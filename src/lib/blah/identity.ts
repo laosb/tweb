@@ -1,4 +1,5 @@
-import blah from '@config/blah';
+import blah, {ensureBlahConfig} from '@config/blah';
+import {bindHomeStorage} from '@lib/blah/homeStorage';
 import {decode, encode, exclusively, identityIDs, passwordKey, seal, SealedIdentity, stored, unseal, validateBackup} from '@lib/blah/vault';
 import {diem, IdentityInfo, IdentitySecret, SigningKey} from '@lib/blah/wasm';
 
@@ -18,42 +19,10 @@ type Unlocked = {id: string, key: CryptoKey, until: number, timer?: ReturnType<t
 const unlocked = new Map<number, Unlocked>();
 let homeReady: Promise<void>;
 
-/** Fail before loading upstream caches, including old number/email installations. */
-export function requireHomeStorage() {
-  if(!blah?.home) return Promise.resolve();
-  return homeReady ??= exclusively(async() => {
-    const home = JSON.stringify(blah.home);
-    const previous = await stored<string>('home');
-    if(previous === home) return;
-    let populated = typeof localStorage !== 'undefined' && Object.keys(localStorage).some((key) =>
-      /^(?:t_)?(?:account[1-4]|dc\d+_auth_key|user_auth)$/.test(key) &&
-      /userId|auth_key|^"[a-f0-9]{512}"$/.test(localStorage.getItem(key) || ''));
-    for(const {name} of await indexedDB.databases()) {
-      if(!/^(tweb|telegram)(-|$)/.test(name)) continue;
-      populated ||= await new Promise<boolean>((resolve, reject) => {
-        const request = indexedDB.open(name);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => {
-          const db = request.result;
-          const names = Array.from(db.objectStoreNames).filter((store) =>
-            /^(users|chats|messages|localStorage__encrypted|session__encrypted)$/.test(store));
-          if(!names.length) { db.close(); resolve(false); return; }
-          const tx = db.transaction(names);
-          let found = false;
-          for(const store of names) {
-            const count = tx.objectStore(store).count();
-            count.onsuccess = () => { found ||= count.result > 0; };
-          }
-          tx.oncomplete = () => { db.close(); resolve(found); };
-          tx.onerror = () => { db.close(); reject(tx.error); };
-        };
-      });
-    }
-    if(previous || populated) {
-      throw new Error('This origin contains another Blah home or legacy account. Use a fresh browser origin.');
-    }
-    await stored('home', home);
-  });
+export async function requireHomeStorage() {
+  await ensureBlahConfig();
+  if(!blah?.home) return;
+  return homeReady ??= bindHomeStorage(blah.home);
 }
 
 async function signingKey(): Promise<SigningKey> {
@@ -113,8 +82,8 @@ export async function bindIdentity(slot: number) {
 }
 
 export async function requireAccountBinding(slot: number, signedIn: boolean) {
-  if(!blah?.home) return;
   await requireHomeStorage();
+  if(!blah?.home) return;
   if(signedIn && !await stored<string>('slot:' + slot)) {
     throw new Error('This cached authorization has no Diem identity binding. Use a fresh browser origin.');
   }

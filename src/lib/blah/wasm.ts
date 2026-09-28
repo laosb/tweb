@@ -1,8 +1,6 @@
 import blah from '@config/blah';
 import {decode} from '@lib/blah/vault';
-import runtimeURL from '/assets/blah/diem.js?url';
-import wasmURL from '/assets/blah/diem.wasm?url';
-import type {DiemClient, CryptoBackend, IdentityResult} from '@blahdiem/diem';
+import type {CryptoBackend, IdentityResult} from '@blahdiem/diem';
 
 export type SigningKey = {privateKey: string, publicKey: string};
 export type IdentitySecret = {
@@ -15,7 +13,6 @@ export type IdentitySecret = {
 };
 export type IdentityInfo = IdentityResult;
 
-let ready: Promise<DiemClient>;
 let queue: Promise<unknown> = Promise.resolve();
 
 /** Serialize use of the Swift bridge; never let one account borrow another's signer. */
@@ -28,12 +25,8 @@ export function diem(operation: string, secret: IdentitySecret, extra: Record<st
         typeof key?.publicKey !== 'string' || decode(key.publicKey).length !== 32)) {
       throw new Error('Invalid identity key or profile data.');
     }
-    ready ??= (async() => {
-      const path = new URL(runtimeURL, globalThis.location.href).href;
-      const {createDiem} = await import(/* @vite-ignore */ path);
-      return createDiem(new URL(wasmURL, globalThis.location.href));
-    })();
-    const client = await ready;
+    const {diemClient, verifySignature} = await import('@lib/blah/runtime');
+    const client = await diemClient();
     const keys: Record<string, CryptoKey> = {};
     for(const role of ['identity', 'device'] as const) {
       keys[role] = await crypto.subtle.importKey('pkcs8', decode(secret[role].privateKey), 'Ed25519', false, ['sign']);
@@ -47,9 +40,7 @@ export function diem(operation: string, secret: IdentitySecret, extra: Record<st
       random: (length) => crypto.getRandomValues(new Uint8Array(length)),
       publicKey: (role) => decode(secret[role as 'identity' | 'device'].publicKey),
       sign: async(role, data) => new Uint8Array(await crypto.subtle.sign('Ed25519', keys[role], new Uint8Array(data))),
-      verify: async(key, data, signature) => crypto.subtle.verify('Ed25519',
-        await crypto.subtle.importKey('raw', new Uint8Array(key), 'Ed25519', false, ['verify']),
-        new Uint8Array(signature), new Uint8Array(data))
+      verify: verifySignature
     };
     return client.identityOperation({operation, kind: 'user', domain: secret.domain, profile: Array.from(decode(secret.profile)),
       now: Math.floor(Date.now() / 1000),

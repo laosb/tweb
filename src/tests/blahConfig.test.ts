@@ -74,6 +74,17 @@ describe('Blah release configuration', () => {
     vi.stubEnv('BLAH_VAPID_PUBLIC_KEY', '');
   }
 
+  it('enables runtime domain discovery when no operator bootstrap is supplied', async() => {
+    enableBlah();
+    vi.stubEnv('BLAH_SERVER_CONFIG_URL', '');
+    vi.stubEnv('BLAH_BOOTSTRAP_FILE', '');
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const defines = await blahBuildDefines('test', process.cwd());
+    expect(JSON.parse(defines.__BLAH_CONFIG__)).toEqual({discovery: true, defaultDcId: 1, dcs: []});
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('requires explicit Blah credentials instead of the inherited Telegram ones', async() => {
     enableBlah();
     vi.stubEnv('BLAH_API_HASH', '');

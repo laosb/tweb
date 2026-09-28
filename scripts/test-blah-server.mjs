@@ -10,6 +10,7 @@ import {generateKeyPairSync, createHash} from 'node:crypto';
 import {once} from 'node:events';
 import assert from 'node:assert/strict';
 import AxeBuilder from '@axe-core/playwright';
+import {cbor} from '../tests/blah/cbor.mjs';
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const tele = process.env.BLAH_SERVER_REPO;
 if(!tele) throw new Error('Set BLAH_SERVER_REPO to a Teleblah checkout with a built debug server.');
@@ -108,36 +109,24 @@ try {
       res.end();
     }
   });
-  edge.on('upgrade', (req, socket, head) => proxy.ws(req, socket, head, {
-    target: 'ws://127.0.0.1:' + port
-  }));
+  const connectedPaths = new Set();
+  edge.on('upgrade', (req, socket, head) => {
+    assert(['/discovered/ws?route=home', '/rotated/ws?route=home'].includes(req.url));
+    connectedPaths.add(req.url);
+    proxy.ws(req, socket, head, {target: 'ws://127.0.0.1:' + port});
+  });
   proxy.on('error', () => {});
   edge.listen(0, '127.0.0.1');
   await once(edge, 'listening');
   const tlsPort = edge.address().port,
     origin = 'https://127.0.0.1:' + tlsPort;
   const rsa = JSON.parse(await readFile(tele + '/Schemas/blah-rsa-key.json', 'utf8'));
-  await writeFile(dir + '/bootstrap.json', JSON.stringify({
-    home: {
-      domain: 'dc.example.org',
-      identity: id,
-      generation: '1'
-    },
-    dcs: [{
-      id: 1,
-      rsaPublicKey: rsa.pkcs1Pem,
-      endpoints: [{
-        ip: '127.0.0.1',
-        port: tlsPort,
-        wsTlsOnly: true
-      }]
-    }]
-  }));
   execFileSync(repo + '/node_modules/.bin/vite', ['build', '--mode', 'blah'], {
     cwd: repo,
     env: {
       ...process.env,
-      BLAH_BOOTSTRAP_FILE: dir + '/bootstrap.json',
+      BLAH_BOOTSTRAP_FILE: '',
+      BLAH_SERVER_CONFIG_URL: '',
       BLAH_API_ID: '12345',
       BLAH_API_HASH: '0123456789abcdef0123456789abcdef'
     },
@@ -161,6 +150,43 @@ try {
     if(m.type() === 'error') diagnostics.push(m.text().slice(0, 350));
   });
   await page.goto(origin + '/?debug=1&noServiceWorker=1');
+  const signedDC = await page.evaluate(async({data, rotatedData, identityKey}) => {
+    const {createDiem} = await import('/assets/blah/diem.js');
+    const diem = await createDiem(new URL('/assets/blah/diem.wasm', location.href));
+    const identity = await crypto.subtle.importKey('jwk', identityKey, 'Ed25519', true, ['sign']);
+    const device = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']);
+    const publicKeys = {identity: Uint8Array.from(atob(identityKey.x.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)),
+      device: new Uint8Array(await crypto.subtle.exportKey('raw', device.publicKey))};
+    const backend = {
+      random: length => crypto.getRandomValues(new Uint8Array(length)),
+      publicKey: role => publicKeys[role],
+      sign: async(role, bytes) => new Uint8Array(await crypto.subtle.sign('Ed25519', role === 'identity' ? identity : device.privateKey, new Uint8Array(bytes))),
+      verify: async(key, bytes, signature) => crypto.subtle.verify('Ed25519',
+        await crypto.subtle.importKey('raw', new Uint8Array(key), 'Ed25519', false, ['verify']), new Uint8Array(signature), new Uint8Array(bytes))
+    };
+    const current = await diem.dcSetup({data, profile: null, now: Math.floor(Date.now() / 1000)}, backend);
+    const rotated = await diem.dcSetup({data: rotatedData, profile: current.profile, now: Math.floor(Date.now() / 1000)}, backend);
+    return {...current, rotatedProfile: rotated.profile};
+  }, {data: cbor([13, 1, 5, ['dc.example.org'], [['127.0.0.1', tlsPort, true, 1, '/discovered/ws?route=home']], [], rsa.pkcs1Pem, 1]),
+    rotatedData: cbor([13, 1, 5, ['dc.example.org'], [['127.0.0.1', tlsPort, true, 1, '/rotated/ws?route=home']], [], rsa.pkcs1Pem, 1]),
+    identityKey: privateKey.export({format: 'jwk'})});
+  assert.equal(signedDC.id, id);
+  let discoveryProfile = signedDC.profile;
+  await signupContext.route('https://dc.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
+    contentType: 'application/cbor', body: Buffer.from(discoveryProfile)
+  }));
+  const domainInput = page.getByRole('textbox', {name: 'DC domain'});
+  await domainInput.fill('http://dc.example.org');
+  await domainInput.press('Enter');
+  await page.getByRole('status').filter({hasText: 'Enter a DC domain'}).waitFor();
+  assert.equal(await domainInput.evaluate(node => node === document.activeElement), true);
+  await page.setViewportSize({width: 375, height: 720});
+  assert.equal(await page.evaluate(() => document.querySelector('.blah-dc-setup').scrollWidth <= innerWidth), true);
+  await domainInput.fill('dc.example.org');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.getByRole('button', {name: 'Connect to Blah'}).evaluate(node => node === document.activeElement), true);
+  assert.deepEqual((await new AxeBuilder({page}).include('.blah-dc-setup').analyze()).violations, []);
+  await page.keyboard.press('Enter');
   try {
     await page.getByText('Create or restore an identity', {
       exact: true
@@ -208,6 +234,13 @@ try {
       timeout: 30000
     });
     const userId = await page.evaluate(() => JSON.parse(localStorage.getItem('account1')).userId);
+    discoveryProfile = signedDC.rotatedProfile;
+    const refreshed = await signupContext.newPage();
+    await refreshed.goto(origin + '/?debug=1&noServiceWorker=1');
+    await refreshed.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+    // The original tab is still alive: the refreshed tab must not attach to its stale worker.
+    assert(connectedPaths.has('/rotated/ws?route=home'));
+    await refreshed.close();
     await page.reload();
     await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('account1') || '{}').userId);
@@ -277,7 +310,12 @@ try {
     restored.on('console', m => {
       if(m.type() === 'error') diagnostics.push(m.text().slice(0, 350));
     });
+    await context.route('https://dc.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
+      contentType: 'application/cbor', body: Buffer.from(signedDC.profile)
+    }));
     await restored.goto(origin + '/?noServiceWorker=1&pfs=1');
+    await restored.getByRole('textbox', {name: 'DC domain'}).fill('dc.example.org');
+    await restored.getByRole('button', {name: 'Connect to Blah'}).click();
     await restored.getByText('Create or restore an identity', {
       exact: true
     }).click();
@@ -303,7 +341,7 @@ try {
     const restoredId = await restored.evaluate(() => JSON.parse(localStorage.getItem('account1')).userId);
     if(userId !== restoredId) throw new Error('Recovery changed the account');
     await context.close();
-    console.log('PASS full browser signup, profile publication, reload, recovered identity login over PFS, dialog keyboard/focus and Axe checks.');
+    console.log('PASS DC domain discovery, exact signed WebSocket URL, full browser signup, profile publication, reload, recovered identity login over PFS, dialog keyboard/focus and Axe checks.');
   } catch(error) {
     console.error(error);
     console.error((await activePage.locator('body').innerText()).slice(-7000));
