@@ -406,6 +406,11 @@ export default class AppAccountManager extends AppManager {
     });
   }
 
+  public async blahIdentity(request: import('@lib/blah/identity').IdentityRequest) {
+    const {identityAction} = await import('@lib/blah/identity');
+    return identityAction(this.getAccountNumber(), request);
+  }
+
   public async finishPasskeyLogin(credential: InputPasskeyCredential, fromDcId?: TrueDcId) {
     const fromAuthKey = fromDcId ? await this.apiManager.getAuthKeyFromHex((await AccountController.get(this.getAccountNumber()))[`dc${fromDcId as TrueDcId}_auth_key`]) : undefined;
     return this.apiManager.invokeApi('auth.finishPasskeyLogin', {

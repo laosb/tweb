@@ -1,0 +1,61 @@
+{
+  "format": 1,
+  "source": {
+    "repository": "https://github.com/UInt8Co/BlahDiem",
+    "commit": "b0b0a0f09a8db96633cbbc3d6da2739e4f767b6e",
+    "dirty": false
+  },
+  "swift": "Swift version 6.4 (swift-6.4-RELEASE)",
+  "sdk": "swift-6.4.0-RELEASE_wasm-embedded",
+  "binaryen": "wasm-opt version 133 (version_133)",
+  "files": {
+    "diem.js": {
+      "bytes": 48810,
+      "sha256": "02aef121e3d9b7b476c07ceb56f0612ca71ca2245342c4c1cb2969d031144c24"
+    },
+    "diem.js.gz": {
+      "bytes": 12797,
+      "sha256": "26a6078a68c704eb16d636b2eef3800f8a1bf93c7875935e6f13901e43f60046"
+    },
+    "diem.js.br": {
+      "bytes": 11500,
+      "sha256": "f523f00babcffd0eabdffa18ab251094d14ea257ef0280a9256b15dcf7ab1c08"
+    },
+    "diem.wasm": {
+      "bytes": 311992,
+      "sha256": "c855ef565109c3c3e6434b48ae2646c4e73cec0662a03aba37b58ec8449f675a"
+    },
+    "diem.wasm.gz": {
+      "bytes": 147566,
+      "sha256": "3b474452d1a1b43fc4bcd99c7d072d7f036faa32799cfdfe09191740014f811a"
+    },
+    "diem.wasm.br": {
+      "bytes": 117234,
+      "sha256": "ca9c566277e0e8f82e16bc2f6791b9cadbbcd2e4e189a39e1a8fe151b7810f09"
+    },
+    "diem.d.ts": {
+      "bytes": 702,
+      "sha256": "ac4f4b9fab0b152c095563bdd914ec3d3b290384c7fa2ce3ddd9d41a1526bdea"
+    },
+    "bridge-js.d.ts": {
+      "bytes": 1349,
+      "sha256": "a6f501f06c4127dc8cea9a5cefc1e824c3cb86e2420f04a427868c96a145d52a"
+    },
+    "package.json": {
+      "bytes": 255,
+      "sha256": "c7237f4260530d52d66cb5d4b31ec156f42baa15e8bac2dd340c9ed0b87b1b85"
+    },
+    "LICENSE": {
+      "bytes": 1064,
+      "sha256": "4b45827e36444f9bdf05ae2be2fca6fecca47c38e4e0e5749f41b16ead03a2bc"
+    },
+    "THIRD_PARTY_LICENSES": {
+      "bytes": 14923,
+      "sha256": "1bf9be81d10fb3a721a86bca43a944cdf94a2bcad74d0e1d8da797019f1d17f1"
+    },
+    "README.md": {
+      "bytes": 4049,
+      "sha256": "47d2d2154a00f2fcb29a87dab00828d42be92d82d4ca5dce3f977ea72fa7d8cf"
+    }
+  }
+}

@@ -13,9 +13,10 @@ not a `/k/` subdirectory.
   submodules required by your checkout.
 - Supply `BLAH_API_ID` and `BLAH_API_HASH` to the build environment; the Blah
   profile intentionally does not inherit Telegram's credentials from `.env`.
-  Optionally set `BLAH_SERVER_CONFIG_URL` to override the public C3 config URL
-  and `BLAH_VAPID_PUBLIC_KEY` to enable your own push configuration. The C3 config
-  is fetched and its RSA keys validated at build time, not by the browser.
+  Supply the independent home bootstrap through `BLAH_BOOTSTRAP_FILE` or
+  `BLAH_SERVER_CONFIG_URL`, as described in [Blah configuration](blah.md), and
+  optionally set `BLAH_VAPID_PUBLIC_KEY`. The bootstrap's transport and identity
+  pins are selected at build time, not discovered by the browser.
   Build-time client configuration is public: never put a Cloudflare token or
   another secret in a `VITE_*` variable. Keep credentials out of committed files.
 - Choose a Worker name in `wrangler.jsonc` (default: `blah`).
