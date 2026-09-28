@@ -1,11 +1,12 @@
 import {createPublicKey} from 'node:crypto';
 import {isIP} from 'node:net';
+import {readFileSync} from 'node:fs';
 import {loadEnv} from 'vite';
 import blahBrandingPlugin from './blah-branding.mjs';
 
 /**
- * C3 is the release-time trust root, as in laosb/telegram-tt. Embed only transport
- * addresses and public RSA keys; never fetch new trust anchors in the browser.
+ * Transport pins come from the operator's release-time home bootstrap.
+ * Browsers never replace these trust anchors with server-supplied endpoints.
  */
 export function parseBlahServerConfig(value) {
   if(!Array.isArray(value?.dcs) || !value.dcs.length) {
@@ -65,17 +66,23 @@ export default async function blahBuildDefines(mode, root) {
   }
 
   if(!/^[1-9]\d*$/.test(env.BLAH_API_ID || '') || !env.BLAH_API_HASH?.trim()) {
-    throw new Error('Blah builds require BLAH_API_ID and BLAH_API_HASH from your C3 application');
+    throw new Error('Blah builds require BLAH_API_ID and BLAH_API_HASH from your home DC application');
   }
-  const url = new URL(env.BLAH_SERVER_CONFIG_URL);
-  if(url.protocol !== 'https:' || url.username || url.password) {
-    throw new Error('BLAH_SERVER_CONFIG_URL must be an HTTPS URL without credentials');
+  let config;
+  if(env.BLAH_BOOTSTRAP_FILE) {
+    config = parseBlahBootstrap(JSON.parse(readFileSync(env.BLAH_BOOTSTRAP_FILE, 'utf8')));
+  } else {
+    if(!env.BLAH_SERVER_CONFIG_URL) throw new Error('Set BLAH_BOOTSTRAP_FILE or BLAH_SERVER_CONFIG_URL');
+    const url = new URL(env.BLAH_SERVER_CONFIG_URL);
+    if(url.protocol !== 'https:' || url.username || url.password) {
+      throw new Error('BLAH_SERVER_CONFIG_URL must be an HTTPS URL without credentials');
+    }
+    const response = await fetch(url, {redirect: 'error', signal: AbortSignal.timeout(15_000)});
+    if(!response.ok) {
+      throw new Error(`Blah bootstrap request failed: HTTP ${response.status}`);
+    }
+    config = parseBlahBootstrap(await response.json());
   }
-  const response = await fetch(url, {redirect: 'error', signal: AbortSignal.timeout(15_000)});
-  if(!response.ok) {
-    throw new Error(`Blah C3 request failed: HTTP ${response.status}`);
-  }
-  const config = parseBlahServerConfig(await response.json());
 
   return {
     __BLAH_CONFIG__: JSON.stringify(config),
@@ -91,6 +98,20 @@ export default async function blahBuildDefines(mode, root) {
       VITE_MTPROTO_HTTP_UPLOAD: ''
     }).map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)]))
   };
+}
+
+/** An operator-provided trust anchor for one independent home, never a directory. */
+export function parseBlahBootstrap(value) {
+  const config = parseBlahServerConfig(value);
+  const home = value.home;
+  if(config.dcs.length !== 1 || config.defaultDcId !== 1 ||
+    typeof home?.domain !== 'string' || home.domain.length > 253 ||
+    !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(home.domain) ||
+    !/^[a-f0-9]{64}$/.test(home?.identity || '') || typeof home?.generation !== 'string' ||
+    !/^[1-9][0-9]*$/.test(home?.generation || '') || BigInt(home.generation) > 9223372036854775807n) {
+    throw new Error('Blah bootstrap requires one DC1 and a pinned home domain, identity and generation');
+  }
+  return {...config, home: {domain: home.domain, identity: home.identity, generation: home.generation}};
 }
 
 /** @returns {import('vite').Plugin[]} */
