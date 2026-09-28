@@ -99,13 +99,16 @@ Ordinary chat logout does not delete identity custody. Clearing all site data do
 
 The minimized `public/assets/blah/diem.js` / `diem.wasm` pair is built and released
 by [BlahDiem](https://github.com/UInt8Co/BlahDiem/tree/main/Web), using generated
-BridgeJS bindings and Swift 6.4 Embedded. Tweb vendors the pair, generated declarations and provenance;
-its build needs no Swift, Binaryen or WASI shim dependency. WASM loads lazily in
+BridgeJS bindings and Swift 6.4 Embedded. Tweb tracks the JavaScript bindings, generated
+declarations, licenses and provenance. The WASM binary is ignored by Git and prepared
+locally: Vite builds, the dev server and the browser fixture verify its checksum and
+download it from the pinned release if absent. With a published release, the client build
+needs no Swift, Binaryen or WASI shim dependency. WASM loads lazily in
 the account manager's worker (and supports the in-process fallback). Vite resolves
 asset URLs for both workers and pages, including deployments under a URL prefix.
 
 The release tag and manifest hash in `public/assets/blah/source.json` pin the bundle.
-To restore that release, update to another dated release, or test a local build:
+To prepare the binary, update to another dated release, or test a local build:
 
 ```sh
 node scripts/update-blah-wasm.mjs
@@ -136,8 +139,11 @@ already built. This validates identity/login support, not every post-login Teleg
 
 `src/lib/blah/` owns custody, the identity UI and application proof adapters;
 BlahDiem owns the Swift bridge, minimization and release workflow.
-`public/assets/blah/manifest.json` identifies the vendored build and checksums.
+`public/assets/blah/manifest.json` identifies the build and checksums.
 `source.json` distinguishes a published release from an unpublished local build.
+The current pin has no published release (`release: null`); a fresh checkout needs the
+matching BlahDiem source built locally and imported with `--from-dir` before running Vite.
+An unpublished pin is never silently replaced by an older public release.
 The importer verifies every asset before replacing the bundle, and restoring the pin
 also verifies the manifest hash. User identity requests explicitly select `kind: 'user'`;
 invocation proofs carry the reviewed challenge bytes and the current transport binding.
