@@ -458,6 +458,11 @@ if(import.meta.env.DEV) {
   setHotReloadGuardLoader(() => import('./pages/bootstrapIm').then(({importAppTopLevel}) => importAppTopLevel()));
 
   rootScope.managers = getProxiedManagers();
+  if(blah?.home) {
+    await (await import('@lib/blah/identity')).requireHomeStorage();
+    const {installIdentityButton} = await import('@lib/blah/identityButton');
+    installIdentityButton(rootScope.managers);
+  }
   await checkLastActiveAccountFromTMe();
 
   if(IS_INSTALL_PROMPT_SUPPORTED) {
@@ -551,10 +556,10 @@ if(import.meta.env.DEV) {
   themeController.setThemeListener();
 
   // * fetch lang pack updates
-  if((langPack.localVersion !== I18n.getLocalVersion() || true) && IS_BETA) {
+  if(!blah && (langPack.localVersion !== I18n.getLocalVersion() || true) && IS_BETA) {
     I18n.getLangPackAndApply(langPack.lang_code);
   } else {
-    checkLangPackForUpdates();
+    if(!blah) checkLangPackForUpdates();
   }
 
   // * handle multi-tab language change (will occur extra time in the original tab though)
