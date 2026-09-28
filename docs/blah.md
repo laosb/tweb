@@ -141,9 +141,9 @@ already built. This validates identity/login support, not every post-login Teleg
 BlahDiem owns the Swift bridge, minimization and release workflow.
 `public/assets/blah/manifest.json` identifies the build and checksums.
 `source.json` distinguishes a published release from an unpublished local build.
-The current pin has no published release (`release: null`); a fresh checkout needs the
-matching BlahDiem source built locally and imported with `--from-dir` before running Vite.
-An unpublished pin is never silently replaced by an older public release.
+The current pin uses a published GitHub release, so a fresh checkout downloads the
+matching WASM automatically. Local development imports use `release: null` and need
+the matching BlahDiem source built locally; they are never silently replaced by a public release.
 The importer verifies every asset before replacing the bundle, and restoring the pin
 also verifies the manifest hash. User identity requests explicitly select `kind: 'user'`;
 invocation proofs carry the reviewed challenge bytes and the current transport binding.
