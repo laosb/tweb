@@ -46,6 +46,7 @@
     "moduleResolution": "bundler",             /* Specify module resolution strategy: 'bundler' for Vite projects. */
     // "baseUrl": "./src",                       /* Base directory to resolve non-absolute module names. */
     "paths": {                                /* A series of entries which re-map imports to lookup locations relative to the 'baseUrl'. */
+      "@blahdiem/*": ["./public/assets/blah/*"],
       "solid-js": ["./src/vendor/solid"],
       "solid-js/web": ["./src/vendor/solid/web"],
       "solid-js/store": ["./src/vendor/solid/store"],
