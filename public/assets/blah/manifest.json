@@ -2,7 +2,7 @@
   "format": 1,
   "source": {
     "repository": "https://github.com/UInt8Co/BlahDiem",
-    "commit": "fa722252750160781c29eedec87884a79c86684c",
+    "commit": "a6b2fad558f9eeecceb15e0477f13006fcf32f72",
     "dirty": false
   },
   "swift": "Swift version 6.4 (swift-6.4-RELEASE)",
@@ -10,36 +10,36 @@
   "binaryen": "wasm-opt version 133 (version_133)",
   "files": {
     "diem.js": {
-      "bytes": 53070,
-      "sha256": "a6818f731eed9a3a6a8353f2bb9e8bf3e0852dea771d344475ccdce6a6c171b5"
+      "bytes": 55732,
+      "sha256": "3d32280ae88220683f979130ae3dd30956e35c9f4de72149c2e4d4da96422306"
     },
     "diem.js.gz": {
-      "bytes": 13734,
-      "sha256": "168c0d61863e54f2ef64deff0080ecc26a86a5a7cbab12212ba0adaae3c9d137"
+      "bytes": 14207,
+      "sha256": "fe609a3bf26d784691bc9d66d2bc55aba7abbc6a6307bf6176378283cc660ef5"
     },
     "diem.js.br": {
-      "bytes": 12351,
-      "sha256": "f1a59fd31affeb4029ab55b2f195e32a6f5e1d5d96cf51941d978215a2fcf8ad"
+      "bytes": 12719,
+      "sha256": "db28a9b975061f586878daf8833c91874d0fce02f627975f0fa40980bdb2c47d"
     },
     "diem.wasm": {
-      "bytes": 352077,
-      "sha256": "1b6634659dc0d899edd9c92cc92ef1bcb6ae423faa4d85fc354b2a7ab96cd9fa"
+      "bytes": 349723,
+      "sha256": "c9f21cffb39192f1d5f3319ac1151ee985d93814eaca18337e25639201013958"
     },
     "diem.wasm.gz": {
-      "bytes": 167310,
-      "sha256": "1a195b36a598c49a870fb9f6161add717bfd361b72d2b2ad6519c43b92d139d7"
+      "bytes": 157577,
+      "sha256": "2db95aaab5ea4b05eeffd3e7e45f01ffa8586869159e51c10d75aaa2436dabb3"
     },
     "diem.wasm.br": {
-      "bytes": 135055,
-      "sha256": "e493277a4e96ed056544fc85e64e04e3cae80aa83b35a5b36acde3bebfdc3409"
+      "bytes": 127101,
+      "sha256": "0dd64089a76a886a69c8b0c7ca6f2cc7c4ba089476d84abf31bb0b3a8e63a0e8"
     },
     "diem.d.ts": {
-      "bytes": 957,
-      "sha256": "b6b0b176aa8138fb44902037fd3b024a2e7a063cde21f096b2a03b9a39b5f5df"
+      "bytes": 1143,
+      "sha256": "7f989a0e070fdce255a3c0ff1bed2fc3beb8f113c6efdad6a9166926eda922e1"
     },
     "bridge-js.d.ts": {
-      "bytes": 2927,
-      "sha256": "bb0464ab08d23809d8aeada8fec3d7df9ed95681e53fdc253748bdc2af85b2a8"
+      "bytes": 3576,
+      "sha256": "fe73c2076d2f40eb6c4c2bdc9d3a21b9a5da35708f28edef978b81f2de60645b"
     },
     "package.json": {
       "bytes": 255,
@@ -54,8 +54,8 @@
       "sha256": "1bf9be81d10fb3a721a86bca43a944cdf94a2bcad74d0e1d8da797019f1d17f1"
     },
     "README.md": {
-      "bytes": 3397,
-      "sha256": "5a77b6e6e7c2817984d7076a2c306a2961a7fa131e0ecb5fa01599a93c96a539"
+      "bytes": 4189,
+      "sha256": "cf0151c4bea2b889647da7dae601224bcf18c6d2a0828970c83149aa9ae47c61"
     }
   }
 }

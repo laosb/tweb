@@ -8,30 +8,35 @@ An ordinary Telegram build keeps the upstream login flow.
 
 ## Configure a home
 
-This first browser integration targets **one independently operated home DC per
-web origin**. Obtain its public RSA transport key, Diem identity ID (64 hex
-characters), discovery domain and database generation from its operator. A numeric
-DC ID does not identify a Blah home; each home is DC1.
+The Blah build starts with **Connect to Blah**. Enter a DC domain (or its HTTPS
+origin), such as `dc.example.org`. The browser fetches
+`https://dc.example.org/.well-known/blah/profile.cbor` without credentials or
+redirects and verifies its Diem certificates, signature, validity and advertised
+domain with BlahDiem WASM. The current browser crypto adapter supports Ed25519 DC
+profiles, including those created by the DC setup wizard.
 
-Create an operator-controlled bootstrap JSON file:
+The profile must advertise a TLS WebSocket client endpoint and a database
+generation. Blah uses the signed endpoint's exact path/query and RSA transport key;
+TCP and plain WebSocket endpoints cannot be used by this browser client. The profile
+endpoint must allow cross-origin reads and return `application/cbor`.
 
-```json
-{
-  "home": {
-    "domain": "dc.example.org",
-    "identity": "<64 lowercase hex characters>",
-    "generation": "<positive decimal string>"
-  },
-  "dcs": [{
-    "id": 1,
-    "rsaPublicKey": "-----BEGIN RSA PUBLIC KEY-----\n...\n-----END RSA PUBLIC KEY-----",
-    "endpoints": [{"ip": "dc.example.org", "port": 443, "wsTlsOnly": true}]
-  }]
-}
-```
+The first verified profile pins **one independent home DC per web origin**.
+On reload, Blah fetches and verifies the profile again, allowing endpoint and RSA
+rotation while rejecting changed DC identities, database generations, and older or
+conflicting profile versions. Workers verify the saved public profile before
+connecting. If discovery fails, the screen shows the error and lets you retry;
+there is no fallback to Telegram or another DC. A link with `?dc=dc.example.org`
+prefills the field on first use; the user still selects **Connect to Blah**.
 
-Set `BLAH_BOOTSTRAP_FILE` to that file, plus `BLAH_API_ID` and `BLAH_API_HASH`
-for the DC application, then run:
+Use a fresh origin, separate from Telegram and older number/email-based Blah
+installations. Populated legacy caches are refused. Choosing another home requires
+a separate origin; existing accounts and chat caches are not migrated. Each account
+slot also remains bound to its first Diem identity namespace after logout.
+
+### Build the client
+
+Set `BLAH_API_ID` and `BLAH_API_HASH` for an application accepted by the target DC,
+then run:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -39,19 +44,15 @@ pnpm exec vite build --mode blah
 node scripts/prepare-cloudflare-assets.mjs
 ```
 
-Alternatively `BLAH_SERVER_CONFIG_URL` fetches the same bootstrap over HTTPS at
-build time. There is no C3 directory dependency or runtime trust-anchor discovery.
-The file/URL is a release-time trust root; independently verify the operator's
-pins. These client credentials and public pins are embedded in the bundle.
-`BLAH_VAPID_PUBLIC_KEY` optionally enables remote push; local notifications work
-without it. Deploy `.cloudflare/assets/`, as described in [deployment](cloudflare.md).
+No endpoint or RSA-key file is needed for domain discovery. Application credentials
+are still embedded at build time; the DC profile does not register an application.
+`BLAH_VAPID_PUBLIC_KEY` optionally enables remote push. Deploy
+`.cloudflare/assets/`, as described in [deployment](cloudflare.md).
 
-Use a fresh origin, separate from Telegram and older number/email-based Blah
-installations. The client refuses populated legacy caches and changed home pins.
-A home/domain/database-generation change needs a separate origin. Endpoint/RSA
-rotation preserves the home binding. Each account slot is bound to its first Diem
-namespace even after logout; use another slot for another identity. Runtime home
-switching and cache migration are outside this first integration.
+An existing operator deployment can retain its release-time bootstrap by setting
+`BLAH_BOOTSTRAP_FILE` or `BLAH_SERVER_CONFIG_URL`. That mode skips the domain
+screen and continues to use its independently verified operator pins. The bootstrap
+format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs).
 
 ## Create, publish and sign in
 
@@ -100,11 +101,11 @@ Ordinary chat logout does not delete identity custody. Clearing all site data do
 The minimized `public/assets/blah/diem.js` / `diem.wasm` pair is built and released
 by [BlahDiem](https://github.com/UInt8Co/BlahDiem/tree/main/Web), using generated
 BridgeJS bindings and Swift 6.4 Embedded. Tweb tracks the JavaScript bindings, generated
-declarations, licenses and provenance. The WASM binary is ignored by Git and prepared
-locally: Vite builds, the dev server and the browser fixture verify its checksum and
-download it from the pinned release if absent. With a published release, the client build
-needs no Swift, Binaryen or WASI shim dependency. WASM loads lazily in
-the account manager's worker (and supports the in-process fallback). Vite resolves
+declarations, licenses and provenance. WASM binaries are never committed. The binary
+is an ignored local cache: Vite builds, the dev server and the browser fixture verify
+its checksum and download it from the pinned release if absent. With a published
+release, the client build needs no Swift, Binaryen or WASI shim dependency. WASM loads
+lazily in the account manager's worker (and supports the in-process fallback). Vite resolves
 asset URLs for both workers and pages, including deployments under a URL prefix.
 
 The release tag and manifest hash in `public/assets/blah/source.json` pin the bundle.
@@ -128,7 +129,8 @@ The browser fixture needs Playwright Chromium (`pnpm exec playwright install
 It exercises real WebCrypto/WASM creation, encryption, proof binding, numbering,
 renewal, recovery and account-slot isolation without contacting Telegram.
 The server fixture additionally builds the Blah client, starts a disposable debug
-Teleblah DC, and checks signup, public profile publication, reload and restored-device
+Teleblah DC, and checks domain discovery with a signed profile, its exact WebSocket path/query,
+endpoint rotation with another tab open, setup keyboard/error handling and Axe, signup, public profile publication, reload and restored-device
 login over PFS through the normal shared worker, plus dialog keyboard containment, focus restoration, narrow-screen
 layout and Axe checks. Screen-reader and touch-device testing remain manual.
 It uses Teleblah's test-only profile-directory transport; production
@@ -141,9 +143,9 @@ already built. This validates identity/login support, not every post-login Teleg
 BlahDiem owns the Swift bridge, minimization and release workflow.
 `public/assets/blah/manifest.json` identifies the build and checksums.
 `source.json` distinguishes a published release from an unpublished local build.
-The current pin uses a published GitHub release, so a fresh checkout downloads the
-matching WASM automatically. Local development imports use `release: null` and need
-the matching BlahDiem source built locally; they are never silently replaced by a public release.
+The checked-in pin references a published release, so a fresh checkout downloads its
+matching WASM automatically. Local development imports use `release: null` and require
+a matching local BlahDiem build; they are never silently replaced by a public release.
 The importer verifies every asset before replacing the bundle, and restoring the pin
 also verifies the manifest hash. User identity requests explicitly select `kind: 'user'`;
 invocation proofs carry the reviewed challenge bytes and the current transport binding.
@@ -157,4 +159,5 @@ Shared code/password/signup screens keep handling ordinary Telegram responses.
 Build-time configuration and branding remain in `scripts/blah-config.mjs` and
 `scripts/blah-branding.mjs`. Branding transforms dictionary values/display literals
 without editing upstream language sources, protocol identifiers or user content.
-Blah uses bundled language packs. Rebuild on bootstrap or push-key changes.
+Blah uses bundled language packs. Rebuild on application-credential, operator-bootstrap
+or push-key changes; discovered DC endpoints refresh at runtime.
