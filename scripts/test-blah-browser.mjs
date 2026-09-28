@@ -6,7 +6,9 @@ import {readFile, mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import assert from 'node:assert/strict';
+import {ensureBlahWasm} from './blah-wasm.mjs';
 
+await ensureBlahWasm('public/assets/blah');
 const home = {domain: 'dc.example.org', identity: 'ab'.repeat(32), generation: '1'};
 const directory = await mkdtemp(join(tmpdir(), 'blah-browser-test-'));
 await build({entryPoints: ['tests/blah/browser-entry.ts'], bundle: true, format: 'iife', globalName: 'fixture',
