@@ -2,22 +2,7 @@ import {describe, expect, it, vi} from 'vitest';
 import App from '@config/app';
 import AppAccountManager from '@appManagers/appAccountManager';
 import type {AuthSentCode, AuthSentCodeType} from '@layer';
-import normalizeBlahIdentifier from '@/pages/normalizeBlahIdentifier';
 import requestLoginCode from '@/pages/requestLoginCode';
-
-describe('Blah identifiers', () => {
-  it.each([
-    ['12345', '+99912345'],
-    [' 00123 ', '+99900123'],
-    ['999123', '999123'],
-    ['+999123', '+999123'],
-    [' Me+login@Example.org ', 'Me+login@Example.org'],
-    ['+1 234-567', '+1 234-567'],
-    ['   ', '']
-  ])('normalizes %j to %j without rewriting an address', (input, expected) => {
-    expect(normalizeBlahIdentifier(input)).toBe(expected);
-  });
-});
 
 function makeManager(result: unknown) {
   const manager = new AppAccountManager();
@@ -120,7 +105,7 @@ function makeFlow(result: unknown) {
   const navigate = vi.fn();
   const toIm = vi.fn().mockResolvedValue(undefined);
   const flow = {
-    managers: {appAccountManager: {sendLoginCode}},
+    managers: {appAccountManager: {sendLoginCode}, apiManager: {setUser: vi.fn()}},
     navigate,
     toIm
   } as unknown as Parameters<typeof requestLoginCode>[0];

@@ -335,6 +335,11 @@ export default class AppAccountManager extends AppManager {
     return result;
   }
 
+  public async blahIdentity(request: import('@lib/blah/identity').IdentityRequest) {
+    const {identityAction} = await import('@lib/blah/identity');
+    return identityAction(this.getAccountNumber(), request);
+  }
+
   public async signInWithCode(phone_number: string, phone_code_hash: string, type: AuthSentCodeType['_'], code: string) {
     const result = await this.apiManager.invokeApi('auth.signIn', {
       phone_number,
