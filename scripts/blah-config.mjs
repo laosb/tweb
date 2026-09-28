@@ -1,8 +1,10 @@
 import {createPublicKey} from 'node:crypto';
 import {isIP} from 'node:net';
+import {join} from 'node:path';
 import {readFileSync} from 'node:fs';
 import {loadEnv} from 'vite';
 import blahBrandingPlugin from './blah-branding.mjs';
+import {ensureBlahWasm} from './blah-wasm.mjs';
 
 /**
  * Transport pins come from the operator's release-time home bootstrap.
@@ -119,6 +121,7 @@ export function blahPlugin(root) {
   return [{
     name: 'blah-config',
     async config(_config, {mode}) {
+      await ensureBlahWasm(join(root, 'public/assets/blah'));
       return {
         define: await blahBuildDefines(mode, root),
         worker: {plugins: () => [blahBrandingPlugin(root)]}
