@@ -37,3 +37,7 @@ ignore
 # Cloudflare deployment artifact and local Wrangler state
 /.cloudflare/
 /.wrangler/
+
+# BlahDiem binary fetched or imported from the pinned build; never committed.
+/public/assets/blah/diem.wasm
+/public/assets/blah/diem.wasm.*.tmp
