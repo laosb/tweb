@@ -18,7 +18,7 @@ import {DC_IDS} from '@config/dc';
 import {MOUNT_CLASS_TO} from '@config/debug';
 import {IDB} from '@lib/files/idb';
 import ctx from '@environment/ctx';
-import blah from '@config/blah';
+import blah, {ensureBlahConfig} from '@config/blah';
 import {invokeBlah} from '@lib/blah/invoke';
 import {requireAccountBinding} from '@lib/blah/identity';
 import noop from '@helpers/noop';
@@ -399,6 +399,7 @@ export class ApiManager extends ApiManagerMethods {
   }
 
   public getNetworker(dcId: DcId, options: InvokeApiOptions = {}): Promise<MTPNetworker> {
+    if(blah?.discovery && !blah.home) return ensureBlahConfig().then(() => this.getNetworker(dcId, options));
     const connectionType: ConnectionType = options.fileDownload ? 'download' : (options.fileUpload ? 'upload' : 'client');
     // const connectionType: ConnectionType = 'client';
 
