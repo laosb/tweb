@@ -51,11 +51,12 @@ export function diem(operation: string, secret: IdentitySecret, extra: Record<st
         await crypto.subtle.importKey('raw', new Uint8Array(key), 'Ed25519', false, ['verify']),
         new Uint8Array(signature), new Uint8Array(data))
     };
-    return client.identityOperation({operation, domain: secret.domain, profile: Array.from(decode(secret.profile)),
+    return client.identityOperation({operation, kind: 'user', domain: secret.domain, profile: Array.from(decode(secret.profile)),
       now: Math.floor(Date.now() / 1000),
       dc: Array.from(Uint8Array.from(blah.home.identity.match(/../g), (hex) => parseInt(hex, 16))),
       dcDomain: blah.home.domain, generation: blah.home.generation,
       account: null, device: null, challenge: null, query: null, keyID: null, sessionID: null, expiresAt: null,
+      challengeKind: null, approvedChallenge: null,
       ...extra}, backend);
   });
   queue = run.catch(() => {});

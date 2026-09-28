@@ -37,7 +37,8 @@ describe('Blah invocation boundary', () => {
     const {networker, wrapApiCall} = connection();
     const result = await provenCall(1, networker, 'account.getAuthorizations', {});
     const parameters = mocks.diem.mock.calls[mocks.diem.mock.calls.length - 1][2];
-    expect(parameters).toMatchObject({keyID: '123', sessionID: '456', challenge: [1, 2], expiresAt: 100});
+    expect(parameters).toMatchObject({keyID: '123', sessionID: '456', challengeKind: 'invocation',
+      challenge: [1, 2], approvedChallenge: [1, 2], expiresAt: 100});
     expect(result).toEqual(parameters.query);
     expect(wrapApiCall.mock.calls.map(([method]) => method)).toEqual(['blah.requestIdentityChallenge', 'blah.invokeWithIdentityProof']);
   });
