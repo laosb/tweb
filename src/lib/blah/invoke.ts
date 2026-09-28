@@ -24,7 +24,8 @@ export async function provenCall(slot: number, networker: MTPNetworker, method: 
   const resultType = query.storeMethod(method, params);
   const queryBytes = query.getBytes(true);
   const proof = await withIdentity(slot, async(secret) => {
-    const result = await diem('prove', secret, {challenge: challenge.data, expiresAt: challenge.expires_at,
+    const result = await diem('prove', secret, {challengeKind: 'invocation',
+      challenge: challenge.data, approvedChallenge: challenge.data, expiresAt: challenge.expires_at,
       query: queryBytes, ...binding});
     return new Uint8Array(result.proof);
   });
