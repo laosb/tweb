@@ -35,11 +35,29 @@ export interface ChallengeInfo {
     previousExternalID: string | null;
     label: string | null;
 }
+export interface DCEndpointInfo {
+    host: string;
+    port: number;
+    tls: boolean;
+    transport: string;
+    path: string | null;
+}
+export interface DCDiscoveryResult {
+    id: string;
+    generation: string;
+    revision: string;
+    digest: string;
+    namespaceGeneration: string;
+    expiresAt: string;
+    endpoints: DCEndpointInfo[];
+    transportPublicKey: string;
+}
 export interface DCSetupRequest {
     data: number[];
-    serverDevice: number[];
     profile: number[] | null;
     now: number;
+    profileLifetime: number;
+    deviceLifetime: number;
 }
 export interface DCSetupResult {
     id: string;
@@ -73,6 +91,8 @@ export interface DeviceInfo {
     id: string;
     key: number[];
     current: boolean;
+    notBefore: number;
+    expiresAt: number;
 }
 export interface IdentityResult {
     id: string;
@@ -89,7 +109,11 @@ export type Exports = {
      */
     inspectChallenge(kind: string, encoding: number[]): ChallengeInfo;
     /**
-     * Creates or renews a DC identity and certifies the server's separate signing device.
+     * Verifies public discovery bytes without requesting any private key material.
+     */
+    verifyDCProfile(domain: string, encoding: number[], now: number, crypto: any): Promise<DCDiscoveryResult>;
+    /**
+     * Creates or renews a DC profile entirely in the operator's browser.
      */
     dcSetup(input: DCSetupRequest, crypto: any): Promise<DCSetupResult>;
     identityOperation(input: IdentityRequest, crypto: any): Promise<IdentityResult>;

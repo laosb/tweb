@@ -414,7 +414,7 @@ if(import.meta.env.DEV) {
   };
 }
 
-/* false &&  */document.addEventListener('DOMContentLoaded', async() => {
+async function startApplication() {
   const perf = performance.now();
   randomlyChooseVersionFromSearch();
   setSidebarLeftWidth();
@@ -695,4 +695,7 @@ if(import.meta.env.DEV) {
       await bootstrapIm();
     }
   }
-});
+}
+
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startApplication, {once: true});
+else void startApplication();
