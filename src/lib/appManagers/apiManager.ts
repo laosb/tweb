@@ -18,6 +18,9 @@ import {DC_IDS} from '@config/dc';
 import {MOUNT_CLASS_TO} from '@config/debug';
 import {IDB} from '@lib/files/idb';
 import ctx from '@environment/ctx';
+import blah from '@config/blah';
+import {invokeBlah} from '@lib/blah/invoke';
+import {requireAccountBinding} from '@lib/blah/identity';
 import noop from '@helpers/noop';
 import Modes from '@config/modes';
 import bytesFromHex from '@helpers/bytes/bytesFromHex';
@@ -474,7 +477,10 @@ export class ApiManager extends ApiManagerMethods {
     let transport = this.chooseServer(dcId, connectionType, transportType);
     return this.gettingNetworkers[getKey] = AccountController
     .get(this.getAccountNumber())
-    .then((accountData) => [accountData[ak], accountData[ss]] as const)
+    .then(async(accountData) => {
+      if(blah?.home) await requireAccountBinding(this.getAccountNumber(), !!accountData.userId);
+      return [accountData[ak], accountData[ss]] as const;
+    })
     .then(async([authKeyHex, serverSaltHex]) => {
       await ApiManager.fillTimeManagerOffsetPromise;
 
@@ -699,7 +705,9 @@ export class ApiManager extends ApiManagerMethods {
         }
       }
 
-      const promise = cachedNetworker.wrapApiCall(method, params, options);
+      const promise = blah?.home ?
+        invokeBlah(this.getAccountNumber(), cachedNetworker, method, params, options) :
+        cachedNetworker.wrapApiCall(method, params, options);
 
       if(prepareTempMessageId) {
         this.afterMessageTempIds[prepareTempMessageId] = {
@@ -709,6 +717,7 @@ export class ApiManager extends ApiManagerMethods {
       }
 
       return promise.catch((error: ApiError) => {
+        if(blah?.home && (error.code === 303 || error.type?.startsWith('FILE_MIGRATE_'))) throw error;
         // if(!options.ignoreErrors) {
         if(error.type !== 'FILE_REFERENCE_EXPIRED' && error.type !== 'FILE_REFERENCE_INVALID'/*  && error.type !== 'MSG_WAIT_FAILED' */) {
           this.log.error('Error', error.code, error.type, this.baseDcId, dcId, method, params);
