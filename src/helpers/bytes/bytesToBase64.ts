@@ -18,7 +18,8 @@ export default function bytesToBase64(bytes: number[] | Uint8Array) {
     }
   }
 
-  return result.replace(/A(?=A$|$)/g, '=');
+  const padding = (3 - bytes.length % 3) % 3;
+  return padding ? result.slice(0, -padding) + '='.repeat(padding) : result;
 }
 
 export function uint6ToBase64(nUint6: number) {

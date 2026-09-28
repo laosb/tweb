@@ -1,5 +1,6 @@
 import type {AuthFlowContextValue} from '@/pages/authFlow';
 import {continueLogin} from '@/pages/continueLogin';
+import blah from '@config/blah';
 
 /** Shared phone/Blah entry flow, using upstream response handling. */
 export default async function requestLoginCode(
@@ -9,5 +10,11 @@ export default async function requestLoginCode(
 ) {
   const result = await flow.managers.appAccountManager.sendCode(identifier);
   if(!isActive()) return;
-  await continueLogin(result, {...flow, phone_number: identifier});
+  if(result._ !== 'auth.sentCode' && result._ !== 'auth.sentCodeSuccess') throw new Error(result._);
+  if(blah?.home && result._ === 'auth.sentCode' && result.phone_code_hash === 'diem' &&
+    result.type._ === 'auth.sentCodeTypeApp' && result.type.length === 0) {
+    flow.navigate({name: 'signUp', payload: {phone_number: identifier, phone_code_hash: result.phone_code_hash}});
+    return;
+  }
+  await continueLogin({...result}, {...flow, phone_number: identifier});
 }

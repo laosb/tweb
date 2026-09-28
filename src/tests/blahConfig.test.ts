@@ -1,5 +1,5 @@
 import {generateKeyPairSync} from 'node:crypto';
-import blahBuildDefines, {parseBlahServerConfig} from '../../scripts/blah-config.mjs';
+import blahBuildDefines, {parseBlahServerConfig, parseBlahBootstrap} from '../../scripts/blah-config.mjs';
 
 const {publicKey} = generateKeyPairSync('rsa', {modulusLength: 2048});
 const rsaPublicKey = publicKey.export({type: 'pkcs1', format: 'pem'});
@@ -91,17 +91,32 @@ describe('Blah release configuration', () => {
 
   it('embeds the topology and forces WS-only transport with no Telegram push key', async() => {
     enableBlah();
-    const fetch = vi.fn().mockResolvedValue({ok: true, json: async() => ({dcs: [dc()]})});
+    const fetch = vi.fn().mockResolvedValue({ok: true, json: async() => ({dcs: [dc(1)],
+      home: {domain: 'dc.example.org', identity: 'ab'.repeat(32), generation: '1'}})});
     vi.stubGlobal('fetch', fetch);
     const defines = await blahBuildDefines('test', process.cwd());
     // C3 responses become trust anchors: never allow a redirect to downgrade HTTPS.
     expect(fetch).toHaveBeenCalledWith(expect.any(URL), expect.objectContaining({redirect: 'error'}));
     const value = (key: string) => JSON.parse(defines[`import.meta.env.${key}`]);
-    expect(JSON.parse(defines.__BLAH_CONFIG__).defaultDcId).toBe(2);
+    expect(JSON.parse(defines.__BLAH_CONFIG__).defaultDcId).toBe(1);
     expect(value('VITE_API_ID')).toBe('123');
     expect(value('VITE_MTPROTO_HAS_WS')).toBe('1');
     for(const key of ['VITE_PUSH_SERVER_KEY', 'VITE_MTPROTO_HAS_HTTP', 'VITE_MTPROTO_AUTO', 'VITE_MTPROTO_HTTP', 'VITE_MTPROTO_HTTP_UPLOAD']) {
       expect(value(key)).toBe('');
     }
+  });
+});
+
+describe('independent DC bootstrap', () => {
+  const home = {domain: 'dc.example.org', identity: 'ab'.repeat(32), generation: '1'};
+  it('pins one independent DC1', () => {
+    expect(parseBlahBootstrap({dcs: [dc(1)], home}).home).toEqual(home);
+  });
+  it.each([
+    {dcs: [dc(1)]}, {dcs: [dc(2)], home}, {dcs: [dc(1), dc(2)], home},
+    {dcs: [dc(1)], home: {...home, identity: ''}},
+    {dcs: [dc(1)], home: {...home, generation: '0'}}
+  ])('refuses an unbound or ambiguous topology', (value) => {
+    expect(() => parseBlahBootstrap(value)).toThrow();
   });
 });
