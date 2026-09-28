@@ -7,8 +7,7 @@ import blahBrandingPlugin from './blah-branding.mjs';
 import {ensureBlahWasm} from './blah-wasm.mjs';
 
 /**
- * Transport pins come from the operator's release-time home bootstrap.
- * Browsers never replace these trust anchors with server-supplied endpoints.
+ * Legacy operator bootstrap parser. Domain discovery uses verified profiles at runtime.
  */
 export function parseBlahServerConfig(value) {
   if(!Array.isArray(value?.dcs) || !value.dcs.length) {
@@ -73,8 +72,7 @@ export default async function blahBuildDefines(mode, root) {
   let config;
   if(env.BLAH_BOOTSTRAP_FILE) {
     config = parseBlahBootstrap(JSON.parse(readFileSync(env.BLAH_BOOTSTRAP_FILE, 'utf8')));
-  } else {
-    if(!env.BLAH_SERVER_CONFIG_URL) throw new Error('Set BLAH_BOOTSTRAP_FILE or BLAH_SERVER_CONFIG_URL');
+  } else if(env.BLAH_SERVER_CONFIG_URL) {
     const url = new URL(env.BLAH_SERVER_CONFIG_URL);
     if(url.protocol !== 'https:' || url.username || url.password) {
       throw new Error('BLAH_SERVER_CONFIG_URL must be an HTTPS URL without credentials');
@@ -84,6 +82,8 @@ export default async function blahBuildDefines(mode, root) {
       throw new Error(`Blah bootstrap request failed: HTTP ${response.status}`);
     }
     config = parseBlahBootstrap(await response.json());
+  } else {
+    config = {discovery: true, defaultDcId: 1, dcs: []};
   }
 
   return {

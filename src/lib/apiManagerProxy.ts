@@ -1,3 +1,4 @@
+import blah from '@config/blah';
 import type {ModifyFunctionsToAsync} from '@types';
 import {type State} from '@config/state';
 import type {Chat, ChatFull, ChatPhoto, Message, MessagePeerReaction, PeerNotifySettings, Reaction, User, UserProfilePhoto} from '@layer';
@@ -1056,6 +1057,8 @@ class ApiManagerProxy extends MTProtoMessagePort {
     // Importing the worker URL keeps this entrypoint inside Vite's worker pipeline;
     // constructing a URL dynamically here would emit the source .ts file unchanged.
     const workerUrl = makeWorkerURL(MainWorkerURL);
+    // A refreshed profile must not reuse a live worker with the previous endpoint/key or expiry.
+    if(blah?.profileDigest) workerUrl.searchParams.set('blahProfile', blah.profileDigest);
     workerUrl.searchParams.set(THREADED_WORKER_PROTOCOL_QUERY_PARAM, THREADED_WORKER_PROTOCOL_VERSION + '');
     let worker: SharedWorker | Worker;
     if(IS_SHARED_WORKER_SUPPORTED) {
