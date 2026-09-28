@@ -449,7 +449,7 @@ if(import.meta.env.DEV || import.meta.env.VITE_PREVIEW) {
   (window as any)['showBubbleSandbox'] = loadBubbleSandbox;
 }
 
-/* false &&  */document.addEventListener('DOMContentLoaded', async() => {
+async function startApplication() {
   const perf = performance.now();
   randomlyChooseVersionFromSearch();
   setSidebarLeftWidth();
@@ -741,4 +741,7 @@ if(import.meta.env.DEV || import.meta.env.VITE_PREVIEW) {
       await bootstrapIm();
     }
   }
-});
+}
+
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startApplication, {once: true});
+else void startApplication();
