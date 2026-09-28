@@ -16,7 +16,7 @@ import {IS_WEB_WORKER} from '@helpers/context';
 import {DcId} from '@types';
 import {getEnvironment} from '@environment/utils';
 import SocketProxied from '@lib/mtproto/transports/socketProxied';
-import {getBlahDc} from '@config/blah';
+import blah, {getBlahDc} from '@config/blah';
 import {MAX_DC_ID} from '@config/dc';
 
 export type TransportType = 'websocket' | 'https' | 'http';
@@ -61,7 +61,7 @@ export function constructTelegramWebSocketUrl(_dcId: DcId, connectionType: Conne
   const path = connectionType !== 'client' ? 'apiws' + TEST_SUFFIX + (premium ? PREMIUM_SUFFIX : '') : ('apiws' + TEST_SUFFIX);
   const blahDc = getBlahDc(dcId);
   if(blahDc) {
-    return blahDc.url + path.slice('apiws'.length);
+    return blah?.home ? blahDc.url : blahDc.url + path.slice('apiws'.length);
   }
   const chosenServer = `wss://${App.suffix.toLowerCase()}ws${dcId}${suffix}.web.telegram.org/${path}`;
 

@@ -61,3 +61,23 @@ it('leaves Telegram routing and validation unchanged without Blah', async() => {
   const {DC_IDS} = await import('@config/dc');
   expect(DC_IDS).toEqual([1, 2, 3, 4, 5]);
 });
+
+it('uses the exact signed home endpoint for every connection and never falls back to Telegram', async() => {
+  vi.stubGlobal('__BLAH_CONFIG__', {discovery: true, defaultDcId: 1, expiresAt: '9999999999',
+    home: {domain: 'dc.example.org', identity: 'ab'.repeat(32), generation: '1'},
+    dcs: [{id: 1, url: 'wss://dc.example.org/custom/ws?route=one', rsaKey: {modulus: '', exponent: ''}}]});
+  const {constructTelegramWebSocketUrl} = await import('@lib/mtproto/dcConfigurator');
+  for(const type of ['client', 'upload', 'download'] as const) {
+    expect(constructTelegramWebSocketUrl(1, type, true)).toBe('wss://dc.example.org/custom/ws?route=one');
+  }
+  expect(() => constructTelegramWebSocketUrl(2, 'client')).toThrow('DC1');
+});
+
+it('refuses transport before discovery or after profile expiry', async() => {
+  const config: BlahConfig = {discovery: true, defaultDcId: 1, dcs: [], home: undefined, expiresAt: '1'};
+  vi.stubGlobal('__BLAH_CONFIG__', config);
+  const {getBlahDc} = await import('@config/blah');
+  expect(() => getBlahDc(1)).toThrow('refresh');
+  config.home = {domain: 'dc.example.org', identity: 'ab'.repeat(32), generation: '1'};
+  expect(() => getBlahDc(1)).toThrow('refresh');
+});
