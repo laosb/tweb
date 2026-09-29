@@ -1,4 +1,5 @@
 import InputField, {InputFieldOptions} from '@components/inputField';
+import Icon from '@components/icon';
 import Scrollable from '@components/scrollable';
 import appNavigationController, {NavigationItem} from '@components/appNavigationController';
 import styles from '@lib/blah/identity.module.scss';
@@ -6,6 +7,7 @@ import styles from '@lib/blah/identity.module.scss';
 export type IdentityPickerOption = {
   value: string,
   label: string,
+  icon?: Icon,
   matches: (query: string) => boolean
 };
 
@@ -102,8 +104,11 @@ export default class IdentityPicker extends InputField {
       element.id = `${this.list.id}-${index}`;
       element.setAttribute('role', 'option');
       element.setAttribute('aria-selected', 'false');
-      element.style.gridTemplateColumns = 'minmax(0, 1fr)';
-      element.textContent = option.label;
+      element.style.gridTemplateColumns = option.icon ? '40px minmax(0, 1fr)' : 'minmax(0, 1fr)';
+      if(option.icon) element.append(Icon(option.icon, styles.pickerIcon));
+      const label = document.createElement('span');
+      label.textContent = option.label;
+      element.append(label);
       const entry = {option, element};
       element.addEventListener('mousedown', (event) => event.preventDefault());
       element.addEventListener('click', () => this.choose(entry));
