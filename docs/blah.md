@@ -63,7 +63,7 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
 
 ## Create, publish and sign in
 
-1. Open **Create or restore an identity**, choose a password of at least 12
+1. Open the **Create or restore an identity** dialog, choose a password of at least 12
    characters and enter a domain you control, such as `alice.example.org`.
 2. Create the identity and download its encrypted backup. The password is separate
    from any Blah account/SRP password; losing both browser storage and the backup
@@ -88,8 +88,9 @@ retry. There is no email-only, phone-number or QR identity login.
 
 ## Manage custody
 
-**Browser identity** remains available after login. Unlock the saved identity to
-export an encrypted backup, renew its profile/certificates, or authorize/revoke
+**Browser identity** opens as a normal settings page after login, from Settings or
+the menu item immediately below the account controls. Choose a saved identity with
+the searchable picker and unlock it to export an encrypted backup, renew its profile/certificates, or authorize/revoke
 other devices by their public keys. Publish every changed profile. Profiles expire
 after one day; use **Renew profile and certificates** and publish before expiry
 (or renew and sign in again after expiry). Device certificates last at most 30 days.
@@ -99,7 +100,9 @@ This version uses explicit renewal, not an unattended hosting service.
 chat session. Reloading the worker also requires unlocking before the next identity
 operation. Backups contain the identity and current device keys and publisher
 settings, encrypted with PBKDF2-SHA-256/AES-256-GCM. Restoring a backup restores that
-same device; it does not enroll a distinct device. An existing local identity cannot
+same device; it does not enroll a distinct device. In the creation/restoration dialog,
+drop the encrypted backup onto the file dropzone or choose it with **Choose backup file**.
+An existing local identity cannot
 be overwritten by an older backup. Keep a current backup after profile changes.
 Ordinary chat logout does not delete identity custody. Clearing all site data does.
 
@@ -166,6 +169,10 @@ duplicate-account detection. Small upstream hooks expose public transport
 identifiers, wrap identity login
 requests, gate cache loading, expose the manager action and mount the identity UI.
 Shared code/password/signup screens keep handling ordinary Telegram responses.
+Identity views use Web K's Material buttons, text fields, popup lifecycle, settings
+scaffold and chat-upload dropzone. The saved-identity picker is a Blah-owned
+adaptation of the phone-region picker under `src/lib/blah/`; the upstream picker
+stays unchanged to keep rebases local.
 
 Build-time configuration and branding remain in `scripts/blah-config.mjs` and
 `scripts/blah-branding.mjs`. Branding transforms dictionary values/display literals

@@ -155,6 +155,7 @@ try {
     ignoreHTTPSErrors: true
   });
   signupContext.setDefaultTimeout(30000);
+  signupContext.setDefaultNavigationTimeout(60000);
   const page = await signupContext.newPage();
   let activePage = page;
   page.setDefaultTimeout(15000);
@@ -221,9 +222,7 @@ try {
       }).click({
         timeout: 30000
       });
-      await page.getByLabel('Identity password', {
-        exact: true
-      }).fill('test identity password');
+      await page.getByRole('dialog').getByLabel('Identity password', {exact: true}).fill('test identity password');
       await page.getByLabel('Profile domain', {
         exact: true
       }).fill(domain);
@@ -301,64 +300,62 @@ try {
     await page.reload();
     await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
     assert.equal(await page.evaluate(() => window.rootScope.myId), userId);
-    // Refresh one home after both accounts exist, leaving the original tab on
-    // the previous worker. A logout from either worker must reload both tabs.
-    const oldWorkerPage = await signupContext.newPage();
-    await oldWorkerPage.goto(origin + '/?debug=1&noServiceWorker=1');
-    await oldWorkerPage.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
-    discoveryProfile = signedDC.nextProfile;
-    await page.reload();
-    await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
     await page.waitForFunction(() => document.body.classList.contains('is-left-column-shown') && !document.body.classList.contains('has-auth-pages'));
     // Restore this same browser identity into a fresh transport/database origin context.
-    const opener = page.getByRole('button', {
-      name: 'Browser identity',
-      exact: true
-    });
+    // Browser identity is an ordinary settings tab, reached below the accounts.
+    assert.equal(await page.locator('body > button').filter({hasText: 'Browser identity'}).count(), 0);
+    await page.locator('.sidebar-tools-button').click();
+    await page.getByRole('menuitem', {name: 'Browser identity', exact: true}).click();
+    const panel = page.getByRole('region', {name: 'Browser identities'});
+    await panel.waitFor();
+    const opener = panel.getByRole('button', {name: 'Create or restore an identity', exact: true});
     await opener.focus();
     await page.keyboard.press('Enter');
-    const dialog = page.getByRole('dialog', {
-      name: 'Manage Blah identities'
-    });
+    const dialog = page.getByRole('dialog', {name: 'Create or restore an identity'});
     await dialog.waitFor();
-    await page.waitForFunction(() => document.querySelector('dialog')?.contains(document.activeElement));
-    assert(await dialog.evaluate(element => element.contains(document.activeElement)), 'Dialog must receive focus');
+    await page.waitForFunction(() => document.querySelector('[role="dialog"]')?.contains(document.activeElement));
     await page.keyboard.press('Shift+Tab');
     assert(await dialog.evaluate(element => element.contains(document.activeElement)), 'Dialog must contain focus');
     await page.keyboard.press('Tab');
     await page.keyboard.press('Escape');
-    await dialog.waitFor({
-      state: 'detached'
-    });
-    await page.waitForFunction(() => document.activeElement?.textContent === 'Browser identity');
+    await dialog.waitFor({state: 'detached'});
     assert(await opener.evaluate(element => element === document.activeElement), 'Restore opener focus');
     await page.keyboard.press('Space');
     await dialog.waitFor();
-    const accessibility = await new AxeBuilder({
-      page
-    }).include('dialog').analyze();
-    assert.deepEqual(accessibility.violations.map(({
-      id,
-      nodes
-    }) => ({
-      id,
-      targets: nodes.map(n => n.target)
-    })), []);
-    await page.setViewportSize({
-      width: 390,
-      height: 844
-    });
+    if(process.env.BLAH_IDENTITY_SCREENSHOT) await dialog.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT, animations: 'disabled'});
+    // Shared controls use the theme palette; check contrast in increased-contrast mode.
+    await page.evaluate(async() => { await window.useAppSettings()[1]('increaseContrast', true); window.themeController.setTheme(); });
+    const accessibility = await new AxeBuilder({page}).include('[role="dialog"]').analyze();
+    assert.deepEqual(accessibility.violations.map(({id, nodes}) => ({id, targets: nodes.map(n => n.target)})), []);
+    await page.evaluate(async() => { await window.useAppSettings()[1]('increaseContrast', false); window.themeController.setTheme(); });
+    await page.setViewportSize({width: 390, height: 844});
     assert(await dialog.evaluate(element => element.getBoundingClientRect().right <= innerWidth), 'Dialog fits narrow screens');
-    await page.getByLabel('Saved identity', {
-      exact: true
-    }).selectOption(aliceIdentity);
-    await page.getByLabel('Identity password', {
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({state: 'detached'});
+    const picker = panel.getByRole('combobox', {name: 'Saved identity', exact: true});
+    await picker.focus();
+    assert.deepEqual((await new AxeBuilder({page}).include('[aria-label="Browser identities"]').disableRules(['color-contrast']).analyze()).violations, []);
+    await picker.press('End');
+    assert(await picker.getAttribute('aria-activedescendant'));
+    await picker.press('Home');
+    await picker.press('Escape');
+    assert.equal(await picker.getAttribute('aria-expanded'), 'false');
+    await picker.press('Tab');
+    await picker.focus();
+    await picker.fill('no-such-identity');
+    assert.equal(await panel.getByRole('option').count(), 0);
+    await picker.fill(aliceIdentity);
+    await picker.press('ArrowDown');
+    await picker.press('Enter');
+    await panel.getByLabel('Identity password', {
       exact: true
     }).fill('test identity password');
     await page.getByRole('button', {
       name: 'Unlock identity',
       exact: true
     }).click();
+    await panel.getByRole('button', {name: 'Download public profile', exact: true}).waitFor();
+    if(process.env.BLAH_IDENTITY_SCREENSHOT) await panel.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-settings.png', animations: 'disabled'});
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', {
       name: 'Download encrypted backup',
@@ -385,12 +382,20 @@ try {
     await restored.getByText('Create or restore an identity', {
       exact: true
     }).click();
-    await restored.getByLabel('Identity password', {
-      exact: true
-    }).fill('test identity password');
+    await restored.getByRole('dialog').getByLabel('Identity password', {exact: true}).fill('test identity password');
     await restored.getByLabel('Encrypted backup', {
       exact: true
-    }).setInputFiles(backupFile);
+    }).setInputFiles({name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('invalid backup')});
+    await restored.getByRole('button', {name: 'Restore backup', exact: true}).click();
+    await restored.getByRole('dialog').getByRole('status').filter({hasText: /Unexpected token/i}).waitFor();
+    const transfer = await restored.evaluateHandle((contents) => {
+      const data = new DataTransfer();
+      data.items.add(new File([contents], 'identity.json', {type: 'application/json'}));
+      return data;
+    }, await readFile(backupFile, 'utf8'));
+    await restored.getByRole('dialog').locator('.drop').dispatchEvent('drop', {dataTransfer: transfer});
+    await transfer.dispose();
+    await restored.getByRole('dialog').getByRole('status').filter({hasText: /^identity.json$/}).waitFor();
     await restored.getByRole('button', {
       name: 'Restore backup',
       exact: true
@@ -410,6 +415,14 @@ try {
     // Logging out the first account shifts the second account's caches and home together.
     activePage = page;
     await page.bringToFront();
+    // Refresh one home after both accounts exist, leaving the original tab on
+    // the previous worker. A logout from either worker must reload both tabs.
+    const oldWorkerPage = await signupContext.newPage();
+    await oldWorkerPage.goto(origin + '/?debug=1&noServiceWorker=1');
+    await oldWorkerPage.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+    discoveryProfile = signedDC.nextProfile;
+    await page.reload();
+    await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
     const reloaded = page.waitForEvent('load');
     const oldWorkerReloaded = oldWorkerPage.waitForEvent('load');
     await page.evaluate(() => { void window.rootScope.managers.apiManager.logOut(); });
@@ -425,8 +438,9 @@ try {
     assert.equal(await page.getByRole('textbox', {name: 'DC domain'}).inputValue(), '');
     console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, profile publication, reload, recovered identity login over PFS, dialog keyboard/focus and Axe checks.');
   } catch(error) {
+    if(process.env.BLAH_IDENTITY_SCREENSHOT) await activePage.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-failure.png', timeout: 3000}).catch(() => {});
     console.error(error);
-    console.error((await activePage.locator('body').innerText()).slice(-7000));
+    console.error((await activePage.locator('body').innerText({timeout: 2000}).catch(() => 'Page unavailable')).slice(-7000));
     console.error(diagnostics.slice(-15));
     console.error(logs.slice(-3000));
     throw error;

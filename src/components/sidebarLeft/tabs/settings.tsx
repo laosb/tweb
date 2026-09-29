@@ -1,3 +1,5 @@
+import blah from '@config/blah';
+import {AppBlahIdentityTab} from '@components/solidJsTabs/tabs';
 import {createSignal, For, onCleanup, onMount, Show} from 'solid-js';
 import ButtonMenuToggle from '@components/buttonMenuToggle';
 import lottieLoader from '@lib/lottie/lottieLoader';
@@ -376,6 +378,12 @@ const Settings = () => {
       {peerProfileElement}
       <Section>
         <div class="profile-buttons">
+          <Show when={!!blah}>
+            <Row clickable={() => tab.slider.createTab(AppBlahIdentityTab).open()}>
+              <Row.Icon icon="key_filled" />
+              <Row.Title>{i18n('BlahBrowserIdentity')}</Row.Title>
+            </Row>
+          </Show>
           <For each={subTabConfigs}>
             {(item) => (
               <Row clickable={onSubTabClick(item)}>
