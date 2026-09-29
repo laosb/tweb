@@ -11,7 +11,7 @@ export default function IdentityInput(props: {
   onInput?: (value: string) => void,
   ref?: (input: HTMLInputElement) => void
 }) {
-  return <InputFieldTsx plainText label={props.label} value={props.value} disabled={props.disabled} onRawInput={props.onInput}
+  return <InputFieldTsx plainText label={props.label} value={props.value} disabled={props.disabled} onRawInput={(value) => { if(value !== props.value) props.onInput?.(value); }}
     autocomplete={props.autocomplete || 'off'} instanceRef={(field) => {
       const input = field.input as HTMLInputElement;
       input.type = props.type || 'text';
