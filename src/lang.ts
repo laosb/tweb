@@ -17,7 +17,7 @@ const lang = {
   'BlahPublicationToken': 'Publication token',
   'BlahDeviceKey': 'Public device key (base64)',
   'BlahIdentityCustody': 'Your keys are never uploaded. Browsers may clean them after inactivity, so always keep a copy of your identity and key files.',
-  'BlahProfileHosting': 'Serve the downloaded profile at https://your-domain/.well-known/blah/profile.cbor.',
+  'BlahProfileHosting': 'Serve the downloaded profile at %1$s.',
   'BlahUnlockIdentity': 'Unlock identity',
   'BlahCreateIdentity': 'Create identity',
   'BlahImportIdentity': 'Import identity from file',
