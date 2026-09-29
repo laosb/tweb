@@ -76,6 +76,8 @@ export interface IdentityRequest {
     dc: number[];
     dcDomain: string;
     generation: string;
+    profileLifetime: number;
+    deviceLifetime: number;
     account: string | null;
     device: number[] | null;
     challenge: number[] | null;
@@ -97,9 +99,11 @@ export interface DeviceInfo {
 export interface IdentityResult {
     id: string;
     namespace: string;
+    domains: string[];
     profile: number[];
     proof: number[];
     account: string;
+    notBefore: number;
     expiresAt: number;
     devices: DeviceInfo[];
 }
