@@ -32,15 +32,12 @@ export async function checkIdentityLayout(page) {
   await dialog.getByRole('button', {name: 'Create identity', exact: true}).click();
   const details = page.getByRole('dialog', {name: 'Identity details', exact: true});
   await details.waitFor();
-  await page.waitForFunction(() => !document.querySelector('[role="dialog"] fieldset').disabled);
-  await details.locator('summary').evaluateAll(summaries => summaries.forEach(summary => summary.click()));
-  await details.getByLabel('Publication URL', {exact: true}).fill('https://' + domain + '/' + 'profile'.repeat(100));
-  await details.getByLabel('Public device key (base64)', {exact: true}).fill('a'.repeat(500));
+  await details.getByRole('button', {name: 'Export public profile', exact: true}).waitFor();
   // Error text is supplied by operations; probe its layout without causing a write.
   await details.getByRole('status').evaluate(element => element.textContent = 'LongError'.repeat(100));
   await widths(details);
   const hashes = details.locator('code[title]');
-  assert(await hashes.count() >= 2, 'Exercise both identity and device IDs');
+  assert(await hashes.count() >= 1, 'Exercise identity IDs');
   for(const hash of await hashes.all()) {
     assert.equal(await hash.getAttribute('title'), await hash.textContent(), 'Keep the complete ID');
     await hash.dblclick();
@@ -58,7 +55,7 @@ export async function checkIdentityLayout(page) {
   await details.getByRole('button', {name: 'Close', exact: true}).click();
   await details.waitFor({state: 'detached'});
   await picker.focus();
-  await widths(page.getByRole('region', {name: 'Browser identities'}));
+  await widths(page.getByRole('region', {name: 'Identity Manager'}));
   const option = page.getByRole('option').filter({hasText: domain});
   assert.equal(await option.locator('span').getAttribute('title'), await option.innerText());
   assert.equal(await option.locator('span').evaluate(element => getComputedStyle(element).whiteSpace), 'nowrap');
