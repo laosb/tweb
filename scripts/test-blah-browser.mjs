@@ -17,7 +17,7 @@ await build({entryPoints: ['tests/blah/browser-entry.ts'], bundle: true, format:
     build.onLoad({filter: /.*/, namespace: 'public-asset'}, ({path}) => ({contents: 'export default ' + JSON.stringify(path.replace('?url', '')), loader: 'js'}));
   }}],
   target: 'es2022', outfile: join(directory, 'fixture.js'),
-  define: {'import.meta.env': '{}', __BLAH_CONFIG__: JSON.stringify({home, defaultDcId: 1, dcs: []}), 'import.meta.env.BASE_URL': '"/"'}});
+  define: {'import.meta.env': '{}', __BLAH_CONFIG__: JSON.stringify({discovery: true, home, defaultDcId: 1, dcs: [], expiresAt: '9999999999'}), 'import.meta.env.BASE_URL': '"/"'}});
 const server = createServer(async(req, res) => {
   try {
     const path = req.url === '/fixture.js' ? join(directory, 'fixture.js') :
@@ -78,6 +78,8 @@ try {
   assert.deepEqual(reopened, {locked: true, badPassword: true, account: '12345'});
   const second = await page.evaluate(async() => {
     const next = await fixture.identityAction(2, {action: 'create', domain: 'bob.example.org', password: 'second identity password'});
+    let wrongHome = false;
+    try { await fixture.withIdentity(2, (secret) => fixture.diem('inspect', secret, {}, 1)); } catch{ wrongHome = true; }
     let refused = false;
     try { await fixture.identityAction(1, {action: 'unlock', id: next.identity.id, password: 'second identity password'}); } catch{ refused = true; }
     const added = await fixture.identityAction(1, {action: 'addDevice',
@@ -85,9 +87,10 @@ try {
     const removed = await fixture.identityAction(1, {action: 'removeDevice', device: next.identity.devices[0].id});
     let unbound = false;
     try { await fixture.requireAccountBinding(3, true); } catch{ unbound = true; }
-    return {refused, id: next.identity.id, added: added.identity.devices.length, removed: removed.identity.devices.length, unbound};
+    return {refused, wrongHome, id: next.identity.id, added: added.identity.devices.length, removed: removed.identity.devices.length, unbound};
   });
   assert(second.refused);
+  assert(second.wrongHome);
   assert.equal(second.added, 2);
   assert.equal(second.removed, 1);
   assert(second.unbound);
@@ -103,7 +106,7 @@ try {
   assert.equal(restored.id, created.identity.id);
   assert(restored.refused);
   await context.close();
-  await page.evaluate(() => fixture.stored('home', 'another home'));
+  await page.evaluate(() => fixture.stored('home:1', 'another home'));
   await page.reload();
   assert(await page.evaluate(async() => {
     try { await fixture.identityAction(1, {action: 'list'}); return false; } catch{ return true; }
