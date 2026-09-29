@@ -22,14 +22,23 @@ defineStories('Blah', [{
   title: 'Identity details',
   open: async() => {
     const {default: showIdentityDetails} = await import('@lib/blah/IdentityDetails');
-    const identity: IdentityView = {
-      id: '123456'.padEnd(64, '0'), domain: 'alice.example.org', domains: ['alice.example.org'], publisher: '',
+    let identity: IdentityView = {
+      id: '123456'.padEnd(64, '0'), domain: 'alice.example.org', domains: ['alice.example.org'], usernameDomains: [], publisher: '',
       renewal: {profileDays: 180, deviceDays: 180, autoRenew: true}, publicationPending: true,
       notBefore: 1877904000, namespace: '', profile: [], account: '', expiresAt: 1893456000, devices: []
     };
     showIdentityDetails({
       summary: identity, identity,
-      action: async() => { throw new Error('Preview only: no identity keys are changed.'); },
+      action: async(request) => {
+        if(request.action === 'domains') {
+          identity = {...identity, domains: request.domains, usernameDomains: request.usernameDomains};
+          return {identity};
+        }
+        if(request.action === 'inspect') return {identity};
+        if(request.action === 'publication') return {publication: {profile: [], pending: true}};
+        if(request.action === 'lock') return {};
+        throw new Error('Preview only: no identity keys are changed.');
+      },
       onIdentity: () => {}
     });
   }

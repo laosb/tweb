@@ -165,7 +165,7 @@ try {
   page.on('console', m => {
     if(m.type() === 'error') diagnostics.push(m.text().slice(0, 350));
   });
-  await page.goto(origin + '/?debug=1&noServiceWorker=1');
+  await page.goto(origin + '/?debug=1&noServiceWorker=1&a11y=1');
   const makeDCProfile = async({data, rotatedData, identityKey}) => {
     const {createDiem} = await import('/assets/blah/diem.js');
     const diem = await createDiem(new URL('/assets/blah/diem.wasm', location.href));
@@ -301,7 +301,7 @@ try {
     const userId = await page.evaluate(() => JSON.parse(localStorage.getItem('account1')).userId);
     discoveryProfile = signedDC.rotatedProfile;
     const refreshed = await signupContext.newPage();
-    await refreshed.goto(origin + '/?debug=1&noServiceWorker=1');
+    await refreshed.goto(origin + '/?debug=1&noServiceWorker=1&a11y=1');
     await refreshed.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
     // The original tab is still alive: the refreshed tab must not attach to its stale worker.
     assert(connectedPaths.has('/rotated/ws?route=home'));
@@ -312,13 +312,13 @@ try {
     // The normal add-account URL must offer a fresh home step, not inherit DC1.
     const otherPage = await signupContext.newPage();
     activePage = otherPage;
-    await otherPage.goto(origin + '/?account=2&debug=1&noServiceWorker=1');
+    await otherPage.goto(origin + '/?account=2&debug=1&noServiceWorker=1&a11y=1');
     const otherInput = otherPage.getByRole('textbox', {name: 'DC domain'});
     await otherInput.waitFor();
     assert.equal(await otherInput.inputValue(), '');
     await otherPage.getByRole('button', {name: 'Back', exact: true}).click();
     await otherPage.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
-    await otherPage.goto(origin + '/?account=2&debug=1&noServiceWorker=1');
+    await otherPage.goto(origin + '/?account=2&debug=1&noServiceWorker=1&a11y=1');
     await otherInput.fill('other.example.org');
     await otherPage.getByRole('button', {name: 'Connect to Blah'}).click();
     await signUp(otherPage, 2, 'bob.example.org', 'Bob', origin + '/publish/bob');
@@ -447,7 +447,7 @@ try {
     await context.route('https://dc.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
       contentType: 'application/cbor', body: Buffer.from(signedDC.profile)
     }));
-    await restored.goto(origin + '/?noServiceWorker=1&pfs=1');
+    await restored.goto(origin + '/?noServiceWorker=1&a11y=1&pfs=1');
     await restored.getByRole('textbox', {name: 'DC domain'}).fill('dc.example.org');
     await restored.getByRole('button', {name: 'Connect to Blah'}).click();
     const savedPicker = restored.getByRole('combobox', {name: 'Saved identity', exact: true});
@@ -508,7 +508,7 @@ try {
     // Refresh one home after both accounts exist, leaving the original tab on
     // the previous worker. A logout from either worker must reload both tabs.
     const oldWorkerPage = await signupContext.newPage();
-    await oldWorkerPage.goto(origin + '/?debug=1&noServiceWorker=1');
+    await oldWorkerPage.goto(origin + '/?debug=1&noServiceWorker=1&a11y=1');
     await oldWorkerPage.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
     discoveryProfile = signedDC.nextProfile;
     await page.reload();
@@ -523,7 +523,7 @@ try {
     await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
     const remaining = await page.evaluate(() => JSON.parse(localStorage.getItem('account1')));
     assert.equal(remaining.dc1_auth_key, accounts[1].dc1_auth_key);
-    await page.goto(origin + '/?account=2&debug=1&noServiceWorker=1');
+    await page.goto(origin + '/?account=2&debug=1&noServiceWorker=1&a11y=1');
     await page.getByRole('textbox', {name: 'DC domain'}).waitFor();
     assert.equal(await page.getByRole('textbox', {name: 'DC domain'}).inputValue(), '');
     console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, profile publication, reload, recovered identity login over PFS, dialog keyboard/focus and Axe checks.');
