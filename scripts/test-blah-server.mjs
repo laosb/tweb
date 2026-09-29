@@ -220,12 +220,23 @@ try {
       const picker = page.getByRole('combobox', {name: 'Saved identity', exact: true});
       assert.equal(await page.getByText('Your keys are never uploaded.', {exact: false}).count(), 0);
       await picker.fill('create');
+      if(process.env.BLAH_IDENTITY_SCREENSHOT) await page.getByRole('listbox', {name: 'Saved identity'}).screenshot({
+        path: process.env.BLAH_IDENTITY_SCREENSHOT + '-picker.png', animations: 'disabled'
+      });
       await page.getByRole('option', {name: 'Create identity', exact: true}).click();
       assert.equal(await page.getByRole('dialog').getByLabel('Identity file', {exact: true}).count(), 0);
+      const publicationURL = page.getByRole('dialog').locator('code');
+      assert.equal(await publicationURL.innerText(), 'https://your-domain/.well-known/blah/profile.cbor');
       await page.getByRole('dialog').getByLabel('Identity password', {exact: true}).fill('test identity password');
+      await page.getByLabel('Profile domain', {exact: true}).fill(' EXAMPLE.ORG ');
+      assert.equal(await publicationURL.innerText(), 'https://example.org/.well-known/blah/profile.cbor');
       await page.getByLabel('Profile domain', {
         exact: true
       }).fill(domain);
+      assert.equal(await publicationURL.innerText(), `https://${domain}/.well-known/blah/profile.cbor`);
+      if(process.env.BLAH_IDENTITY_SCREENSHOT) await page.getByRole('dialog').screenshot({
+        path: process.env.BLAH_IDENTITY_SCREENSHOT + '-create.png', animations: 'disabled'
+      });
       await page.getByRole('button', {
         name: 'Create identity',
         exact: true
@@ -330,6 +341,8 @@ try {
     await opener.press('Enter');
     await dialog.waitFor();
     assert.equal(await dialog.locator('.drop-outline-wrapper').count(), 0);
+    assert.equal(await dialog.locator('.drop').evaluate(element => getComputedStyle(element).boxShadow), 'none');
+    assert.equal(await dialog.locator('.drop').evaluate(element => getComputedStyle(element).borderTopStyle), 'dashed');
     const footnote = dialog.getByText('Your keys are never uploaded.', {exact: false});
     assert.equal(await footnote.evaluate(element => getComputedStyle(element).textAlign), 'center');
     const fileBounds = await dialog.locator('.drop').boundingBox();
@@ -360,7 +373,7 @@ try {
     await picker.press('Tab');
     await picker.focus();
     await picker.fill('no-such-identity');
-    assert.deepEqual(await panel.getByRole('option').allTextContents(), ['Create identity', 'Import identity from file']);
+    assert.deepEqual(await panel.getByRole('option').locator('span:not([aria-hidden])').allTextContents(), ['Create identity', 'Import identity from file']);
     await picker.fill(aliceIdentity);
     await picker.press('ArrowDown');
     await picker.press('Enter');
