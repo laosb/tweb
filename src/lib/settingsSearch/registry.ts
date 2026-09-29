@@ -1,3 +1,4 @@
+import blah from '@config/blah';
 import {createRoot, createSignal} from 'solid-js';
 import generated from './generated';
 import {A11Y_ONLY_ENTRIES, NON_NAVIGABLE_SECTIONS} from './openers';
@@ -35,7 +36,7 @@ const chainOf = (sectionId: string) => {
 };
 
 /** A section is searchable only when every step down to it can actually be opened. */
-const isReachable = (sectionId: string) => chainOf(sectionId).every((id) => !NON_NAVIGABLE_SECTIONS.has(id));
+const isReachable = (sectionId: string) => (sectionId !== 'AppBlahIdentityTab' || !!blah) && chainOf(sectionId).every((id) => !NON_NAVIGABLE_SECTIONS.has(id));
 
 const load = (data: GeneratedSettingsSearchData) => {
   allSections = new Map(data.sections.map((section) => [section.id, section]));
@@ -43,7 +44,8 @@ const load = (data: GeneratedSettingsSearchData) => {
     data.sections.filter((section) => isReachable(section.id)).map((section) => [section.id, section])
   );
   // the flag is fixed for the page's life (it comes from the URL), so it can be read here
-  entries = data.entries.filter((entry) => sections.has(entry.sectionId) && (Modes.a11y || !A11Y_ONLY_ENTRIES.has(entry.id)));
+  entries = data.entries.filter((entry) => sections.has(entry.sectionId) &&
+    (Modes.a11y || !A11Y_ONLY_ENTRIES.has(entry.id)) && (entry.titleLangKey !== 'BlahBrowserIdentity' || !!blah));
   links = data.links.filter((link) => sections.has(link.sectionId));
 };
 
@@ -83,4 +85,3 @@ export const getSectionPathKeys = (sectionId: string, includeSelf = true) => {
 };
 
 export const getSectionDepth = (sectionId: string) => getSectionChain(sectionId).length;
-
