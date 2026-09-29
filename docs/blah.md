@@ -194,7 +194,9 @@ scaffold and chat-upload dropzone. The saved-identity picker is a Blah-owned
 search combobox under `src/lib/blah/`, reusing the phone-region picker's presentation
 and Web K's editable-text control to avoid native form autofill suggestions. Public domain labels are
 cached separately from encrypted keys; older saved identities acquire their labels on the
-next unlock. Details reuse Web K's popup, section and row components. The upstream picker
+next unlock. Identity and device IDs are displayed on a bounded line with ellipses;
+the complete values remain selectable and available in their tooltips. Long domains,
+filenames and messages wrap within the dialog. Details reuse Web K's popup, section and row components. The upstream picker
 stays unchanged to keep rebases local.
 
 Build-time configuration and branding remain in `scripts/blah-config.mjs` and
