@@ -66,25 +66,21 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
 1. Choose **Create identity** in the **Saved identity** picker to open its dialog.
    Choose a password of at least 12 characters and enter a domain you control,
    such as `alice.example.org`.
-2. Create the identity. Its details dialog opens immediately; download its encrypted
+2. Create the identity. Its details dialog opens immediately; export its encrypted
    identity file there. The password is separate
    from any Blah account/SRP password; losing both browser storage and the identity file
    means losing this device's keys.
-3. Download the public profile and serve it at
+3. Export the public profile and serve it at
    `https://alice.example.org/.well-known/blah/profile.cbor` with `application/cbor`.
    The creation dialog previews this URL below its action button as you enter the domain.
    The DC must be able to fetch it directly over public HTTPS without credentials
    or redirects. This first version does not provision DNS or profile hosting.
-4. Optionally configure **Profile publishing** with an HTTPS PUT endpoint and a
-   bearer token. The endpoint must allow the web client's origin through CORS and
-   publish the supplied public bytes at the domain above. The token stays in the
-   encrypted vault. The client sends no private keys to this endpoint.
-5. Close identity details and select **Sign in to Blah**. For a saved, locked identity, enter its identity password;
-   the same action unlocks it and starts sign-in. The DC may request admission email
-   verification or an account password. A new identity proceeds to the name/signup screen.
-6. Signup assigns an account number and saves a new signed profile. An automatic
-   publisher receives it before login finishes. For manual hosting, select
-   **Refresh profile**, download/publish the new file, and retry sign-in.
+4. Close identity details, enter the identity password and select **Sign in to Blah**.
+   Closing details locks the identity; signing in unlocks it again. The DC may request
+   admission email verification or an account password. A new identity proceeds to signup.
+5. Signup assigns an account number and saves a new signed profile. For manual hosting,
+   reopen identity details, unlock, export and publish the latest profile, then retry sign-in.
+   Details automatically reload the saved profile when opened. There is no manual refresh.
 
 The DC refetches the numbered profile through a proof-wrapped account read before
 login completes. Failed publication leaves the new profile durably available for
@@ -92,16 +88,23 @@ retry. There is no email-only, phone-number or QR identity login.
 
 ## Manage custody
 
-**Browser identity** opens as a normal settings page after login, from Settings or
-the menu item immediately below the account controls. Choose a saved identity with
-the searchable picker, whose entries show the first profile domain and first six identity
-digits. Use the trailing **Identity details** icon to open its information and actions,
-then unlock it to export an encrypted identity file, renew its profile/certificates, or
-authorize/revoke other devices by their public keys. Publish every changed profile.
+**Identity Manager** opens as a normal settings page after login, from Settings or
+from the menu below the account controls. Saved identities appear as a list, with separate
+create/import actions. Select an identity to open a centered password form one level deeper;
+unlocking reveals its details on the same page. Going back locks it. On the sign-in page, the
+trailing **Identity details** icon opens a dialog; closing it by any route also locks it.
+Details reload the saved profile automatically on opening and after unlocking.
+
+The device list separates the current device from other devices, using the standard
+session rows. Open a device for its public key or to terminate it; **Terminate other
+devices** keeps the current device authorized. **Authorize new device** opens a separate
+dialog for the new device's public key. Publish changed profiles to apply authorization
+or termination at the DC.
 
 Profiles and device certificates default to 180 days. **Validity and renewal** lets you
 choose whole-day periods (device validity must cover profile validity) and disable automatic
-renewal. New periods take effect on the next renewal. Automatic renewal is enabled by
+renewal. Valid changes save automatically, including when leaving details. New periods take
+effect on the next renewal. Automatic renewal is enabled by
 default and checks the signed profile and device validity intervals once a minute while
 the browser identity is unlocked. When 80% of either interval has elapsed, it renews the
 profile and certificates. It catches up after a missed interval on the next unlock.
@@ -109,8 +112,12 @@ Background checks never extend the 15-minute unlock timeout.
 
 Renewed profiles are saved before publication. A configured publisher receives them
 automatically, with failed publication retried while unlocked; manual hosting still needs
-you to download and publish the latest profile. The details dialog indicates pending
-publication. **Renew profile and certificates** remains available for explicit renewal.
+you to export and publish the latest profile. **Validity and renewal** contains the manual
+renewal action and shows a publication notice at its bottom only when the hosted CBOR
+file differs from the current saved profile or is missing. A failed network/CORS check is
+reported separately, without claiming the profile needs publication. The domain must
+allow cross-origin reads for this browser check. Existing publisher settings in imported
+identity files remain supported; details does not offer publisher configuration.
 
 **Lock identity** (or 15 minutes without an identity operation) discards the in-memory unlock key without logging out of the
 chat session. Reloading the worker also requires unlocking before the next identity

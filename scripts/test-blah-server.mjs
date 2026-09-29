@@ -17,7 +17,7 @@ const tele = process.env.BLAH_SERVER_REPO;
 if(!tele) throw new Error('Set BLAH_SERVER_REPO to a Teleblah checkout with a built debug server.');
 const require = createRequire(repo + '/package.json');
 const {
-  chromium
+  chromium, expect
 } = require('@playwright/test');
 const proxy = require('http-proxy').createProxyServer({
   ws: true
@@ -244,7 +244,7 @@ try {
         exact: true
       }).click();
       await page.getByRole('button', {
-        name: 'Download public profile',
+        name: 'Export public profile',
         exact: true
       }).waitFor({
         timeout: 30000
@@ -254,7 +254,6 @@ try {
       assert.equal(await picker.innerText(), domain + ' - ' + identityID.slice(0, 6));
       if(process.env.BLAH_IDENTITY_SCREENSHOT) await details.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-details.png', animations: 'disabled'});
       assert.deepEqual((await new AxeBuilder({page}).include('[role="dialog"]').disableRules(['color-contrast']).analyze()).violations, []);
-      await details.getByText('Validity and renewal', {exact: true}).click();
       const profileValidity = details.getByLabel('Profile validity (days)', {exact: true});
       const deviceValidity = details.getByLabel('Device key validity (days)', {exact: true});
       assert.equal(await profileValidity.inputValue(), '180');
@@ -265,29 +264,26 @@ try {
       await deviceValidity.fill('90');
       await autoRenew.press('Space');
       assert.equal(await autoRenew.isChecked(), false);
-      await details.getByRole('button', {name: 'Save', exact: true}).click();
-      await page.waitForFunction(() => !document.querySelector('[role="dialog"] fieldset').disabled);
-      await details.getByText('Validity and renewal', {exact: true}).click();
-      await page.getByText('Profile publishing', {
-        exact: true
-      }).click();
-      await page.getByLabel('Publication URL', {
-        exact: true
-      }).fill(publisher);
-      await page.getByRole('button', {
-        name: 'Save and publish profile',
-        exact: true
-      }).click();
-      await page.waitForFunction(() => !document.querySelector('[role="dialog"] fieldset').disabled);
+      assert.equal(await details.locator('details').count(), 0);
+      assert.equal(await details.getByRole('button', {name: 'Save', exact: true}).count(), 0);
+      assert.equal(await details.getByText('Profile publishing', {exact: true}).count(), 0);
+      // Imported publisher settings remain supported; configuration is no longer in details.
+      await page.evaluate(async(publisher) => {
+        await window.rootScope.managers.appAccountManager.blahIdentity({action: 'publisher', publisher});
+      }, publisher);
       await details.getByRole('button', {name: 'Close', exact: true}).click();
       await details.waitFor({state: 'detached'});
       await page.getByRole('button', {name: 'Identity details', exact: true}).click();
-      await details.getByText('Validity and renewal', {exact: true}).click();
+      await details.getByLabel('Identity password', {exact: true}).fill('test identity password');
+      await details.getByRole('button', {name: 'Unlock identity', exact: true}).click();
+      await profileValidity.waitFor();
       assert.equal(await profileValidity.inputValue(), '60');
       assert.equal(await deviceValidity.inputValue(), '90');
       assert.equal(await autoRenew.isChecked(), false);
-      await details.getByRole('button', {name: 'Close', exact: true}).click();
+      await page.keyboard.press('Escape');
       await details.waitFor({state: 'detached'});
+      await assert.rejects(() => page.evaluate(() => window.rootScope.managers.appAccountManager.blahIdentity({action: 'inspect'})));
+      await page.getByLabel('Identity password', {exact: true}).fill('test identity password');
       await page.getByRole('button', {
         name: 'Sign in to Blah',
         exact: true
@@ -342,19 +338,14 @@ try {
     assert.equal(await page.evaluate(() => window.rootScope.myId), userId);
     await page.waitForFunction(() => document.body.classList.contains('is-left-column-shown') && !document.body.classList.contains('has-auth-pages'));
     // Restore this same browser identity into a fresh transport/database origin context.
-    // Browser identity is an ordinary settings tab, reached below the accounts.
-    assert.equal(await page.locator('body > button').filter({hasText: 'Browser identity'}).count(), 0);
+    // Identity Manager is an ordinary settings tab, reached below the accounts.
+    assert.equal(await page.locator('body > button').filter({hasText: 'Identity Manager'}).count(), 0);
     await page.locator('.sidebar-tools-button').click();
-    await page.getByRole('menuitem', {name: 'Browser identity', exact: true}).click();
-    const panel = page.getByRole('region', {name: 'Browser identities'});
+    await page.getByRole('menuitem', {name: 'Identity Manager', exact: true}).click();
+    const panel = page.locator('.tabs-tab.active').filter({has: page.getByText('Saved identities', {exact: true})});
     await panel.waitFor();
-    const opener = panel.getByRole('combobox', {name: 'Saved identity', exact: true});
-    assert.equal(await opener.evaluate(element => element.tagName), 'DIV');
-    assert.equal(await opener.getAttribute('contenteditable'), 'true');
-    assert.equal(await opener.getAttribute('autocomplete'), 'off');
-    assert.equal(await opener.getAttribute('inputmode'), 'text');
-    await opener.focus();
-    await opener.press('End');
+    assert.equal(await panel.getByRole('combobox').count(), 0);
+    const opener = panel.getByRole('button', {name: 'Import identity from file', exact: true});
     await opener.press('Enter');
     const dialog = page.getByRole('dialog', {name: 'Import identity from file'});
     await dialog.waitFor();
@@ -365,8 +356,6 @@ try {
     await page.keyboard.press('Escape');
     await dialog.waitFor({state: 'detached'});
     assert(await opener.evaluate(element => element === document.activeElement), 'Restore opener focus');
-    await opener.press('ArrowDown');
-    await opener.press('End');
     await opener.press('Enter');
     await dialog.waitFor();
     assert.equal(await dialog.locator('.drop-outline-wrapper').count(), 0);
@@ -391,43 +380,54 @@ try {
     assert(await dialog.evaluate(element => element.getBoundingClientRect().right <= innerWidth), 'Dialog fits narrow screens');
     await page.keyboard.press('Escape');
     await dialog.waitFor({state: 'detached'});
-    const picker = panel.getByRole('combobox', {name: 'Saved identity', exact: true});
-    await picker.focus();
-    assert.deepEqual((await new AxeBuilder({page}).include('[aria-label="Browser identities"]').disableRules(['color-contrast']).analyze()).violations, []);
-    await picker.press('End');
-    assert(await picker.getAttribute('aria-activedescendant'));
-    await picker.press('Home');
-    await picker.press('Escape');
-    assert.equal(await picker.getAttribute('aria-expanded'), 'false');
-    await picker.press('Tab');
-    await picker.focus();
-    await picker.fill('no-such-identity');
-    assert.deepEqual(await panel.getByRole('option').locator('span:not([aria-hidden])').allTextContents(), ['Create identity', 'Import identity from file']);
-    await picker.fill(aliceIdentity);
-    await picker.press('ArrowDown');
-    await picker.press('Enter');
-    await panel.getByLabel('Identity password', {
-      exact: true
-    }).fill('test identity password');
-    await page.getByRole('button', {
-      name: 'Unlock identity',
-      exact: true
-    }).click();
-    const detailsOpener = panel.getByRole('button', {name: 'Identity details', exact: true});
-    await page.waitForFunction(() => !document.querySelector('[aria-label="Identity details"]').disabled);
-    await detailsOpener.press('Enter');
-    const identityDetails = page.getByRole('dialog', {name: 'Identity details', exact: true});
-    await identityDetails.getByRole('button', {name: 'Download public profile', exact: true}).waitFor();
+    if(process.env.BLAH_IDENTITY_SCREENSHOT) await panel.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-list.png', animations: 'disabled'});
+    const savedIdentity = panel.getByRole('button').filter({hasText: aliceIdentity});
+    await savedIdentity.press('Enter');
+    const nested = page.locator('.tabs-tab.active').filter({has: page.getByRole('button', {name: 'Unlock identity', exact: true})});
+    await expect(nested.getByLabel('Identity password', {exact: true})).toBeFocused();
+    if(process.env.BLAH_IDENTITY_SCREENSHOT) await nested.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-locked.png', animations: 'disabled'});
+    await nested.getByLabel('Identity password', {exact: true}).fill('test identity password');
+    await nested.getByRole('button', {name: 'Unlock identity', exact: true}).press('Enter');
+    assert.equal(await panel.getByRole('button', {name: 'Identity details', exact: true}).count(), 0);
+    const identityDetails = page.locator('.tabs-tab.active').filter({has: page.getByRole('button', {name: 'Export public profile', exact: true})});
+    await identityDetails.getByRole('button', {name: 'Export public profile', exact: true}).waitFor();
     await page.keyboard.press('Escape');
     await identityDetails.waitFor({state: 'detached'});
-    assert(await detailsOpener.evaluate(element => element === document.activeElement), 'Details restore icon button focus');
-    await detailsOpener.press('Space');
-    await identityDetails.waitFor();
-    assert(await identityDetails.evaluate(element => element.getBoundingClientRect().right <= innerWidth), 'Details fit narrow screens');
-    if(process.env.BLAH_IDENTITY_SCREENSHOT) await panel.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-settings.png', animations: 'disabled'});
+    await panel.waitFor({state: 'visible'});
+    await expect(savedIdentity).toBeFocused();
+    await assert.rejects(() => page.evaluate(() => window.rootScope.managers.appAccountManager.blahIdentity({action: 'inspect'})));
+    await savedIdentity.press('Enter');
+    await nested.getByLabel('Identity password', {exact: true}).fill('test identity password');
+    await nested.getByRole('button', {name: 'Unlock identity', exact: true}).press('Enter');
+    await identityDetails.getByRole('button', {name: 'Export public profile', exact: true}).waitFor();
+    await expect.poll(() => identityDetails.evaluate(element => element.getBoundingClientRect().right <= innerWidth + 1)).toBe(true);
+    if(process.env.BLAH_IDENTITY_SCREENSHOT) await identityDetails.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-settings.png', animations: 'disabled'});
+    const authorize = identityDetails.getByRole('button', {name: 'Authorize new device', exact: true});
+    for(const device of [signedDC.devices[0], otherDC.devices[0]]) {
+      await authorize.click();
+      const enrollment = page.getByRole('dialog', {name: 'Authorize new device', exact: true});
+      const deviceKey = Buffer.from(device.key).toString('base64');
+      await enrollment.getByLabel('Public device key (base64)', {exact: true}).fill(deviceKey);
+      assert.deepEqual((await new AxeBuilder({page}).include('[role="dialog"]').disableRules(['color-contrast']).analyze()).violations, []);
+      await enrollment.getByRole('button', {name: 'Authorize new device', exact: true}).press('Enter');
+      await enrollment.waitFor({state: 'detached'});
+    }
+    const deviceRows = identityDetails.locator('.session-row');
+    await expect(deviceRows).toHaveCount(3);
+    await deviceRows.last().press('Enter');
+    const deviceDialog = page.getByRole('dialog', {name: 'Device details', exact: true});
+    await deviceDialog.getByRole('button', {name: 'Terminate', exact: true}).click();
+    await page.locator('.popup-confirmation').getByRole('button', {name: 'Terminate', exact: true}).click();
+    await deviceDialog.waitFor({state: 'detached'});
+    await expect(deviceRows).toHaveCount(2);
+    await identityDetails.getByRole('button', {name: 'Terminate other devices', exact: true}).click();
+    await page.locator('.popup-confirmation').getByRole('button', {name: 'Terminate', exact: true}).click();
+    await expect(deviceRows).toHaveCount(1);
+    assert.equal(await deviceRows.first().locator('.row-title').innerText(), 'This browser');
+    assert.deepEqual((await new AxeBuilder({page}).include('.tabs-tab.active').disableRules(['color-contrast']).analyze()).violations, []);
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', {
-      name: 'Download identity file',
+      name: 'Export identity file',
       exact: true
     }).click();
     const download = await downloadPromise;
@@ -493,7 +493,7 @@ try {
     const password = restored.getByLabel('Identity password', {exact: true});
     await password.fill('wrong identity password');
     await restored.getByRole('button', {name: 'Sign in to Blah', exact: true}).click();
-    await restored.getByRole('region', {name: 'Browser identities'}).getByRole('status')
+    await restored.getByRole('region', {name: 'Identity Manager'}).getByRole('status')
       .filter({hasText: /.+/}).filter({hasNotText: 'Working…'}).waitFor();
     assert.equal(await password.inputValue(), 'wrong identity password');
     await password.fill('test identity password');
