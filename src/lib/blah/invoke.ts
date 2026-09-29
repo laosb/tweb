@@ -1,4 +1,4 @@
-import blah from '@config/blah';
+import {getBlahConfig} from '@config/blah';
 import type MTPNetworker from '@lib/mtproto/networker';
 import Schema from '@lib/mtproto/schema';
 import {TLSerialization} from '@lib/mtproto/tl_utils';
@@ -26,7 +26,7 @@ export async function provenCall(slot: number, networker: MTPNetworker, method: 
   const proof = await withIdentity(slot, async(secret) => {
     const result = await diem('prove', secret, {challengeKind: 'invocation',
       challenge: challenge.data, approvedChallenge: challenge.data, expiresAt: challenge.expires_at,
-      query: queryBytes, ...binding});
+      query: queryBytes, ...binding}, slot);
     return new Uint8Array(result.proof);
   });
   const current = networker.getIdentityBinding();
@@ -49,7 +49,7 @@ export function invokeBlah(slot: number, networker: MTPNetworker, method: string
   const promise = proofRequired ? provenCall(slot, networker, method, params, options) : networker.wrapApiCall(method, params, options);
   return promise.then(async(result) => {
     const authorization = result?._ === 'auth.sentCodeSuccess' ? result.authorization : result;
-    if(authorization?._ === 'auth.authorization' && blah?.home &&
+    if(authorization?._ === 'auth.authorization' && getBlahConfig(slot)?.home &&
       ['auth.sendCode', 'auth.signIn', 'auth.signUp', 'auth.checkPassword', 'auth.recoverPassword'].includes(method)) {
       await numberIdentity(slot, String(authorization.user.id));
       try {
