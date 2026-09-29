@@ -30,7 +30,7 @@ function SetupForm(props: IdentitySetupProps) {
     const importing = props.mode === 'import';
     if(importing && (!file() || !password.value)) return;
     if(importing && file().size > 600_000) {
-      setError('Choose a Blah identity backup under 600 KB.');
+      setError('Choose a Blah identity file under 600 KB.');
       return;
     }
     setBusy(true); setError('');
@@ -49,11 +49,7 @@ function SetupForm(props: IdentitySetupProps) {
     }
   }
   return <form class={styles.panel} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-    <p>{i18n('BlahIdentityCustody')}</p>
     <fieldset disabled={busy()}>
-      <IdentityInput label="BlahIdentityPassword" type="password"
-        autocomplete={props.mode === 'create' ? 'new-password' : 'current-password'}
-        onInput={(value) => { setHasPassword(!!value); setError(''); }} ref={(value) => password = value} />
       <Show when={props.mode === 'create'} fallback={<>
         <BackupDropzone disabled={busy()} onFile={(value) => {
           setFile(value); setError('');
@@ -63,8 +59,12 @@ function SetupForm(props: IdentitySetupProps) {
         <IdentityInput label="BlahProfileDomain" ref={(value) => domain = value} />
         <p>{i18n('BlahProfileHosting')}</p>
       </Show>
+      <IdentityInput label="BlahIdentityPassword" type="password"
+        autocomplete={props.mode === 'create' ? 'new-password' : 'current-password'}
+        onInput={(value) => { setHasPassword(!!value); setError(''); }} ref={(value) => password = value} />
       <Button primaryFilled disabled={busy() || (props.mode === 'import' && (!file() || !hasPassword()))}
         onClick={() => submit()} text={props.mode === 'create' ? 'BlahCreateIdentity' : 'BlahImportIdentity'} />
+      <p class={styles.footnote}>{i18n('BlahIdentityCustody')}</p>
     </fieldset>
     <p role="status">{busy() ? i18n('PleaseWait') : error()}</p>
   </form>;
