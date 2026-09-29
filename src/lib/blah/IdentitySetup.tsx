@@ -76,8 +76,10 @@ function SetupForm(props: IdentitySetupProps) {
 }
 
 export default function showIdentitySetup(props: IdentitySetupProps) {
-  createPopup(() => <PopupElement class={styles.setupPopup} closable>
+  let created: IdentityView;
+  createPopup(() => <PopupElement class={styles.setupPopup} closable
+    onCloseAfterTimeout={() => { if(created) props.onIdentity(created); }}>
     <PopupElement.Header><PopupElement.CloseButton /><PopupElement.Title title={props.mode === 'create' ? 'BlahCreateIdentity' : 'BlahImportIdentity'} /></PopupElement.Header>
-    <PopupElement.Scrollable><PopupElement.Body class={styles.setupBody}><SetupForm {...props} /></PopupElement.Body></PopupElement.Scrollable>
+    <PopupElement.Scrollable><PopupElement.Body class={styles.setupBody}><SetupForm {...props} onIdentity={(identity) => created = identity} /></PopupElement.Body></PopupElement.Scrollable>
   </PopupElement>);
 }

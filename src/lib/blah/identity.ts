@@ -1,21 +1,24 @@
+import {renewalDue, renewalPolicy, RenewalPolicy} from '@lib/blah/renewal';
 import blah, {ensureBlahConfig, getBlahConfig} from '@config/blah';
 import {bindHomeStorage} from '@lib/blah/homeStorage';
-import {decode, encode, exclusively, identityIDs, passwordKey, seal, SealedIdentity, stored, unseal, validateBackup} from '@lib/blah/vault';
+import {decode, encode, exclusively, identityIDs, passwordKey, seal, SealedIdentity, stored, storeEntries, unseal, validateBackup} from '@lib/blah/vault';
 import {diem, IdentityInfo, IdentitySecret, SigningKey} from '@lib/blah/wasm';
 
-export type IdentityView = Omit<IdentityInfo, 'proof'> & {domain: string, publisher: string};
+export type IdentityView = Omit<IdentityInfo, 'proof'> & {domain: string, publisher: string, renewal: RenewalPolicy, publicationPending: boolean};
 export type IdentityRequest = {
-  action: 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'publisher' | 'addDevice' | 'removeDevice',
+  action: 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'publisher' | 'addDevice' | 'removeDevice' | 'renewal',
   id?: string,
   password?: string,
   domain?: string,
   backup?: string,
   publisher?: string,
   token?: string,
-  device?: string
+  device?: string,
+  renewal?: RenewalPolicy
 };
-export type IdentityResponse = {ids?: string[], identity?: IdentityView, backup?: string};
-type Unlocked = {id: string, key: CryptoKey, until: number, timer?: ReturnType<typeof setTimeout>};
+export type IdentitySummary = {id: string, domain?: string};
+export type IdentityResponse = {ids?: string[], identities?: IdentitySummary[], identity?: IdentityView, backup?: string};
+type Unlocked = {id: string, key: CryptoKey, until: number, timer?: ReturnType<typeof setTimeout>, renewalTimer?: ReturnType<typeof setTimeout>};
 const unlocked = new Map<number, Unlocked>();
 
 export async function requireHomeStorage() {
@@ -37,41 +40,82 @@ async function signingKey(): Promise<SigningKey> {
 
 function view(secret: IdentitySecret, info: IdentityInfo): IdentityView {
   const {proof: _, ...publicInfo} = info;
-  return {...publicInfo, domain: secret.domain, publisher: secret.publisher || ''};
+  return {...publicInfo, domain: secret.domain, publisher: secret.publisher || '', renewal: renewalPolicy(secret.renewal), publicationPending: !!secret.publicationPending};
 }
 
-function session(slot: number) {
+function session(slot: number, touch = true) {
   const value = unlocked.get(slot);
   if(!value || value.until < Date.now()) {
     lock(slot);
     throw new Error('Unlock your browser identity to continue.');
   }
-  value.until = Date.now() + 15 * 60_000;
-  clearTimeout(value.timer);
-  value.timer = setTimeout(() => lock(slot), 15 * 60_000);
+  if(touch) {
+    value.until = Date.now() + 15 * 60_000;
+    clearTimeout(value.timer);
+    value.timer = setTimeout(() => lock(slot), 15 * 60_000);
+  }
   return value;
 }
 
 function lock(slot: number) {
   clearTimeout(unlocked.get(slot)?.timer);
+  clearTimeout(unlocked.get(slot)?.renewalTimer);
   unlocked.delete(slot);
 }
 
-export async function withIdentity<T>(slot: number, action: (secret: IdentitySecret, info: IdentityInfo,
-  save: (info: IdentityInfo) => Promise<void>) => Promise<T>): Promise<T> {
-  return exclusively(async() => {
-    const current = session(slot);
-    const backup = await stored<SealedIdentity>('identity:' + current.id);
-    const secret = await unseal<IdentitySecret>(backup, current.key);
-    const info = await diem('inspect', secret, {}, slot);
-    if(info.id !== current.id) throw new Error('Identity file mismatch.');
-    const binding = await stored<string>('slot:' + slot);
-    if(binding && binding !== info.namespace) throw new Error('This account slot belongs to another identity. Use another account slot.');
-    return action(secret, info, async(next) => {
-      secret.profile = encode(new Uint8Array(next.profile));
-      await stored('identity:' + current.id, await seal(current.id, secret, current.key, backup.salt));
-    });
-  });
+type IdentityOperation<T> = (secret: IdentitySecret, info: IdentityInfo,
+  save: (info: IdentityInfo, pending?: boolean) => Promise<void>) => Promise<T>;
+
+export function withIdentity<T>(slot: number, action: IdentityOperation<T>, touch = true, maintain = true): Promise<T> {
+  return exclusively(() => useIdentity(slot, action, touch, maintain));
+}
+
+// Caller holds the vault lock, including the initial unlock/renewal transaction.
+async function useIdentity<T>(slot: number, action: IdentityOperation<T>, touch = true, maintain = true): Promise<T> {
+  const current = session(slot, touch);
+  const backup = await stored<SealedIdentity>('identity:' + current.id);
+  const secret = await unseal<IdentitySecret>(backup, current.key);
+  let info = await diem('inspect', secret, {}, slot);
+  if(info.id !== current.id) throw new Error('Identity file mismatch.');
+  const binding = await stored<string>('slot:' + slot);
+  if(binding && binding !== info.namespace) throw new Error('This account slot belongs to another identity. Use another account slot.');
+  const save = async(next: IdentityInfo, pending = true) => {
+    secret.profile = encode(new Uint8Array(next.profile));
+    secret.publicationPending = pending;
+    await stored('identity:' + current.id, await seal(current.id, secret, current.key, backup.salt));
+  };
+  if(maintain && renewalPolicy(secret.renewal).autoRenew) {
+    if(renewalDue(info)) {
+      info = await diem('renew', secret, {}, slot);
+      await save(info);
+    }
+    if(secret.publicationPending && secret.publisher) {
+      try {
+        await publish(secret);
+        await save(info, false);
+      } catch{
+        // Keep the renewed profile and pending flag. Retry while unlocked;
+        // manual publishing still reports errors and the dialog offers export.
+      }
+    }
+  }
+  return action(secret, info, save);
+}
+
+function scheduleRenewal(slot: number) {
+  const current = unlocked.get(slot);
+  if(!current) return;
+  clearTimeout(current.renewalTimer);
+  current.renewalTimer = setTimeout(async() => {
+    try {
+      await withIdentity(slot, async() => {}, false);
+    } catch{
+      // Keep pending publication durable and retry while unlocked. Foreground
+      // operations surface the error and allow manual download/publication.
+    } finally {
+      if(unlocked.get(slot) === current) scheduleRenewal(slot);
+    }
+  }, 60_000);
 }
 
 export async function bindIdentity(slot: number) {
@@ -109,7 +153,11 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
   await ensureBlahConfig(slot);
   if(!getBlahConfig(slot)?.home) throw new Error('This build needs a decentralized Blah bootstrap.');
   await bindHomeStorage(getBlahConfig(slot).home, slot);
-  if(request.action === 'list') return {ids: await identityIDs()};
+  if(request.action === 'list') {
+    const ids = await identityIDs();
+    const identities = await Promise.all(ids.map(async(id) => ({id, domain: await stored<string>('domain:' + id)})));
+    return {ids, identities};
+  }
   if(request.action === 'lock') { lock(slot); return {}; }
   if(request.action === 'create' || request.action === 'restore' || request.action === 'unlock') {
     return exclusively(async() => {
@@ -124,7 +172,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         }
         const salt = crypto.getRandomValues(new Uint8Array(16));
         key = await passwordKey(request.password || '', salt);
-        secret = {domain, profile: '', identity: await signingKey(), device: await signingKey()};
+        secret = {domain, profile: '', renewal: renewalPolicy(request.renewal), publicationPending: true, identity: await signingKey(), device: await signingKey()};
         info = await diem('create', secret, {}, slot);
         secret.profile = encode(new Uint8Array(info.profile));
         backup = await seal(info.id, secret, key, encode(salt));
@@ -145,18 +193,24 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
       if(binding && binding !== info.namespace) {
         throw new Error('This account slot belongs to another identity. Use another account slot.');
       }
-      await stored('identity:' + backup.id, backup);
+      // Public display metadata only; never used to authenticate or select a signer.
+      await storeEntries([['identity:' + backup.id, backup], ['domain:' + backup.id, info.domains[0]]]);
       lock(slot);
       unlocked.set(slot, {id: backup.id, key, until: Date.now() + 15 * 60_000});
       session(slot);
-      return {identity: view(secret, info)};
+      scheduleRenewal(slot);
+      return useIdentity(slot, async(secret, info) => ({identity: view(secret, info)}));
     });
   }
   return withIdentity(slot, async(secret, current, save) => {
     if(request.action === 'inspect') return {identity: view(secret, current)};
     if(request.action === 'backup') return {backup: JSON.stringify(await stored('identity:' + current.id), null, 2)};
     let info = current;
-    if(request.action === 'publisher') {
+    if(request.action === 'renewal') {
+      secret.renewal = renewalPolicy(request.renewal);
+      await save(info, !!secret.publicationPending);
+      return {identity: view(secret, info)};
+    } else if(request.action === 'publisher') {
       if(request.publisher) publicationURL(request.publisher);
       secret.publisher = request.publisher || '';
       secret.token = request.token || '';
@@ -173,8 +227,9 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
     }
     await save(info); // Durable first, so publication failures are retryable without losing keys/revisions.
     await publish(secret);
+    if(secret.publisher) await save(info, false);
     return {identity: view(secret, info)};
-  });
+  }, true, false);
 }
 
 export async function numberIdentity(slot: number, account: string) {
@@ -182,5 +237,9 @@ export async function numberIdentity(slot: number, account: string) {
     if(info.account && info.account !== account) throw new Error('The DC returned a different identity account.');
     if(!info.account) await save(await diem('account', secret, {account}, slot));
     await publish(secret);
+    if(secret.publisher) {
+      const numbered = await diem('inspect', secret, {}, slot);
+      await save(numbered, false);
+    }
   });
 }
