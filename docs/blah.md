@@ -71,6 +71,7 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
    means losing this device's keys.
 3. Download the public profile and serve it at
    `https://alice.example.org/.well-known/blah/profile.cbor` with `application/cbor`.
+   The creation dialog previews this URL below its action button as you enter the domain.
    The DC must be able to fetch it directly over public HTTPS without credentials
    or redirects. This first version does not provision DNS or profile hosting.
 4. Optionally configure **Profile publishing** with an HTTPS PUT endpoint and a
