@@ -217,11 +217,10 @@ try {
   await page.keyboard.press('Enter');
   try {
     async function signUp(page, slot, domain, name, publisher) {
-      await page.getByText('Create or restore an identity', {
-        exact: true
-      }).click({
-        timeout: 30000
-      });
+      const picker = page.getByRole('combobox', {name: 'Saved identity', exact: true});
+      await picker.fill('create');
+      await page.getByRole('option', {name: 'Create identity', exact: true}).click();
+      assert.equal(await page.getByRole('dialog').getByLabel('Encrypted backup', {exact: true}).count(), 0);
       await page.getByRole('dialog').getByLabel('Identity password', {exact: true}).fill('test identity password');
       await page.getByLabel('Profile domain', {
         exact: true
@@ -308,10 +307,13 @@ try {
     await page.getByRole('menuitem', {name: 'Browser identity', exact: true}).click();
     const panel = page.getByRole('region', {name: 'Browser identities'});
     await panel.waitFor();
-    const opener = panel.getByRole('button', {name: 'Create or restore an identity', exact: true});
+    const opener = panel.getByRole('combobox', {name: 'Saved identity', exact: true});
+    assert.equal(await opener.getAttribute('type'), 'search');
+    assert.equal(await opener.getAttribute('inputmode'), 'text');
     await opener.focus();
-    await page.keyboard.press('Enter');
-    const dialog = page.getByRole('dialog', {name: 'Create or restore an identity'});
+    await opener.press('End');
+    await opener.press('Enter');
+    const dialog = page.getByRole('dialog', {name: 'Import identity from file'});
     await dialog.waitFor();
     await page.waitForFunction(() => document.querySelector('[role="dialog"]')?.contains(document.activeElement));
     await page.keyboard.press('Shift+Tab');
@@ -320,9 +322,12 @@ try {
     await page.keyboard.press('Escape');
     await dialog.waitFor({state: 'detached'});
     assert(await opener.evaluate(element => element === document.activeElement), 'Restore opener focus');
-    await page.keyboard.press('Space');
+    await opener.press('ArrowDown');
+    await opener.press('End');
+    await opener.press('Enter');
     await dialog.waitFor();
-    if(process.env.BLAH_IDENTITY_SCREENSHOT) await dialog.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT, animations: 'disabled'});
+    // Finish the popup's finite transitions before measuring text contrast.
+    await dialog.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT, animations: 'disabled'});
     // Shared controls use the theme palette; check contrast in increased-contrast mode.
     await page.evaluate(async() => { await window.useAppSettings()[1]('increaseContrast', true); window.themeController.setTheme(); });
     const accessibility = await new AxeBuilder({page}).include('[role="dialog"]').analyze();
@@ -343,7 +348,7 @@ try {
     await picker.press('Tab');
     await picker.focus();
     await picker.fill('no-such-identity');
-    assert.equal(await panel.getByRole('option').count(), 0);
+    assert.deepEqual(await panel.getByRole('option').allTextContents(), ['Create identity', 'Import identity from file']);
     await picker.fill(aliceIdentity);
     await picker.press('ArrowDown');
     await picker.press('Enter');
@@ -379,15 +384,23 @@ try {
     await restored.goto(origin + '/?noServiceWorker=1&pfs=1');
     await restored.getByRole('textbox', {name: 'DC domain'}).fill('dc.example.org');
     await restored.getByRole('button', {name: 'Connect to Blah'}).click();
-    await restored.getByText('Create or restore an identity', {
-      exact: true
-    }).click();
-    await restored.getByRole('dialog').getByLabel('Identity password', {exact: true}).fill('test identity password');
+    const savedPicker = restored.getByRole('combobox', {name: 'Saved identity', exact: true});
+    await savedPicker.fill('import');
+    await restored.getByRole('option', {name: 'Import identity from file', exact: true}).click();
+    assert.equal(await restored.getByRole('dialog').getByLabel('Profile domain', {exact: true}).count(), 0);
     await restored.getByLabel('Encrypted backup', {
       exact: true
     }).setInputFiles({name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('invalid backup')});
-    await restored.getByRole('button', {name: 'Restore backup', exact: true}).click();
+    const importButton = restored.getByRole('dialog').getByRole('button', {name: 'Import identity from file', exact: true});
+    assert(await importButton.isDisabled(), 'Import requires a password');
+    // Supplying a password must not start import until explicitly submitted.
+    await restored.getByRole('dialog').getByRole('status').filter({hasText: /^invalid.json$/}).waitFor();
+    await restored.getByRole('dialog').getByLabel('Identity password', {exact: true}).fill('test identity password');
+    await restored.waitForTimeout(800);
+    assert.equal(await restored.getByRole('dialog').getByRole('status').filter({hasText: /Unexpected token/i}).count(), 0);
+    await importButton.click();
     await restored.getByRole('dialog').getByRole('status').filter({hasText: /Unexpected token/i}).waitFor();
+    // Replacing the failed file also waits for explicit submission.
     const transfer = await restored.evaluateHandle((contents) => {
       const data = new DataTransfer();
       data.items.add(new File([contents], 'identity.json', {type: 'application/json'}));
@@ -395,19 +408,28 @@ try {
     }, await readFile(backupFile, 'utf8'));
     await restored.getByRole('dialog').locator('.drop').dispatchEvent('drop', {dataTransfer: transfer});
     await transfer.dispose();
-    await restored.getByRole('dialog').getByRole('status').filter({hasText: /^identity.json$/}).waitFor();
-    await restored.getByRole('button', {
-      name: 'Restore backup',
-      exact: true
-    }).click();
+    await restored.waitForTimeout(800);
+    assert(await importButton.isVisible(), 'Picking a file must not start import');
+    await importButton.press('Enter');
+    await restored.getByRole('dialog').waitFor({state: 'detached'});
     await restored.getByRole('button', {
       name: 'Download public profile',
       exact: true
     }).waitFor();
-    await restored.getByRole('button', {
-      name: 'Sign in to Blah',
-      exact: true
-    }).click();
+    // Reload to require unlocking the saved identity, then sign in with one action.
+    await restored.reload();
+    await savedPicker.fill(aliceIdentity);
+    await savedPicker.press('ArrowDown');
+    await savedPicker.press('Enter');
+    assert.equal(await restored.getByRole('button', {name: 'Unlock identity', exact: true}).count(), 0);
+    const password = restored.getByLabel('Identity password', {exact: true});
+    await password.fill('wrong identity password');
+    await restored.getByRole('button', {name: 'Sign in to Blah', exact: true}).click();
+    await restored.getByRole('region', {name: 'Browser identities'}).getByRole('status')
+      .filter({hasText: /.+/}).filter({hasNotText: 'Working…'}).waitFor();
+    assert.equal(await password.inputValue(), 'wrong identity password');
+    await password.fill('test identity password');
+    await password.press('Enter');
     await restored.waitForFunction(() => JSON.parse(localStorage.getItem('account1') || '{}').userId);
     const restoredId = await restored.evaluate(() => JSON.parse(localStorage.getItem('account1')).userId);
     if(userId !== restoredId) throw new Error('Recovery changed the account');
