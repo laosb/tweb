@@ -10,7 +10,7 @@ import type {TimeManager} from '@lib/mtproto/timeManager';
 import type {DcConfigurator, TransportType} from '@lib/mtproto/dcConfigurator';
 import transportController from '@lib/mtproto/transports/controller';
 import {TLSerialization, TLDeserialization} from '@lib/mtproto/tl_utils';
-import rsaKeysManager from '@lib/mtproto/rsaKeysManager';
+import {RSAKeysManager} from '@lib/mtproto/rsaKeysManager';
 import CryptoWorker from '@lib/crypto/cryptoMessagePort';
 import {logger} from '@lib/logger';
 import DEBUG from '@config/debug';
@@ -115,12 +115,14 @@ export class Authorizer {
   private log: ReturnType<typeof logger>;
   private timeManager: TimeManager;
   private dcConfigurator: DcConfigurator;
+  private rsaKeysManager: RSAKeysManager;
 
   constructor(options: {
     timeManager: TimeManager,
     dcConfigurator: DcConfigurator
   }) {
     safeAssign(this, options);
+    this.rsaKeysManager = new RSAKeysManager(options.dcConfigurator.accountNumber);
     this.log = logger('AUTHORIZER');
     this.cached = {};
   }
@@ -205,7 +207,7 @@ export class Authorizer {
     let deserializer: Awaited<ReturnType<Authorizer['sendPlainRequest']>>;
     try {
       const promise = this.sendPlainRequest(auth.transport, request.getBytes(true));
-      rsaKeysManager.prepare();
+      this.rsaKeysManager.prepare();
       deserializer = await promise;
     } catch(error) {
       this.log.error('req_pq error', (error as Error).message);
@@ -245,7 +247,7 @@ export class Authorizer {
       this.log('Got ResPQ', bytesToHex(auth.serverNonce), bytesToHex(auth.pq), auth.fingerprints);
     }
 
-    const publicKey = await rsaKeysManager.select(auth.fingerprints);
+    const publicKey = await this.rsaKeysManager.select(auth.fingerprints);
     if(!publicKey) {
       throw new Error('[MT] No public key found');
     }

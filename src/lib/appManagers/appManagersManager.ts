@@ -1,3 +1,4 @@
+import blah from '@config/blah';
 import ServiceMessagePort from '@lib/serviceWorker/serviceMessagePort';
 import App from '@config/app';
 import {MOUNT_CLASS_TO} from '@config/debug';
@@ -153,16 +154,15 @@ export class AppManagersManager {
 
     rootScope.addEventListener('account_logged_in', async({accountNumber, userId}) => {
       // * a new account goes to the first free slot, and Web A leaves gaps: the same one may be after it
-      const existing = (await AccountController.getAccounts()).find(([otherAccountNumber, accountData]) => {
-        return otherAccountNumber !== accountNumber && accountData.userId === userId;
-      });
-      if(existing) {
-        const [otherAccountNumber] = existing;
+      for(const [otherAccountNumber, accountData] of await AccountController.getAccounts()) {
+        if(otherAccountNumber === accountNumber || accountData.userId !== userId) continue;
+        if(blah && !await (await import('@lib/blah/homeStorage')).accountsShareHome(accountNumber, otherAccountNumber)) continue;
         const managersByAccount = await this.getManagersByAccount();
         // * the slots after the one signed out move down by one
         managersByAccount[accountNumber].apiManager.logOut(
           (otherAccountNumber > accountNumber ? otherAccountNumber - 1 : otherAccountNumber) as ActiveAccountNumber
         );
+        break;
       }
     });
 

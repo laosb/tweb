@@ -2,10 +2,10 @@ import type {BlahConfig} from '@config/blah';
 import type {DCDiscoveryResult} from '@blahdiem/diem';
 import {diemClient, verifySignature} from '@lib/blah/runtime';
 import {decode, encode, exclusively, stored} from '@lib/blah/vault';
-import {bindHomeStorage} from '@lib/blah/homeStorage';
+import {bindHomeStorage, migrateHomeStorage} from '@lib/blah/homeStorage';
 
 export type SavedDC = {domain: string, profile: string, version: DCDiscoveryResult};
-const storageKey = 'dc-profile';
+const storageKey = (slot: number) => 'dc-profile:' + slot;
 const maximumProfileBytes = 100_000;
 
 export function dcDomain(input: string) {
@@ -17,7 +17,10 @@ export function dcDomain(input: string) {
   return domain;
 }
 
-export function savedDC() { return stored<SavedDC>(storageKey); }
+export async function savedDC(slot = 1) {
+  await migrateHomeStorage();
+  return stored<SavedDC>(storageKey(slot));
+}
 
 export async function fetchDCProfile(domain: string): Promise<Uint8Array> {
   const response = await fetch(`https://${dcDomain(domain)}/.well-known/blah/profile.cbor`, {
@@ -89,7 +92,7 @@ export function checkDCUpdate(previous: SavedDC, domain: string, next: DCDiscove
   if(!previous) return;
   const before = previous.version;
   if(previous.domain !== domain || before.id !== next.id || before.namespaceGeneration !== next.namespaceGeneration) {
-    throw new Error('This browser origin is bound to another DC identity or database. Use a separate origin.');
+    throw new Error('This account slot is bound to another DC identity or database. Use another account slot.');
   }
   if(BigInt(next.generation) < BigInt(before.generation) ||
     (next.generation === before.generation && (BigInt(next.revision) < BigInt(before.revision) ||
@@ -98,24 +101,24 @@ export function checkDCUpdate(previous: SavedDC, domain: string, next: DCDiscove
   }
 }
 
-export async function connectDC(input: string): Promise<BlahConfig> {
+export async function connectDC(input: string, slot = 1): Promise<BlahConfig> {
   const domain = dcDomain(input);
   const profile = await fetchDCProfile(domain);
   const {config, version} = await profileConfig(domain, profile);
   // Cache admission is independent of network success and runs before accepting transport pins.
-  await bindHomeStorage(config.home);
+  await bindHomeStorage(config.home, slot);
   await exclusively(async() => {
-    checkDCUpdate(await savedDC(), domain, version);
-    await stored<SavedDC>(storageKey, {domain, profile: encode(profile), version});
+    checkDCUpdate(await stored<SavedDC>(storageKey(slot)), domain, version);
+    await stored<SavedDC>(storageKey(slot), {domain, profile: encode(profile), version});
   });
   return config;
 }
 
-export async function restoreDC(): Promise<BlahConfig> {
-  const saved = await savedDC();
+export async function restoreDC(slot = 1): Promise<BlahConfig> {
+  const saved = await savedDC(slot);
   if(!saved) throw new Error('Choose a DC domain before connecting.');
   const {config, version} = await profileConfig(dcDomain(saved.domain), decode(saved.profile));
   checkDCUpdate(saved, saved.domain, version);
-  await bindHomeStorage(config.home);
+  await bindHomeStorage(config.home, slot);
   return config;
 }

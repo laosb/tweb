@@ -1,4 +1,4 @@
-import blah from '@config/blah';
+import {getBlahConfig} from '@config/blah';
 import {decode} from '@lib/blah/vault';
 import type {CryptoBackend, IdentityResult} from '@blahdiem/diem';
 
@@ -16,8 +16,9 @@ export type IdentityInfo = IdentityResult;
 let queue: Promise<unknown> = Promise.resolve();
 
 /** Serialize use of the Swift bridge; never let one account borrow another's signer. */
-export function diem(operation: string, secret: IdentitySecret, extra: Record<string, unknown> = {}): Promise<IdentityInfo> {
+export function diem(operation: string, secret: IdentitySecret, extra: Record<string, unknown> = {}, slot = 1): Promise<IdentityInfo> {
   const run = queue.then(async() => {
+    const blah = getBlahConfig(slot);
     if(!blah?.home) throw new Error('A decentralized Blah home bootstrap is required.');
     if(typeof secret?.domain !== 'string' || secret.domain.length > 253 || !/^[a-z0-9.-]+$/.test(secret.domain) ||
       typeof secret.profile !== 'string' || secret.profile.length > 100_000 ||

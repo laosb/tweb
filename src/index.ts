@@ -7,7 +7,7 @@
 import '@helpers/dom/previewUnfreeze';
 import '@helpers/dom/previewRaf';
 import App from '@config/app';
-import blah from '@config/blah';
+import blah, {getBlahConfig} from '@config/blah';
 import blurActiveElement from '@helpers/dom/blurActiveElement';
 import {IS_STICKY_INPUT_BUGGED} from '@helpers/dom/fixSafariStickyInputFocusing';
 import loadFonts from '@helpers/dom/loadFonts';
@@ -483,10 +483,12 @@ async function startApplication() {
   setHotReloadGuardLoader(() => import('./pages/bootstrapIm').then(({importAppTopLevel}) => importAppTopLevel()));
 
   rootScope.managers = getProxiedManagers();
-  if(blah?.home) {
+  if(blah?.discovery || blah?.home) {
     await (await import('@lib/blah/identity')).requireHomeStorage();
-    const {installIdentityButton} = await import('@lib/blah/identityButton');
-    installIdentityButton(rootScope.managers);
+    if(getBlahConfig(getCurrentAccount())?.home) {
+      const {installIdentityButton} = await import('@lib/blah/identityButton');
+      installIdentityButton(rootScope.managers);
+    }
   }
   await checkLastActiveAccountFromTMe();
 
@@ -615,6 +617,7 @@ async function startApplication() {
   appChatBackground.setBackground({transition: 'instant'});
 
   let authState = stateResult.state.authState;
+  if(blah?.discovery && !getBlahConfig(getCurrentAccount())?.home) authState = {_: 'authStateSignIn'};
 
   const hash = location.hash;
   const splitted = hash.split('?');

@@ -11,7 +11,7 @@ import Modes from '@config/modes';
 import bytesFromHex from '@helpers/bytes/bytesFromHex';
 import bytesToHex from '@helpers/bytes/bytesToHex';
 import bigInt from 'big-integer';
-import blah, {ensureBlahConfig} from '@config/blah';
+import blah, {ensureBlahConfig, getBlahConfig} from '@config/blah';
 
 export type RSAPublicKeyHex = {
   modulus: string,
@@ -80,7 +80,7 @@ export class RSAKeysManager {
   private prepared = false;
   private preparePromise: Promise<void> = null;
 
-  constructor() {
+  constructor(private accountNumber = 1) {
     if(blah) {
       this.publisKeysHex = blah.dcs.map((dc) => dc.rsaKey);
     } else if(Modes.test) {
@@ -89,13 +89,13 @@ export class RSAKeysManager {
   }
 
   public prepare(): Promise<void> {
-    if(blah?.discovery && !blah.home) return ensureBlahConfig().then(() => this.prepare());
+    if(blah?.discovery && !getBlahConfig(this.accountNumber)) return ensureBlahConfig(this.accountNumber).then(() => this.prepare());
     if(this.preparePromise) return this.preparePromise;
     else if(this.prepared) {
       return Promise.resolve();
     }
 
-    if(blah) this.publisKeysHex = blah.dcs.map((dc) => dc.rsaKey);
+    if(blah) this.publisKeysHex = getBlahConfig(this.accountNumber).dcs.map((dc) => dc.rsaKey);
     return this.preparePromise = Promise.all(this.publisKeysHex.map((keyParsed) => {
       const RSAPublicKey = new TLSerialization();
       RSAPublicKey.storeBytes(bytesFromHex(keyParsed.modulus), 'n');

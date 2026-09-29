@@ -16,7 +16,7 @@ import {IS_WEB_WORKER} from '@helpers/context';
 import {DcId} from '@types';
 import {getEnvironment} from '@environment/utils';
 import SocketProxied from '@lib/mtproto/transports/socketProxied';
-import blah, {getBlahDc} from '@config/blah';
+import {getBlahConfig, getBlahDc} from '@config/blah';
 import {MAX_DC_ID} from '@config/dc';
 
 export type TransportType = 'websocket' | 'https' | 'http';
@@ -51,7 +51,7 @@ export function assertValidDcId(dcId: DcId): DcId {
   return id as DcId;
 }
 
-export function constructTelegramWebSocketUrl(_dcId: DcId, connectionType: ConnectionType, premium?: boolean) {
+export function constructTelegramWebSocketUrl(_dcId: DcId, connectionType: ConnectionType, premium?: boolean, slot = 1) {
   if(!import.meta.env.VITE_MTPROTO_HAS_WS) {
     return;
   }
@@ -59,9 +59,9 @@ export function constructTelegramWebSocketUrl(_dcId: DcId, connectionType: Conne
   const dcId = assertValidDcId(_dcId);
   const suffix = getTelegramConnectionSuffix(connectionType);
   const path = connectionType !== 'client' ? 'apiws' + TEST_SUFFIX + (premium ? PREMIUM_SUFFIX : '') : ('apiws' + TEST_SUFFIX);
-  const blahDc = getBlahDc(dcId);
+  const blahDc = getBlahDc(dcId, slot);
   if(blahDc) {
-    return blah?.home ? blahDc.url : blahDc.url + path.slice('apiws'.length);
+    return getBlahConfig(slot)?.home ? blahDc.url : blahDc.url + path.slice('apiws'.length);
   }
   const chosenServer = `wss://${App.suffix.toLowerCase()}ws${dcId}${suffix}.web.telegram.org/${path}`;
 
@@ -69,6 +69,8 @@ export function constructTelegramWebSocketUrl(_dcId: DcId, connectionType: Conne
 }
 
 export class DcConfigurator {
+  constructor(public readonly accountNumber = 1) {}
+
   private sslSubdomains = ['pluto', 'venus', 'aurora', 'vesta', 'flora'];
 
   private dcOptions = Modes.test ?
@@ -92,7 +94,7 @@ export class DcConfigurator {
       return;
     }
 
-    const chosenServer = constructTelegramWebSocketUrl(dcId, connectionType, premium);
+    const chosenServer = constructTelegramWebSocketUrl(dcId, connectionType, premium, this.accountNumber);
     const logSuffix = connectionType === 'upload' ? '-U' : connectionType === 'download' ? '-D' : '';
 
     const retryTimeout = connectionType === 'client' ? RETRY_TIMEOUT_CLIENT : RETRY_TIMEOUT_DOWNLOAD;
