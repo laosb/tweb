@@ -66,7 +66,8 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
 1. Choose **Create identity** in the **Saved identity** picker to open its dialog.
    Choose a password of at least 12 characters and enter a domain you control,
    such as `alice.example.org`.
-2. Create the identity and download its encrypted identity file. The password is separate
+2. Create the identity. Its details dialog opens immediately; download its encrypted
+   identity file there. The password is separate
    from any Blah account/SRP password; losing both browser storage and the identity file
    means losing this device's keys.
 3. Download the public profile and serve it at
@@ -78,7 +79,7 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
    bearer token. The endpoint must allow the web client's origin through CORS and
    publish the supplied public bytes at the domain above. The token stays in the
    encrypted vault. The client sends no private keys to this endpoint.
-5. Select **Sign in to Blah**. For a saved, locked identity, enter its identity password;
+5. Close identity details and select **Sign in to Blah**. For a saved, locked identity, enter its identity password;
    the same action unlocks it and starts sign-in. The DC may request admission email
    verification or an account password. A new identity proceeds to the name/signup screen.
 6. Signup assigns an account number and saves a new signed profile. An automatic
@@ -93,11 +94,23 @@ retry. There is no email-only, phone-number or QR identity login.
 
 **Browser identity** opens as a normal settings page after login, from Settings or
 the menu item immediately below the account controls. Choose a saved identity with
-the searchable picker and unlock it to export an encrypted identity file, renew its profile/certificates, or authorize/revoke
-other devices by their public keys. Publish every changed profile. Profiles expire
-after one day; use **Renew profile and certificates** and publish before expiry
-(or renew and sign in again after expiry). Device certificates last at most 30 days.
-This version uses explicit renewal, not an unattended hosting service.
+the searchable picker, whose entries show the first profile domain and first six identity
+digits. Use the trailing **Identity details** icon to open its information and actions,
+then unlock it to export an encrypted identity file, renew its profile/certificates, or
+authorize/revoke other devices by their public keys. Publish every changed profile.
+
+Profiles and device certificates default to 180 days. **Validity and renewal** lets you
+choose whole-day periods (device validity must cover profile validity) and disable automatic
+renewal. New periods take effect on the next renewal. Automatic renewal is enabled by
+default and checks the signed profile and device validity intervals once a minute while
+the browser identity is unlocked. When 80% of either interval has elapsed, it renews the
+profile and certificates. It catches up after a missed interval on the next unlock.
+Background checks never extend the 15-minute unlock timeout.
+
+Renewed profiles are saved before publication. A configured publisher receives them
+automatically, with failed publication retried while unlocked; manual hosting still needs
+you to download and publish the latest profile. The details dialog indicates pending
+publication. **Renew profile and certificates** remains available for explicit renewal.
 
 **Lock identity** (or 15 minutes without an identity operation) discards the in-memory unlock key without logging out of the
 chat session. Reloading the worker also requires unlocking before the next identity
@@ -179,7 +192,9 @@ Shared code/password/signup screens keep handling ordinary Telegram responses.
 Identity views use Web K's Material buttons, text fields, popup lifecycle, settings
 scaffold and chat-upload dropzone. The saved-identity picker is a Blah-owned
 search combobox under `src/lib/blah/`, reusing the phone-region picker's presentation
-and Web K's editable-text control to avoid native form autofill suggestions. The upstream picker
+and Web K's editable-text control to avoid native form autofill suggestions. Public domain labels are
+cached separately from encrypted keys; older saved identities acquire their labels on the
+next unlock. Details reuse Web K's popup, section and row components. The upstream picker
 stays unchanged to keep rebases local.
 
 Build-time configuration and branding remain in `scripts/blah-config.mjs` and
