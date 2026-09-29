@@ -1,4 +1,5 @@
 import {getBlahConfig} from '@config/blah';
+import {DAY, renewalPolicy, RenewalPolicy} from '@lib/blah/renewal';
 import {decode} from '@lib/blah/vault';
 import type {CryptoBackend, IdentityResult} from '@blahdiem/diem';
 
@@ -9,7 +10,9 @@ export type IdentitySecret = {
   identity: SigningKey,
   device: SigningKey,
   publisher?: string,
-  token?: string
+  token?: string,
+  renewal?: RenewalPolicy,
+  publicationPending?: boolean
 };
 export type IdentityInfo = IdentityResult;
 
@@ -43,7 +46,8 @@ export function diem(operation: string, secret: IdentitySecret, extra: Record<st
       sign: async(role, data) => new Uint8Array(await crypto.subtle.sign('Ed25519', keys[role], new Uint8Array(data))),
       verify: verifySignature
     };
-    return client.identityOperation({operation, kind: 'user', domain: secret.domain, profile: Array.from(decode(secret.profile)),
+    const policy = renewalPolicy(secret.renewal);
+    return client.identityOperation({profileLifetime: policy.profileDays * DAY, deviceLifetime: policy.deviceDays * DAY, operation, kind: 'user', domain: secret.domain, profile: Array.from(decode(secret.profile)),
       now: Math.floor(Date.now() / 1000),
       dc: Array.from(Uint8Array.from(blah.home.identity.match(/../g), (hex) => parseInt(hex, 16))),
       dcDomain: blah.home.domain, generation: blah.home.generation,

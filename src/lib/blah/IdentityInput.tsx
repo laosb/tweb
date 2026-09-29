@@ -4,7 +4,7 @@ import {LangPackKey} from '@lib/langPack';
 /** Native text/password inputs with Web K's field presentation and labels. */
 export default function IdentityInput(props: {
   label: LangPackKey,
-  type?: 'text' | 'password' | 'email' | 'url',
+  type?: 'text' | 'password' | 'email' | 'url' | 'number',
   autocomplete?: string,
   value?: string,
   disabled?: boolean,

@@ -1,13 +1,11 @@
-import {createSignal, For, Show, onMount, onCleanup, createEffect, JSX} from 'solid-js';
+import {createSignal, Show, onMount, onCleanup, createEffect, JSX} from 'solid-js';
 import Button from '@components/buttonTsx';
 import IdentityPicker from '@lib/blah/IdentityPicker';
 import IdentityInput from '@lib/blah/IdentityInput';
 import showIdentitySetup from '@lib/blah/IdentitySetup';
 import I18n, {i18n} from '@lib/langPack';
-import type {IdentityRequest, IdentityResponse, IdentityView} from '@lib/blah/identity';
-import {encode} from '@lib/blah/vault';
-import createDownloadAnchor from '@helpers/dom/createDownloadAnchor';
-import {ObjectURLScope} from '@helpers/objectUrl';
+import type {IdentityRequest, IdentityResponse, IdentitySummary, IdentityView} from '@lib/blah/identity';
+import showIdentityDetails from '@lib/blah/IdentityDetails';
 import styles from '@lib/blah/identity.module.scss';
 
 export type IdentityActions = (request: IdentityRequest) => Promise<IdentityResponse>;
@@ -18,16 +16,14 @@ export default function IdentityPanel(props: {
   onSignIn?: (identity: IdentityView) => Promise<void>,
   children?: JSX.Element
 }) {
-  const [ids, setIDs] = createSignal<string[]>([]);
+  const [identities, setIdentities] = createSignal<IdentitySummary[]>([]);
   const [selected, setSelected] = createSignal('');
   const [identity, setIdentity] = createSignal<IdentityView>();
   const [busy, setBusy] = createSignal(false);
   const [signingIn, setSigningIn] = createSignal(false);
   const [message, setMessage] = createSignal('');
   let password: HTMLInputElement;
-  let publisher: HTMLInputElement;
-  let token: HTMLInputElement;
-  let device: HTMLInputElement;
+  let detailsButton: HTMLElement;
   let cancelled = false;
 
   const picker = new IdentityPicker({label: 'BlahSavedIdentity',
@@ -36,17 +32,21 @@ export default function IdentityPanel(props: {
     }
   }, (id) => {
     if(id === 'create' || id === 'import') {
-      picker.setValueSilently(selected());
-      showIdentitySetup({mode: id, action: props.action, onIdentity: acceptIdentity});
+      picker.setValueSilently(selectedLabel());
+      showIdentitySetup({mode: id, action: props.action, onIdentity: (current) => {
+        if(cancelled) return;
+        acceptIdentity(current);
+        if(id === 'create') queueMicrotask(() => { if(!cancelled) openDetails(); });
+      }});
       return;
     }
     setSelected(id);
     setIdentity(undefined);
     props.onIdentity?.(undefined);
-    password.value = '';
+    if(password) password.value = '';
   });
-  createEffect(() => picker.setOptions([...ids().map((id) => ({
-    value: id, label: id, matches: (query: string) => id.toLowerCase().includes(query.toLowerCase())
+  createEffect(() => picker.setOptions([...identities().map((entry) => ({
+    value: entry.id, label: identityLabel(entry), matches: (query: string) => `${entry.domain || ''} ${entry.id}`.toLowerCase().includes(query.toLowerCase())
   })), ...(['create', 'import'] as const).map((mode) => ({
     value: mode,
     icon: mode === 'create' ? 'adduser' as const : 'document' as const,
@@ -56,23 +56,34 @@ export default function IdentityPanel(props: {
   createEffect(() => picker.setDisabled(busy()));
   onCleanup(() => { cancelled = true; picker.destroy(); });
 
+  function identityLabel(entry: IdentitySummary) {
+    return entry.domain ? `${entry.domain} - ${entry.id.slice(0, 6)}` : entry.id.slice(0, 6);
+  }
+  const selectedSummary = () => identities().find((entry) => entry.id === selected());
+  const selectedLabel = () => selectedSummary() ? identityLabel(selectedSummary()) : '';
+  function openDetails() {
+    detailsButton?.focus();
+    picker.hidePicker();
+    showIdentityDetails({summary: selectedSummary(), identity: identity(), action: props.action, onIdentity: (current) => {
+      if(cancelled) return;
+      if(current) acceptIdentity(current);
+      else { setIdentity(undefined); props.onIdentity?.(undefined); }
+    }});
+  }
+
   function acceptIdentity(current: IdentityView) {
     setIdentity(current);
     setSelected(current.id);
-    picker.setValueSilently(current.id);
+    picker.setValueSilently(identityLabel({id: current.id, domain: current.domains[0]}));
     props.onIdentity?.(current);
-    setIDs((ids) => ids.includes(current.id) ? ids : [...ids, current.id]);
-    setMessage('Identity ready. Publish its latest profile before signing in.');
+    setIdentities((entries) => [...entries.filter((entry) => entry.id !== current.id), {id: current.id, domain: current.domains[0]}]);
   }
 
-  const refresh = async() => setIDs((await props.action({action: 'list'})).ids);
+  const refresh = async() => {
+    const result = await props.action({action: 'list'});
+    if(!cancelled) setIdentities(result.identities || result.ids.map((id) => ({id})));
+  };
   onMount(() => { refresh().catch((error) => setMessage(error.message)); });
-
-  function download(name: string, bytes: BlobPart, type: string) {
-    const urls = new ObjectURLScope();
-    const url = urls.create(new Blob([bytes], {type}));
-    createDownloadAnchor(url, name, () => setTimeout(() => urls.dispose(), 30_000));
-  }
 
   async function run(request?: IdentityRequest) {
     if(busy() || !selected()) return;
@@ -80,14 +91,12 @@ export default function IdentityPanel(props: {
     setSigningIn(!request);
     try {
       const result = !request && identity() ? {identity: identity()} :
-        await props.action({action: 'unlock', ...request, id: selected(), password: password.value});
+        await props.action({action: 'unlock', ...request, id: selected(), password: password?.value});
       if(cancelled) return;
-      password.value = '';
+      if(password) password.value = '';
       if(result.identity) {
         acceptIdentity(result.identity);
       }
-      if(result.backup) download(`${identity().domain}-identity.json`, result.backup, 'application/json');
-      if(request?.action === 'lock') { setIdentity(undefined); props.onIdentity?.(undefined); }
       if(!request) await props.onSignIn(result.identity);
     } catch(cause) {
       const error = cause as {type?: string, message?: string};
@@ -100,7 +109,10 @@ export default function IdentityPanel(props: {
 
   return <section class={styles.panel} aria-label="Browser identities">
     <fieldset disabled={busy()}>
-      {picker.container}
+      <div class={styles.pickerRow}>
+        {picker.container}
+        <Show when={selected()}><Button.Icon ref={(element) => detailsButton = element} icon="info" disabled={busy()} aria-label={I18n.format('BlahIdentityDetails', true)} onClick={openDetails} /></Show>
+      </div>
       <Show when={!identity()}>
         <IdentityInput label="BlahIdentityPassword" type="password" autocomplete="current-password" ref={(value) => {
           password = value;
@@ -115,32 +127,6 @@ export default function IdentityPanel(props: {
           <Button primaryFilled disabled={!selected() || busy()} onClick={() => run({action: 'unlock'})} text="BlahUnlockIdentity" />
         </Show>
       </Show>
-      <Show when={identity()}>{(current) => <>
-        <p><strong>{current().domain}</strong><br />Profile expires {new Date(current().expiresAt * 1000).toLocaleString()}</p>
-        <p class={styles.identifier}>Identity: {current().id}</p>
-        <Button primaryTransparent disabled={busy()} onClick={() => download('profile.cbor', new Uint8Array(current().profile), 'application/cbor')} text="BlahDownloadProfile" />
-        <Button primaryTransparent disabled={busy()} onClick={() => run({action: 'backup'})} text="BlahDownloadBackup" />
-        <Button primaryTransparent disabled={busy()} onClick={() => run({action: 'inspect'})} text="BlahRefreshProfile" />
-        <Button primaryTransparent disabled={busy()} onClick={() => run({action: 'renew'})} text="BlahRenewProfile" />
-        <details><summary>Profile publishing</summary>
-          <p>Optional: send only the public profile to an HTTPS endpoint you control. It must accept PUT and allow this site's origin.</p>
-          <IdentityInput label="BlahPublicationURL" type="url" value={current().publisher} ref={(value) => publisher = value} />
-          <IdentityInput label="BlahPublicationToken" type="password" ref={(value) => token = value} />
-          <Button primaryTransparent disabled={busy()} onClick={() => run({action: 'publisher', publisher: publisher.value, token: token.value})} text="BlahPublishProfile" />
-        </details>
-        <details><summary>Devices</summary>
-          <For each={current().devices}>{(entry) => <div class={styles.device}>
-            <code>{entry.id}</code> {entry.current ? '(this device)' : ''}
-            <Button primaryTransparent disabled={busy()} onClick={() => { navigator.clipboard.writeText(encode(new Uint8Array(entry.key))).catch(() => setMessage('Clipboard unavailable.')); }} text="BlahCopyDeviceKey" />
-            <Show when={!entry.current}><Button primaryTransparent disabled={busy()} onClick={() => {
-              if(confirm('Revoke this device? Publish the new profile to apply the revocation.')) run({action: 'removeDevice', device: entry.id});
-            }} text="BlahRevokeDevice" /></Show>
-          </div>}</For>
-          <IdentityInput label="BlahDeviceKey" ref={(value) => device = value} />
-          <Button primaryTransparent disabled={busy()} onClick={() => run({action: 'addDevice', device: device.value})} text="BlahAuthorizeDevice" />
-        </details>
-        <Button primaryTransparent disabled={busy()} onClick={() => run({action: 'lock'})} text="BlahLockIdentity" />
-      </>}</Show>
       {props.children}
       <Show when={props.onSignIn}>
         <Button primaryFilled disabled={!selected() || busy()} onClick={() => run()} text={signingIn() ? 'BlahSigningIn' : 'BlahSignIn'} />

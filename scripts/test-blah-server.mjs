@@ -247,7 +247,25 @@ try {
       }).waitFor({
         timeout: 30000
       });
-      const identityID = (await page.getByText(/^Identity: [a-f0-9]{64}$/).innerText()).slice('Identity: '.length);
+      const details = page.getByRole('dialog', {name: 'Identity details', exact: true});
+      const identityID = await details.locator('code').filter({hasText: /^[a-f0-9]{64}$/}).first().innerText();
+      assert.equal(await picker.innerText(), domain + ' - ' + identityID.slice(0, 6));
+      if(process.env.BLAH_IDENTITY_SCREENSHOT) await details.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-details.png', animations: 'disabled'});
+      assert.deepEqual((await new AxeBuilder({page}).include('[role="dialog"]').disableRules(['color-contrast']).analyze()).violations, []);
+      await details.getByText('Validity and renewal', {exact: true}).click();
+      const profileValidity = details.getByLabel('Profile validity (days)', {exact: true});
+      const deviceValidity = details.getByLabel('Device key validity (days)', {exact: true});
+      assert.equal(await profileValidity.inputValue(), '180');
+      assert.equal(await deviceValidity.inputValue(), '180');
+      const autoRenew = details.getByRole('checkbox', {name: 'Renew automatically', exact: true});
+      assert(await autoRenew.isChecked());
+      await profileValidity.fill('60');
+      await deviceValidity.fill('90');
+      await autoRenew.press('Space');
+      assert.equal(await autoRenew.isChecked(), false);
+      await details.getByRole('button', {name: 'Save', exact: true}).click();
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"] fieldset').disabled);
+      await details.getByText('Validity and renewal', {exact: true}).click();
       await page.getByText('Profile publishing', {
         exact: true
       }).click();
@@ -258,7 +276,16 @@ try {
         name: 'Save and publish profile',
         exact: true
       }).click();
-      await page.waitForFunction(() => !document.querySelector('fieldset').disabled);
+      await page.waitForFunction(() => !document.querySelector('[role="dialog"] fieldset').disabled);
+      await details.getByRole('button', {name: 'Close', exact: true}).click();
+      await details.waitFor({state: 'detached'});
+      await page.getByRole('button', {name: 'Identity details', exact: true}).click();
+      await details.getByText('Validity and renewal', {exact: true}).click();
+      assert.equal(await profileValidity.inputValue(), '60');
+      assert.equal(await deviceValidity.inputValue(), '90');
+      assert.equal(await autoRenew.isChecked(), false);
+      await details.getByRole('button', {name: 'Close', exact: true}).click();
+      await details.waitFor({state: 'detached'});
       await page.getByRole('button', {
         name: 'Sign in to Blah',
         exact: true
@@ -384,7 +411,17 @@ try {
       name: 'Unlock identity',
       exact: true
     }).click();
-    await panel.getByRole('button', {name: 'Download public profile', exact: true}).waitFor();
+    const detailsOpener = panel.getByRole('button', {name: 'Identity details', exact: true});
+    await page.waitForFunction(() => !document.querySelector('[aria-label="Identity details"]').disabled);
+    await detailsOpener.press('Enter');
+    const identityDetails = page.getByRole('dialog', {name: 'Identity details', exact: true});
+    await identityDetails.getByRole('button', {name: 'Download public profile', exact: true}).waitFor();
+    await page.keyboard.press('Escape');
+    await identityDetails.waitFor({state: 'detached'});
+    assert(await detailsOpener.evaluate(element => element === document.activeElement), 'Details restore icon button focus');
+    await detailsOpener.press('Space');
+    await identityDetails.waitFor();
+    assert(await identityDetails.evaluate(element => element.getBoundingClientRect().right <= innerWidth), 'Details fit narrow screens');
     if(process.env.BLAH_IDENTITY_SCREENSHOT) await panel.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-settings.png', animations: 'disabled'});
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', {
@@ -394,6 +431,8 @@ try {
     const download = await downloadPromise;
     const backupFile = dir + '/identity.json';
     await download.saveAs(backupFile);
+    await page.keyboard.press('Escape');
+    await identityDetails.waitFor({state: 'detached'});
     const context = await browser.newContext({
       ignoreHTTPSErrors: true
     });
@@ -441,13 +480,11 @@ try {
     assert(await importButton.isVisible(), 'Picking a file must not start import');
     await importButton.press('Enter');
     await restored.getByRole('dialog').waitFor({state: 'detached'});
-    await restored.getByRole('button', {
-      name: 'Download public profile',
-      exact: true
-    }).waitFor();
+    await restored.getByRole('button', {name: 'Identity details', exact: true}).waitFor();
     // Reload to require unlocking the saved identity, then sign in with one action.
     await restored.reload();
-    await savedPicker.fill(aliceIdentity);
+    await savedPicker.fill('alice.example.org');
+    await restored.getByRole('option', {name: 'alice.example.org - ' + aliceIdentity.slice(0, 6), exact: true}).waitFor();
     await savedPicker.press('ArrowDown');
     await savedPicker.press('Enter');
     assert.equal(await restored.getByRole('button', {name: 'Unlock identity', exact: true}).count(), 0);

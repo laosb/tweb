@@ -44,6 +44,8 @@ try {
   });
   assert.equal(created.identity.id.length, 64);
   assert.equal(created.identity.devices.length, 1);
+  assert.equal(created.identity.expiresAt - created.identity.notBefore, 180 * 86400);
+  assert.equal(created.identity.devices[0].expiresAt - created.identity.devices[0].notBefore, 180 * 86400);
   assert(!created.backup.includes('privateKey'));
   assert(!created.backup.includes('test identity password'));
   const checked = await page.evaluate(async() => {
@@ -106,6 +108,55 @@ try {
   assert.equal(restored.id, created.identity.id);
   assert(restored.refused);
   await context.close();
+  // Check the real vault/WASM at the renewal boundary without waiting months.
+  const renewal = await page.evaluate(async(id) => {
+    const realNow = Date.now;
+    const before = (await fixture.identityAction(1, {action: 'inspect'})).identity;
+    const at = before.notBefore + (before.expiresAt - before.notBefore) * .8;
+    await fixture.identityAction(1, {action: 'renewal', renewal: {profileDays: 60, deviceDays: 90, autoRenew: false}});
+    try {
+      Date.now = () => at * 1000;
+      const disabled = (await fixture.identityAction(1, {action: 'unlock', id, password: 'test identity password'})).identity;
+      await fixture.identityAction(1, {action: 'renewal', renewal: {profileDays: 60, deviceDays: 90, autoRenew: true}});
+      const renewed = (await fixture.identityAction(1, {action: 'unlock', id, password: 'test identity password'})).identity;
+      const again = (await fixture.identityAction(1, {action: 'unlock', id, password: 'test identity password'})).identity;
+      const realFetch = window.fetch;
+      let attempts = 0;
+      window.fetch = async() => new Response('', {status: ++attempts < 3 ? 503 : 200});
+      let pendingAfterFailure, published;
+      try {
+        try { await fixture.identityAction(1, {action: 'publisher', publisher: 'https://publisher.example.org/profile'}); } catch{}
+        await fixture.withIdentity(1, async() => {});
+        pendingAfterFailure = (await fixture.identityAction(1, {action: 'inspect'})).identity;
+        await fixture.withIdentity(1, async() => {});
+        published = (await fixture.identityAction(1, {action: 'inspect'})).identity;
+      } finally { window.fetch = realFetch; }
+      if(!pendingAfterFailure.publicationPending || published.publicationPending || attempts !== 3 ||
+        JSON.stringify(published.profile) !== JSON.stringify(renewed.profile)) throw new Error('Publication retry must preserve the renewed profile');
+      return {unchanged: disabled.expiresAt === before.expiresAt, profileDays: (renewed.expiresAt - renewed.notBefore) / 86400,
+        deviceDays: (renewed.devices[0].expiresAt - renewed.devices[0].notBefore) / 86400,
+        pending: renewed.publicationPending, stable: JSON.stringify(again.profile) === JSON.stringify(renewed.profile)};
+    } finally { Date.now = realNow; }
+  }, created.identity.id);
+  assert.deepEqual(renewal, {unchanged: true, profileDays: 60, deviceDays: 90, pending: true, stable: true});
+  // A background renewal catches the boundary without keeping the vault unlocked.
+  await page.clock.install();
+  const timerProfile = await page.evaluate(async() => {
+    await fixture.identityAction(1, {action: 'publisher', publisher: ''});
+    return (await fixture.identityAction(1, {action: 'inspect'})).identity;
+  });
+  const timerBoundary = timerProfile.notBefore + (timerProfile.expiresAt - timerProfile.notBefore) * .8;
+  await page.clock.setSystemTime(new Date((timerBoundary - 30) * 1000));
+  await page.evaluate(id => fixture.identityAction(1, {action: 'unlock', id, password: 'test identity password'}), created.identity.id);
+  await page.clock.runFor(60_000);
+  await page.waitForFunction(async(previous) => (await fixture.identityAction(1, {action: 'inspect'})).identity.notBefore > previous, timerProfile.notBefore);
+  for(let minute = 0; minute < 16; minute++) {
+    await page.clock.runFor(60_000);
+    await page.evaluate(() => fixture.identityAction(1, {action: 'list'}));
+  }
+  assert(await page.evaluate(async() => {
+    try { await fixture.identityAction(1, {action: 'inspect'}); return false; } catch{ return true; }
+  }), 'Background checks must not extend the unlock timeout');
   await page.evaluate(() => fixture.stored('home:1', 'another home'));
   await page.reload();
   assert(await page.evaluate(async() => {
