@@ -1,3 +1,4 @@
+import {fetchProfile} from '@lib/blah/profile';
 import type {BlahConfig} from '@config/blah';
 import type {DCDiscoveryResult} from '@blahdiem/diem';
 import {diemClient, verifySignature} from '@lib/blah/runtime';
@@ -6,7 +7,6 @@ import {bindHomeStorage, migrateHomeStorage} from '@lib/blah/homeStorage';
 
 export type SavedDC = {domain: string, profile: string, version: DCDiscoveryResult};
 const storageKey = (slot: number) => 'dc-profile:' + slot;
-const maximumProfileBytes = 100_000;
 
 export function dcDomain(input: string) {
   const value = input.trim().toLowerCase();
@@ -23,35 +23,9 @@ export async function savedDC(slot = 1) {
 }
 
 export async function fetchDCProfile(domain: string): Promise<Uint8Array> {
-  const response = await fetch(`https://${dcDomain(domain)}/.well-known/blah/profile.cbor`, {
-    credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer',
-    headers: {Accept: 'application/cbor'}, signal: AbortSignal.timeout(15_000)
-  });
-  if(!response.ok) throw new Error('DC profile request failed: HTTP ' + response.status);
-  if(response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/cbor') {
-    await response.body?.cancel();
-    throw new Error('The DC must serve its profile as application/cbor.');
-  }
-  if(Number(response.headers.get('content-length')) > maximumProfileBytes) {
-    await response.body?.cancel();
-    throw new Error('DC profile is too large.');
-  }
-  const reader = response.body?.getReader();
-  if(!reader) throw new Error('The DC returned an empty profile.');
-  const bytes = new Uint8Array(maximumProfileBytes);
-  let size = 0;
-  try {
-    while(true) {
-      const {done, value} = await reader.read();
-      if(done) return bytes.slice(0, size);
-      if(size + value.length > maximumProfileBytes) throw new Error('DC profile is too large.');
-      bytes.set(value, size);
-      size += value.length;
-    }
-  } finally {
-    await reader.cancel();
-    reader.releaseLock();
-  }
+  const profile = await fetchProfile(dcDomain(domain));
+  if(!profile) throw new Error('DC profile request failed: HTTP 404');
+  return profile;
 }
 
 /** WebCrypto accepts SPKI. Wrap PKCS#1's RSA sequence without interpreting its key. */
