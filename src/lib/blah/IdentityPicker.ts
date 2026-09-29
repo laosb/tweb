@@ -25,7 +25,14 @@ export default class IdentityPicker extends InputField {
   private document: Document;
 
   constructor(options: InputFieldOptions, private onSelect: (value: string) => void) {
-    super(options);
+    super({...options, plainText: true, name: 'identity-search', autocomplete: 'off'});
+    // This is a search control, not a login address or phone-number field.
+    const input = this.input as HTMLInputElement;
+    input.type = 'search';
+    input.inputMode = 'text';
+    input.autocapitalize = 'none';
+    input.spellcheck = false;
+    input.setAttribute('autocorrect', 'off');
     this.document = this.input.ownerDocument;
     this.container.classList.add('input-select');
     this.wrapper.classList.add('select-wrapper', 'z-depth-3', 'hide');
@@ -127,8 +134,8 @@ export default class IdentityPicker extends InputField {
 
   private choose(entry: typeof this.entries[number]) {
     this.setValueSilently(entry.option.label);
-    this.onSelect(entry.option.value);
     this.hidePicker();
+    this.onSelect(entry.option.value);
   }
 
   private showPicker = () => {

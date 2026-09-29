@@ -1,9 +1,9 @@
-import {createSignal, For, Show, onMount, onCleanup, createEffect} from 'solid-js';
+import {createSignal, For, Show, onMount, onCleanup, createEffect, JSX} from 'solid-js';
 import Button from '@components/buttonTsx';
 import IdentityPicker from '@lib/blah/IdentityPicker';
 import IdentityInput from '@lib/blah/IdentityInput';
 import showIdentitySetup from '@lib/blah/IdentitySetup';
-import {i18n} from '@lib/langPack';
+import I18n, {i18n} from '@lib/langPack';
 import type {IdentityRequest, IdentityResponse, IdentityView} from '@lib/blah/identity';
 import {encode} from '@lib/blah/vault';
 import createDownloadAnchor from '@helpers/dom/createDownloadAnchor';
@@ -12,31 +12,47 @@ import styles from '@lib/blah/identity.module.scss';
 
 export type IdentityActions = (request: IdentityRequest) => Promise<IdentityResponse>;
 
-export default function IdentityPanel(props: {action: IdentityActions, onIdentity?: (identity: IdentityView) => void}) {
+export default function IdentityPanel(props: {
+  action: IdentityActions,
+  onIdentity?: (identity: IdentityView) => void,
+  onSignIn?: (identity: IdentityView) => Promise<void>,
+  children?: JSX.Element
+}) {
   const [ids, setIDs] = createSignal<string[]>([]);
   const [selected, setSelected] = createSignal('');
   const [identity, setIdentity] = createSignal<IdentityView>();
   const [busy, setBusy] = createSignal(false);
+  const [signingIn, setSigningIn] = createSignal(false);
   const [message, setMessage] = createSignal('');
   let password: HTMLInputElement;
   let publisher: HTMLInputElement;
   let token: HTMLInputElement;
   let device: HTMLInputElement;
+  let cancelled = false;
 
-  const picker = new IdentityPicker({label: 'BlahSavedIdentity', plainText: true,
+  const picker = new IdentityPicker({label: 'BlahSavedIdentity',
     onRawInput: () => {
       setSelected(''); setIdentity(undefined); props.onIdentity?.(undefined);
     }
   }, (id) => {
+    if(id === 'create' || id === 'import') {
+      picker.setValueSilently(selected());
+      showIdentitySetup({mode: id, action: props.action, onIdentity: acceptIdentity});
+      return;
+    }
     setSelected(id);
     setIdentity(undefined);
     props.onIdentity?.(undefined);
     password.value = '';
   });
-  createEffect(() => picker.setOptions(ids().map((id) => ({
-    value: id, label: id, matches: (query) => id.toLowerCase().includes(query.toLowerCase())
-  }))));
-  onCleanup(() => picker.destroy());
+  createEffect(() => picker.setOptions([...ids().map((id) => ({
+    value: id, label: id, matches: (query: string) => id.toLowerCase().includes(query.toLowerCase())
+  })), ...(['create', 'import'] as const).map((mode) => ({
+    value: mode,
+    label: I18n.format(mode === 'create' ? 'BlahCreateIdentity' : 'BlahImportIdentity', true),
+    matches: () => true
+  }))]));
+  onCleanup(() => { cancelled = true; picker.destroy(); });
 
   function acceptIdentity(current: IdentityView) {
     setIdentity(current);
@@ -56,22 +72,27 @@ export default function IdentityPanel(props: {action: IdentityActions, onIdentit
     createDownloadAnchor(url, name, () => setTimeout(() => urls.dispose(), 30_000));
   }
 
-  async function run(request: IdentityRequest) {
-    if(busy()) return;
+  async function run(request?: IdentityRequest) {
+    if(busy() || !selected()) return;
     setBusy(true); setMessage('');
+    setSigningIn(!request);
     try {
-      const result = await props.action({...request, id: selected(), password: password.value});
+      const result = !request && identity() ? {identity: identity()} :
+        await props.action({action: 'unlock', ...request, id: selected(), password: password.value});
+      if(cancelled) return;
       password.value = '';
       if(result.identity) {
         acceptIdentity(result.identity);
       }
       if(result.backup) download(`${identity().domain}-identity.json`, result.backup, 'application/json');
-      if(request.action === 'lock') { setIdentity(undefined); props.onIdentity?.(undefined); }
+      if(request?.action === 'lock') { setIdentity(undefined); props.onIdentity?.(undefined); }
+      if(!request) await props.onSignIn(result.identity);
     } catch(cause) {
       const error = cause as {type?: string, message?: string};
       setMessage(error.type || error.message || 'Identity operation failed.');
     } finally {
       setBusy(false);
+      setSigningIn(false);
     }
   }
 
@@ -79,9 +100,20 @@ export default function IdentityPanel(props: {action: IdentityActions, onIdentit
     <p>{i18n('BlahIdentityCustody')}</p>
     <fieldset disabled={busy()}>
       {picker.container}
-      <IdentityInput label="BlahIdentityPassword" type="password" autocomplete="current-password" ref={(value) => password = value} />
-      <Button primaryFilled disabled={!selected() || busy()} onClick={() => run({action: 'unlock'})} text="BlahUnlockIdentity" />
-      <Button primaryTransparent disabled={busy()} onClick={() => showIdentitySetup({action: props.action, onIdentity: acceptIdentity})} text="BlahIdentitySetup" />
+      <Show when={!identity()}>
+        <IdentityInput label="BlahIdentityPassword" type="password" autocomplete="current-password" ref={(value) => {
+          password = value;
+          value.addEventListener('keydown', (event) => {
+            if(event.key === 'Enter' && !event.isComposing) {
+              event.preventDefault();
+              void run(props.onSignIn ? undefined : {action: 'unlock'});
+            }
+          });
+        }} />
+        <Show when={!props.onSignIn}>
+          <Button primaryFilled disabled={!selected() || busy()} onClick={() => run({action: 'unlock'})} text="BlahUnlockIdentity" />
+        </Show>
+      </Show>
       <Show when={identity()}>{(current) => <>
         <p><strong>{current().domain}</strong><br />Profile expires {new Date(current().expiresAt * 1000).toLocaleString()}</p>
         <p class={styles.identifier}>Identity: {current().id}</p>
@@ -108,6 +140,10 @@ export default function IdentityPanel(props: {action: IdentityActions, onIdentit
         </details>
         <Button primaryTransparent disabled={busy()} onClick={() => run({action: 'lock'})} text="BlahLockIdentity" />
       </>}</Show>
+      {props.children}
+      <Show when={props.onSignIn}>
+        <Button primaryFilled disabled={!selected() || busy()} onClick={() => run()} text={signingIn() ? 'BlahSigningIn' : 'BlahSignIn'} />
+      </Show>
     </fieldset>
     <p role="status" aria-live="polite">{busy() ? 'Working…' : message()}</p>
   </section>;
