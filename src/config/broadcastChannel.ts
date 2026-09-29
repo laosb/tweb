@@ -7,4 +7,5 @@ export type MainBroadcastChannelEvents = {
   // * `dropFlags`: flags switched off in Settings → Experimental, which leave every tab's URL too, or that URL would
   // * turn them on again; a version without it reloads as it is
   reload: void | {dropFlags: string[]};
+  blahLogout: import('@lib/rootScope').BroadcastEvents['logging_out'];
 };

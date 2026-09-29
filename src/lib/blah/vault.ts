@@ -36,6 +36,17 @@ export async function stored<T>(key: string, value?: T): Promise<T> {
   });
 }
 
+/** Keep account moves and legacy home migration atomic within the custody store. */
+export async function storeEntries(entries: [string, unknown][]) {
+  const db = await open();
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction('vault', 'readwrite');
+    for(const [key, value] of entries) transaction.objectStore('vault').put(value, key);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = transaction.onabort = () => reject(transaction.error);
+  });
+}
+
 export async function identityIDs(): Promise<string[]> {
   const db = await open();
   return new Promise((resolve, reject) => {
