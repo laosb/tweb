@@ -8,10 +8,12 @@ import {diem, IdentityInfo, IdentitySecret, SigningKey} from '@lib/blah/wasm';
 
 export type IdentityView = Omit<IdentityInfo, 'proof'> & {domain: string, publisher: string, renewal: RenewalPolicy, publicationPending: boolean};
 export type IdentityRequest = {
-  action: 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'publisher' | 'addDevice' | 'removeDevice' | 'renewal' | 'publication' | 'removeOtherDevices',
+  action: 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'publisher' | 'addDevice' | 'removeDevice' | 'renewal' | 'publication' | 'removeOtherDevices' | 'domains',
   id?: string,
   password?: string,
   domain?: string,
+  domains?: string[],
+  usernameDomains?: string[],
   backup?: string,
   publisher?: string,
   token?: string,
@@ -84,7 +86,7 @@ async function useIdentity<T>(slot: number, action: IdentityOperation<T>, touch 
   const save = async(next: IdentityInfo, pending = true) => {
     secret.profile = encode(new Uint8Array(next.profile));
     secret.publicationPending = pending;
-    await stored('identity:' + current.id, await seal(current.id, secret, current.key, backup.salt));
+    await storeEntries([['identity:' + current.id, await seal(current.id, secret, current.key, backup.salt)], ['domain:' + current.id, secret.domain]]);
   };
   if(maintain && renewalPolicy(secret.renewal).autoRenew) {
     if(renewalDue(info)) {
@@ -168,9 +170,13 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
   }
   if(request.action === 'publication') {
     // Fetch outside the custody lock: a slow host must not delay locking keys.
-    const {domain, profile} = await withIdentity(slot, async(secret, info) => ({domain: secret.domain, profile: info.profile}), false, false);
-    const hosted = await fetchProfile(domain);
-    return {publication: {profile, pending: !hosted || hosted.length !== profile.length || hosted.some((byte, index) => byte !== profile[index])}};
+    const {domains, profile} = await withIdentity(slot, async(_secret, info) => ({domains: info.domains, profile: info.profile}), false, false);
+    let pending = false;
+    for(const domain of domains) {
+      const hosted = await fetchProfile(domain);
+      pending ||= !hosted || hosted.length !== profile.length || hosted.some((byte, index) => byte !== profile[index]);
+    }
+    return {publication: {profile, pending}};
   }
   if(request.action === 'create' || request.action === 'restore' || request.action === 'unlock') {
     return exclusively(async() => {
@@ -231,6 +237,9 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         }, slot);
         secret.profile = encode(new Uint8Array(info.profile));
       }
+    } else if(request.action === 'domains') {
+      info = await diem('domains', secret, {domains: request.domains, usernameDomains: request.usernameDomains}, slot);
+      secret.domain = info.domains[0];
     } else if(request.action === 'publisher') {
       if(request.publisher) publicationURL(request.publisher);
       secret.publisher = request.publisher || '';

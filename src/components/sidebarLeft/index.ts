@@ -1,5 +1,4 @@
 import blah from '@config/blah';
-import {AppBlahIdentityTab} from '@components/solidJsTabs/tabs';
 import {createEffect, createRoot, createSignal, on} from 'solid-js';
 import appImManager from '@lib/appImManager';
 import rootScope from '@lib/rootScope';
@@ -13,7 +12,7 @@ import AppSearchSuper, {SearchSuperMediaType} from '@components/appSearchSuper';
 import {DateData, fillTipDates} from '@helpers/date';
 import {MOUNT_CLASS_TO} from '@config/debug';
 import {AppSettingsTab} from '@components/solidJsTabs';
-import {AppNewChannelTab} from '@components/solidJsTabs/tabs';
+import {AppBlahIdentityTab, AppNewChannelTab} from '@components/solidJsTabs/tabs';
 import {AppContactsTab} from '@components/solidJsTabs/tabs';
 import {AppCallsTab} from '@components/solidJsTabs/tabs';
 import {AppArchivedTab} from '@components/solidJsTabs/tabs';

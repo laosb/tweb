@@ -1,0 +1,30 @@
+import {expect, test} from '@playwright/test';
+import {openStory, preparePopupSandbox} from './popupSandbox.helpers';
+
+test('profile domains can be added, toggled and removed with keyboard and pointer', async({page}) => {
+  await preparePopupSandbox(page);
+  await page.setViewportSize({width: 390, height: 844});
+  expect(await openStory(page, 'blah/identity-details')).toBeNull();
+  const dialog = page.locator('.popup.active').last();
+  const original = dialog.getByRole('group', {name: 'alice.example.org', exact: true});
+  await expect(original.getByRole('button', {name: 'Delete', exact: true})).toBeDisabled();
+  const toggle = original.getByRole('checkbox');
+  await toggle.focus();
+  await page.keyboard.press('Space');
+  await expect(toggle).toBeChecked();
+  await dialog.getByRole('textbox', {name: 'Profile domain', exact: true}).fill('alias.example.org');
+  const add = dialog.getByRole('button', {name: 'Add domain', exact: true});
+  await add.focus();
+  await page.keyboard.press('Enter');
+  const added = dialog.getByRole('group', {name: 'alias.example.org', exact: true});
+  await expect(added).toBeVisible();
+  await added.getByRole('checkbox').click();
+  await expect(added.getByRole('checkbox')).toBeChecked();
+  await added.getByRole('button', {name: 'Delete', exact: true}).click();
+  await expect(added).toHaveCount(0);
+  await expect(original.getByRole('button', {name: 'Delete', exact: true})).toBeDisabled();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+});

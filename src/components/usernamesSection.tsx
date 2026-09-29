@@ -54,7 +54,7 @@ export default function UsernamesSection(props: {
 
   const onUsernameClick = async(username: Username) => {
     if(username.pFlags.editable) {
-      if(!botId) placeCaretAtEnd(props.usernameInputField.input, true, true);
+      if(!botId) placeCaretAtEnd(props.usernameInputField?.input, true, true);
       return;
     }
 
