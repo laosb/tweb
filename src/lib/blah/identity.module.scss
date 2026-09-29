@@ -17,3 +17,10 @@
 .footnote { font-size: 12px; color: var(--secondary-text-color); text-align: center; }
 .pickerInput { white-space: nowrap; overflow: hidden; }
 .pickerIcon { font-size: 24px; color: var(--secondary-text-color); }
+.pickerRow { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.pickerRow > :first-child { flex: 1; min-width: 0; }
+.detailsBody { padding: 0 0 1rem; }
+.detailsBody .identifier { white-space: normal; }
+.lockedDetails { display: grid; gap: 1rem; padding: 1rem; }
+
+.renewalSettings { display: grid; gap: 1rem; padding-top: 1rem; }
