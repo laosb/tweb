@@ -1066,3 +1066,10 @@ export const AppBlahIdentityTab = scaffoldSolidJSTab({
   title: 'BlahBrowserIdentity',
   getComponentModule: () => import('@/lib/blah/IdentitySettings')
 });
+
+export const AppBlahIdentityDetailsTab = scaffoldSolidJSTab<import('@lib/blah/IdentityDetails').DetailsTabPayload>({
+  title: 'BlahIdentityDetails',
+  getComponentModule: () => import('@lib/blah/IdentityDetailsSettings'),
+  onClose() { void this.payload.session.close().catch(console.error); },
+  onCloseAfterTimeout() { this.payload.onReturn?.(); }
+});
