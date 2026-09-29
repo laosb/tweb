@@ -17,6 +17,7 @@ export default function BackupDropzone(props: {disabled: boolean, onFile: (file:
     }
   });
   drop.container.classList.add(styles.dropzone);
+  drop.container.classList.remove('z-depth-1');
   drop.outlineWrapper.remove();
   drop.container.addEventListener('dragover', (event) => { event.preventDefault(); event.stopPropagation(); });
   const input = document.createElement('input');
