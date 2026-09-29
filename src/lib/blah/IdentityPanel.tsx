@@ -52,6 +52,7 @@ export default function IdentityPanel(props: {
     label: I18n.format(mode === 'create' ? 'BlahCreateIdentity' : 'BlahImportIdentity', true),
     matches: () => true
   }))]));
+  createEffect(() => picker.setDisabled(busy()));
   onCleanup(() => { cancelled = true; picker.destroy(); });
 
   function acceptIdentity(current: IdentityView) {
@@ -97,7 +98,6 @@ export default function IdentityPanel(props: {
   }
 
   return <section class={styles.panel} aria-label="Browser identities">
-    <p>{i18n('BlahIdentityCustody')}</p>
     <fieldset disabled={busy()}>
       {picker.container}
       <Show when={!identity()}>
@@ -144,6 +144,7 @@ export default function IdentityPanel(props: {
       <Show when={props.onSignIn}>
         <Button primaryFilled disabled={!selected() || busy()} onClick={() => run()} text={signingIn() ? 'BlahSigningIn' : 'BlahSignIn'} />
       </Show>
+      <Show when={!props.onSignIn}><p class={styles.footnote}>{i18n('BlahIdentityCustody')}</p></Show>
     </fieldset>
     <p role="status" aria-live="polite">{busy() ? 'Working…' : message()}</p>
   </section>;

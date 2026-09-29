@@ -34,7 +34,7 @@ export function diem(operation: string, secret: IdentitySecret, extra: Record<st
       const probe = crypto.getRandomValues(new Uint8Array(32));
       const publicKey = await crypto.subtle.importKey('raw', decode(secret[role].publicKey), 'Ed25519', false, ['verify']);
       if(!await crypto.subtle.verify('Ed25519', publicKey, await crypto.subtle.sign('Ed25519', keys[role], probe), probe)) {
-        throw new Error('Identity backup contains mismatched keys.');
+        throw new Error('Identity file contains mismatched keys.');
       }
     }
     const backend: CryptoBackend = {
