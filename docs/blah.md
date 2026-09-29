@@ -63,8 +63,9 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
 
 ## Create, publish and sign in
 
-1. Open the **Create or restore an identity** dialog, choose a password of at least 12
-   characters and enter a domain you control, such as `alice.example.org`.
+1. Choose **Create identity** in the **Saved identity** picker to open its dialog.
+   Choose a password of at least 12 characters and enter a domain you control,
+   such as `alice.example.org`.
 2. Create the identity and download its encrypted backup. The password is separate
    from any Blah account/SRP password; losing both browser storage and the backup
    means losing this device's keys.
@@ -76,8 +77,9 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
    bearer token. The endpoint must allow the web client's origin through CORS and
    publish the supplied public bytes at the domain above. The token stays in the
    encrypted vault. The client sends no private keys to this endpoint.
-5. Select **Sign in to Blah**. The DC may request admission email verification or
-   an account password. A new identity proceeds to the name/signup screen.
+5. Select **Sign in to Blah**. For a saved, locked identity, enter its identity password;
+   the same action unlocks it and starts sign-in. The DC may request admission email
+   verification or an account password. A new identity proceeds to the name/signup screen.
 6. Signup assigns an account number and saves a new signed profile. An automatic
    publisher receives it before login finishes. For manual hosting, select
    **Refresh profile**, download/publish the new file, and retry sign-in.
@@ -99,9 +101,11 @@ This version uses explicit renewal, not an unattended hosting service.
 **Lock identity** (or 15 minutes without an identity operation) discards the in-memory unlock key without logging out of the
 chat session. Reloading the worker also requires unlocking before the next identity
 operation. Backups contain the identity and current device keys and publisher
-settings, encrypted with PBKDF2-SHA-256/AES-256-GCM. Restoring a backup restores that
-same device; it does not enroll a distinct device. In the creation/restoration dialog,
-drop the encrypted backup onto the file dropzone or choose it with **Choose backup file**.
+settings, encrypted with PBKDF2-SHA-256/AES-256-GCM. Importing a backup recovers that
+same device; it does not enroll a distinct device. Choose **Import identity from file**
+in the saved-identity picker to open its own dialog, then drop the encrypted backup
+onto the file dropzone or choose it with **Choose backup file**. Enter its password
+and select **Import identity from file** to start the import.
 An existing local identity cannot
 be overwritten by an older backup. Keep a current backup after profile changes.
 Ordinary chat logout does not delete identity custody. Clearing all site data does.
@@ -171,7 +175,8 @@ requests, gate cache loading, expose the manager action and mount the identity U
 Shared code/password/signup screens keep handling ordinary Telegram responses.
 Identity views use Web K's Material buttons, text fields, popup lifecycle, settings
 scaffold and chat-upload dropzone. The saved-identity picker is a Blah-owned
-adaptation of the phone-region picker under `src/lib/blah/`; the upstream picker
+search combobox under `src/lib/blah/`, reusing the phone-region picker's presentation;
+its input explicitly uses search semantics. The upstream picker
 stays unchanged to keep rebases local.
 
 Build-time configuration and branding remain in `scripts/blah-config.mjs` and
