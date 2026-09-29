@@ -1,3 +1,5 @@
+import bytesFromHex from '@helpers/bytes/bytesFromHex';
+import {fetchProfile} from '@lib/blah/profile';
 import {renewalDue, renewalPolicy, RenewalPolicy} from '@lib/blah/renewal';
 import blah, {ensureBlahConfig, getBlahConfig} from '@config/blah';
 import {bindHomeStorage} from '@lib/blah/homeStorage';
@@ -6,7 +8,7 @@ import {diem, IdentityInfo, IdentitySecret, SigningKey} from '@lib/blah/wasm';
 
 export type IdentityView = Omit<IdentityInfo, 'proof'> & {domain: string, publisher: string, renewal: RenewalPolicy, publicationPending: boolean};
 export type IdentityRequest = {
-  action: 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'publisher' | 'addDevice' | 'removeDevice' | 'renewal',
+  action: 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'publisher' | 'addDevice' | 'removeDevice' | 'renewal' | 'publication' | 'removeOtherDevices',
   id?: string,
   password?: string,
   domain?: string,
@@ -17,7 +19,7 @@ export type IdentityRequest = {
   renewal?: RenewalPolicy
 };
 export type IdentitySummary = {id: string, domain?: string};
-export type IdentityResponse = {ids?: string[], identities?: IdentitySummary[], identity?: IdentityView, backup?: string};
+export type IdentityResponse = {ids?: string[], identities?: IdentitySummary[], identity?: IdentityView, backup?: string, publication?: {profile: number[], pending: boolean}};
 type Unlocked = {id: string, key: CryptoKey, until: number, timer?: ReturnType<typeof setTimeout>, renewalTimer?: ReturnType<typeof setTimeout>};
 const unlocked = new Map<number, Unlocked>();
 
@@ -111,7 +113,7 @@ function scheduleRenewal(slot: number) {
       await withIdentity(slot, async() => {}, false);
     } catch{
       // Keep pending publication durable and retry while unlocked. Foreground
-      // operations surface the error and allow manual download/publication.
+      // operations surface the error and allow manual export/publication.
     } finally {
       if(unlocked.get(slot) === current) scheduleRenewal(slot);
     }
@@ -140,7 +142,7 @@ function publicationURL(value: string) {
 }
 
 export async function publish(secret: IdentitySecret) {
-  if(!secret.publisher) return; // Manual hosting uses the downloadable profile.
+  if(!secret.publisher) return; // Manual hosting uses the exported profile.
   const url = publicationURL(secret.publisher);
   const response = await fetch(url, {method: 'PUT', redirect: 'error', credentials: 'omit', cache: 'no-store',
     signal: AbortSignal.timeout(15_000),
@@ -150,6 +152,12 @@ export async function publish(secret: IdentitySecret) {
 }
 
 export async function identityAction(slot: number, request: IdentityRequest): Promise<IdentityResponse> {
+  if(request.action === 'lock') {
+    return exclusively(async() => {
+      if(!request.id || unlocked.get(slot)?.id === request.id) lock(slot);
+      return {};
+    });
+  }
   await ensureBlahConfig(slot);
   if(!getBlahConfig(slot)?.home) throw new Error('This build needs a decentralized Blah bootstrap.');
   await bindHomeStorage(getBlahConfig(slot).home, slot);
@@ -158,7 +166,12 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
     const identities = await Promise.all(ids.map(async(id) => ({id, domain: await stored<string>('domain:' + id)})));
     return {ids, identities};
   }
-  if(request.action === 'lock') { lock(slot); return {}; }
+  if(request.action === 'publication') {
+    // Fetch outside the custody lock: a slow host must not delay locking keys.
+    const {domain, profile} = await withIdentity(slot, async(secret, info) => ({domain: secret.domain, profile: info.profile}), false, false);
+    const hosted = await fetchProfile(domain);
+    return {publication: {profile, pending: !hosted || hosted.length !== profile.length || hosted.some((byte, index) => byte !== profile[index])}};
+  }
   if(request.action === 'create' || request.action === 'restore' || request.action === 'unlock') {
     return exclusively(async() => {
       let backup: SealedIdentity;
@@ -203,6 +216,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
     });
   }
   return withIdentity(slot, async(secret, current, save) => {
+    if(request.id && current.id !== request.id) throw new Error('Unlock your browser identity to continue.');
     if(request.action === 'inspect') return {identity: view(secret, current)};
     if(request.action === 'backup') return {backup: JSON.stringify(await stored('identity:' + current.id), null, 2)};
     let info = current;
@@ -210,6 +224,13 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
       secret.renewal = renewalPolicy(request.renewal);
       await save(info, !!secret.publicationPending);
       return {identity: view(secret, info)};
+    } else if(request.action === 'removeOtherDevices') {
+      for(const device of current.devices.filter((entry) => !entry.current)) {
+        info = await diem('removeDevice', secret, {
+          device: bytesFromHex(device.id)
+        }, slot);
+        secret.profile = encode(new Uint8Array(info.profile));
+      }
     } else if(request.action === 'publisher') {
       if(request.publisher) publicationURL(request.publisher);
       secret.publisher = request.publisher || '';
@@ -222,7 +243,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         throw new Error('Invalid device identifier.');
       }
       info = await diem(request.action, secret, request.device ? {
-        device: request.action === 'removeDevice' ? Uint8Array.from(request.device.match(/../g), (h) => parseInt(h, 16)) : decode(request.device)
+        device: request.action === 'removeDevice' ? bytesFromHex(request.device) : decode(request.device)
       } : {}, slot);
     }
     await save(info); // Durable first, so publication failures are retryable without losing keys/revisions.
