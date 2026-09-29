@@ -4,6 +4,7 @@ import MediaHeader from '@components/mediaHeader';
 import blah, {getBlahConfig} from '@config/blah';
 import {getCurrentAccount} from '@lib/accounts/getCurrentAccount';
 import HomeDCCard from '@lib/blah/HomeDCCard';
+import IdentityInput from '@lib/blah/IdentityInput';
 import IdentityPanel from '@lib/blah/IdentityPanel';
 import type {IdentityView} from '@lib/blah/identity';
 import AuthCard from '@/pages/AuthCard';
@@ -43,7 +44,7 @@ export default function BlahSignInCard() {
     <MediaHeader.Subtitle>Sign in with an identity held in your browser.</MediaHeader.Subtitle>
   </MediaHeader>}>
     <IdentityPanel action={(request) => flow.managers.appAccountManager.blahIdentity(request)} onIdentity={setIdentity} />
-    <Show when={needsEmail()}><label>Admission email<input ref={email} type="email" autocomplete="email" /></label></Show>
+    <Show when={needsEmail()}><IdentityInput label="BlahAdmissionEmail" type="email" autocomplete="email" ref={(value) => email = value} /></Show>
     <div class={styles.errorLabel} role="alert">{error()}</div>
     <Button class="btn-primary btn-color-primary" disabled={!identity() || busy()} onClick={login}>
       {busy() ? 'Signing in…' : 'Sign in to Blah'}
