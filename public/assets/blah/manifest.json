@@ -23,15 +23,15 @@
     },
     "diem.wasm": {
       "bytes": 352460,
-      "sha256": "8cf7cdfea7c77215000604b2f71b0e2e30a84c83438fb984886c9e203d9cc8f3"
+      "sha256": "08c286ed8b62f0350f9f016b858a24d242c3f2914cfc7e3138af67dd3b894874"
     },
     "diem.wasm.gz": {
-      "bytes": 158567,
-      "sha256": "f2612a3f0b006306fa04c8def6d583543cf3714439c7de18f08a665d7d7b9b59"
+      "bytes": 158571,
+      "sha256": "8d069954595f34740a0a49fe0c2daa86876674cae6e25366a2ae7831efd50f66"
     },
     "diem.wasm.br": {
-      "bytes": 127649,
-      "sha256": "fb47e7632097cc482f41b546482963b1d5fce772e5026e1cd96d49d7dcd4e231"
+      "bytes": 127555,
+      "sha256": "4e0798f30c03519dbf4f0c681557893336c7a23c0d0a009bb53632886bce6d43"
     },
     "diem.d.ts": {
       "bytes": 1143,
