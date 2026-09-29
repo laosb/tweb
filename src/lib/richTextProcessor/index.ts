@@ -5,6 +5,7 @@
  * https://github.com/zhukov/webogram/blob/master/LICENSE
  */
 
+import blah from '@config/blah';
 import emojiRegExp from '@vendor/emoji/regex';
 import {MessageEntity} from '@layer';
 
@@ -57,7 +58,8 @@ export const URL_REG_EXP = URL_PROTOCOL_REG_EXP_PART +
   // resource path
   '(?:/(?:\\S{0,255}[^\\s.;,(\\[\\]{}<>"\'])?)?';
 export const URL_PROTOCOL_REG_EXP = new RegExp('^' + URL_PROTOCOL_REG_EXP_PART.slice(0, -1), 'i');
-export const USERNAME_REG_EXP = '[a-zA-Z\\d_]{5,32}';
+const DOMAIN_USERNAME_REG_EXP = '[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+';
+export const USERNAME_REG_EXP = blah ? '(?:' + DOMAIN_USERNAME_REG_EXP + '|[a-zA-Z\\d_]{3,32})' : '[a-zA-Z\\d_]{5,32}';
 // export const TIMESTAMP_REG_EXP = '(?:\\s|^)((?:\\d{1,2}:)?(?:[0-5]?[0-9]):(?:[0-5][0-9]))(?:\\s|$)';
 export const TIMESTAMP_REG_EXP = '(?:\\s|^)((?:(\\d{1,2}):(?:[0-5]?[0-9])|(?:\\d{1,2}|\\d{3,})):(?:[0-5][0-9]))(?:\\s|$)';
 export const BOT_COMMAND_REG_EXP = '\\/([a-zA-Z\\d_]{1,32})(?:@(' + USERNAME_REG_EXP + '))?(\\b|$)';
