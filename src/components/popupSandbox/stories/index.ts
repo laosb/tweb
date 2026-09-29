@@ -17,3 +17,4 @@ import './calls';
 import './callRating';
 import './richEditor';
 import './memberTags';
+import './blah';
