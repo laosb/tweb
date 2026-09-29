@@ -1,7 +1,7 @@
 const lang = {
   'BlahDCConnect': 'Connect to Blah',
   'BlahDCDomain': 'DC domain',
-  'BlahDCDescription': 'Enter your home DC’s domain. Blah will verify its public profile and remember this home in your browser.',
+  'BlahDCDescription': 'Enter your home DC’s domain. Blah will verify its public profile and remember it for this account.',
   'BlahDCLoading': 'Fetching and verifying the DC profile…',
   'BlahDCFailed': 'Could not connect to this DC. Check the domain and try again.',
   'Animations': 'Animations',
