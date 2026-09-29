@@ -1,7 +1,7 @@
 # Blah browser identities
 
 The Blah build uses Web K's MTProto transport with browser-held Diem identities.
-It creates Ed25519 identity/device keys, encrypts local custody and backups with a
+It creates Ed25519 identity/device keys, encrypts local custody and identity files with a
 separate identity password, and compiles profile/proof rules from the pinned
 BlahDiem Swift package to WASM. Private keys never go to a DC or profile publisher.
 An ordinary Telegram build keeps the upstream login flow.
@@ -66,8 +66,8 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
 1. Choose **Create identity** in the **Saved identity** picker to open its dialog.
    Choose a password of at least 12 characters and enter a domain you control,
    such as `alice.example.org`.
-2. Create the identity and download its encrypted backup. The password is separate
-   from any Blah account/SRP password; losing both browser storage and the backup
+2. Create the identity and download its encrypted identity file. The password is separate
+   from any Blah account/SRP password; losing both browser storage and the identity file
    means losing this device's keys.
 3. Download the public profile and serve it at
    `https://alice.example.org/.well-known/blah/profile.cbor` with `application/cbor`.
@@ -92,7 +92,7 @@ retry. There is no email-only, phone-number or QR identity login.
 
 **Browser identity** opens as a normal settings page after login, from Settings or
 the menu item immediately below the account controls. Choose a saved identity with
-the searchable picker and unlock it to export an encrypted backup, renew its profile/certificates, or authorize/revoke
+the searchable picker and unlock it to export an encrypted identity file, renew its profile/certificates, or authorize/revoke
 other devices by their public keys. Publish every changed profile. Profiles expire
 after one day; use **Renew profile and certificates** and publish before expiry
 (or renew and sign in again after expiry). Device certificates last at most 30 days.
@@ -100,15 +100,17 @@ This version uses explicit renewal, not an unattended hosting service.
 
 **Lock identity** (or 15 minutes without an identity operation) discards the in-memory unlock key without logging out of the
 chat session. Reloading the worker also requires unlocking before the next identity
-operation. Backups contain the identity and current device keys and publisher
-settings, encrypted with PBKDF2-SHA-256/AES-256-GCM. Importing a backup recovers that
+operation. Identity files contain the identity and current device keys and publisher
+settings, encrypted with PBKDF2-SHA-256/AES-256-GCM. Importing an identity file recovers that
 same device; it does not enroll a distinct device. Choose **Import identity from file**
-in the saved-identity picker to open its own dialog, then drop the encrypted backup
-onto the file dropzone or choose it with **Choose backup file**. Enter its password
+in the saved-identity picker to open its own dialog, then drop the identity file
+onto the file area or click that area to choose one. Enter its password below the file area
 and select **Import identity from file** to start the import.
 An existing local identity cannot
-be overwritten by an older backup. Keep a current backup after profile changes.
-Ordinary chat logout does not delete identity custody. Clearing all site data does.
+be overwritten by an older identity file. Keep a current copy after profile changes.
+Ordinary chat logout does not delete identity custody. Clearing all site data does,
+and browsers may clear it after inactivity. Keep a copy of your identity and key files;
+the identity dialogs remind you below their main action button. Keys are never uploaded.
 
 ## Build and verify the WASM adapter
 
@@ -175,8 +177,8 @@ requests, gate cache loading, expose the manager action and mount the identity U
 Shared code/password/signup screens keep handling ordinary Telegram responses.
 Identity views use Web K's Material buttons, text fields, popup lifecycle, settings
 scaffold and chat-upload dropzone. The saved-identity picker is a Blah-owned
-search combobox under `src/lib/blah/`, reusing the phone-region picker's presentation;
-its input explicitly uses search semantics. The upstream picker
+search combobox under `src/lib/blah/`, reusing the phone-region picker's presentation
+and Web K's editable-text control to avoid native form autofill suggestions. The upstream picker
 stays unchanged to keep rebases local.
 
 Build-time configuration and branding remain in `scripts/blah-config.mjs` and

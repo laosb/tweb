@@ -218,9 +218,10 @@ try {
   try {
     async function signUp(page, slot, domain, name, publisher) {
       const picker = page.getByRole('combobox', {name: 'Saved identity', exact: true});
+      assert.equal(await page.getByText('Your keys are never uploaded.', {exact: false}).count(), 0);
       await picker.fill('create');
       await page.getByRole('option', {name: 'Create identity', exact: true}).click();
-      assert.equal(await page.getByRole('dialog').getByLabel('Encrypted backup', {exact: true}).count(), 0);
+      assert.equal(await page.getByRole('dialog').getByLabel('Identity file', {exact: true}).count(), 0);
       await page.getByRole('dialog').getByLabel('Identity password', {exact: true}).fill('test identity password');
       await page.getByLabel('Profile domain', {
         exact: true
@@ -308,7 +309,9 @@ try {
     const panel = page.getByRole('region', {name: 'Browser identities'});
     await panel.waitFor();
     const opener = panel.getByRole('combobox', {name: 'Saved identity', exact: true});
-    assert.equal(await opener.getAttribute('type'), 'search');
+    assert.equal(await opener.evaluate(element => element.tagName), 'DIV');
+    assert.equal(await opener.getAttribute('contenteditable'), 'true');
+    assert.equal(await opener.getAttribute('autocomplete'), 'off');
     assert.equal(await opener.getAttribute('inputmode'), 'text');
     await opener.focus();
     await opener.press('End');
@@ -326,10 +329,19 @@ try {
     await opener.press('End');
     await opener.press('Enter');
     await dialog.waitFor();
-    // Finish the popup's finite transitions before measuring text contrast.
-    await dialog.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT, animations: 'disabled'});
+    assert.equal(await dialog.locator('.drop-outline-wrapper').count(), 0);
+    const footnote = dialog.getByText('Your keys are never uploaded.', {exact: false});
+    assert.equal(await footnote.evaluate(element => getComputedStyle(element).textAlign), 'center');
+    const fileBounds = await dialog.locator('.drop').boundingBox();
+    const passwordBounds = await dialog.getByLabel('Identity password', {exact: true}).boundingBox();
+    assert(fileBounds.y + fileBounds.height <= passwordBounds.y, 'File selection precedes password entry');
+    const submitBounds = await dialog.getByRole('button', {name: 'Import identity from file', exact: true}).boundingBox();
+    const footnoteBounds = await footnote.boundingBox();
+    assert(submitBounds.y + submitBounds.height <= footnoteBounds.y, 'Custody footnote follows the main button');
     // Shared controls use the theme palette; check contrast in increased-contrast mode.
     await page.evaluate(async() => { await window.useAppSettings()[1]('increaseContrast', true); window.themeController.setTheme(); });
+    // Finish popup and theme transitions before measuring text contrast.
+    await dialog.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT, animations: 'disabled'});
     const accessibility = await new AxeBuilder({page}).include('[role="dialog"]').analyze();
     assert.deepEqual(accessibility.violations.map(({id, nodes}) => ({id, targets: nodes.map(n => n.target)})), []);
     await page.evaluate(async() => { await window.useAppSettings()[1]('increaseContrast', false); window.themeController.setTheme(); });
@@ -363,7 +375,7 @@ try {
     if(process.env.BLAH_IDENTITY_SCREENSHOT) await panel.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-settings.png', animations: 'disabled'});
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', {
-      name: 'Download encrypted backup',
+      name: 'Download identity file',
       exact: true
     }).click();
     const download = await downloadPromise;
@@ -388,9 +400,13 @@ try {
     await savedPicker.fill('import');
     await restored.getByRole('option', {name: 'Import identity from file', exact: true}).click();
     assert.equal(await restored.getByRole('dialog').getByLabel('Profile domain', {exact: true}).count(), 0);
-    await restored.getByLabel('Encrypted backup', {
-      exact: true
-    }).setInputFiles({name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('invalid backup')});
+    const fileDropzone = restored.getByRole('dialog').getByRole('button', {name: /^Identity file/});
+    const invalidFile = {name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('invalid identity file')};
+    for(const activate of [() => fileDropzone.click(), () => fileDropzone.press('Space')]) {
+      const chooser = restored.waitForEvent('filechooser');
+      await activate();
+      await (await chooser).setFiles(invalidFile);
+    }
     const importButton = restored.getByRole('dialog').getByRole('button', {name: 'Import identity from file', exact: true});
     assert(await importButton.isDisabled(), 'Import requires a password');
     // Supplying a password must not start import until explicitly submitted.

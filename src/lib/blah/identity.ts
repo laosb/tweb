@@ -64,7 +64,7 @@ export async function withIdentity<T>(slot: number, action: (secret: IdentitySec
     const backup = await stored<SealedIdentity>('identity:' + current.id);
     const secret = await unseal<IdentitySecret>(backup, current.key);
     const info = await diem('inspect', secret, {}, slot);
-    if(info.id !== current.id) throw new Error('Identity backup mismatch.');
+    if(info.id !== current.id) throw new Error('Identity file mismatch.');
     const binding = await stored<string>('slot:' + slot);
     if(binding && binding !== info.namespace) throw new Error('This account slot belongs to another identity. Use another account slot.');
     return action(secret, info, async(next) => {
@@ -129,13 +129,13 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         secret.profile = encode(new Uint8Array(info.profile));
         backup = await seal(info.id, secret, key, encode(salt));
       } else {
-        if(request.backup && request.backup.length > 600_000) throw new Error('Backup is too large.');
+        if(request.backup && request.backup.length > 600_000) throw new Error('Identity file is too large.');
         backup = request.action === 'restore' ? JSON.parse(request.backup) : await stored('identity:' + request.id);
         validateBackup(backup);
         key = await passwordKey(request.password || '', decode(backup.salt));
         secret = await unseal<IdentitySecret>(backup, key);
         info = await diem('inspect', secret, {}, slot);
-        if(info.id !== backup.id) throw new Error('Identity backup mismatch.');
+        if(info.id !== backup.id) throw new Error('Identity file mismatch.');
         // Never roll an existing vault back to an older device generation/revision.
         if(request.action === 'restore' && await stored('identity:' + backup.id)) {
           throw new Error('This identity already exists here. Unlock its current copy instead.');
