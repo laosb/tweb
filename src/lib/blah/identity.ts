@@ -1,4 +1,4 @@
-import blah, {ensureBlahConfig} from '@config/blah';
+import blah, {ensureBlahConfig, getBlahConfig} from '@config/blah';
 import {bindHomeStorage} from '@lib/blah/homeStorage';
 import {decode, encode, exclusively, identityIDs, passwordKey, seal, SealedIdentity, stored, unseal, validateBackup} from '@lib/blah/vault';
 import {diem, IdentityInfo, IdentitySecret, SigningKey} from '@lib/blah/wasm';
@@ -17,12 +17,12 @@ export type IdentityRequest = {
 export type IdentityResponse = {ids?: string[], identity?: IdentityView, backup?: string};
 type Unlocked = {id: string, key: CryptoKey, until: number, timer?: ReturnType<typeof setTimeout>};
 const unlocked = new Map<number, Unlocked>();
-let homeReady: Promise<void>;
 
 export async function requireHomeStorage() {
-  await ensureBlahConfig();
-  if(!blah?.home) return;
-  return homeReady ??= bindHomeStorage(blah.home);
+  if(!blah?.discovery && !blah?.home) return;
+  for(let slot = 1; slot <= 4; slot++) {
+    await bindHomeStorage(getBlahConfig(slot)?.home, slot);
+  }
 }
 
 async function signingKey(): Promise<SigningKey> {
@@ -63,7 +63,7 @@ export async function withIdentity<T>(slot: number, action: (secret: IdentitySec
     const current = session(slot);
     const backup = await stored<SealedIdentity>('identity:' + current.id);
     const secret = await unseal<IdentitySecret>(backup, current.key);
-    const info = await diem('inspect', secret);
+    const info = await diem('inspect', secret, {}, slot);
     if(info.id !== current.id) throw new Error('Identity backup mismatch.');
     const binding = await stored<string>('slot:' + slot);
     if(binding && binding !== info.namespace) throw new Error('This account slot belongs to another identity. Use another account slot.');
@@ -83,7 +83,7 @@ export async function bindIdentity(slot: number) {
 
 export async function requireAccountBinding(slot: number, signedIn: boolean) {
   await requireHomeStorage();
-  if(!blah?.home) return;
+  if(!blah?.discovery && !getBlahConfig(slot)?.home) return;
   if(signedIn && !await stored<string>('slot:' + slot)) {
     throw new Error('This cached authorization has no Diem identity binding. Use a fresh browser origin.');
   }
@@ -106,8 +106,9 @@ export async function publish(secret: IdentitySecret) {
 }
 
 export async function identityAction(slot: number, request: IdentityRequest): Promise<IdentityResponse> {
-  if(!blah?.home) throw new Error('This build needs a decentralized Blah bootstrap.');
-  await requireHomeStorage();
+  await ensureBlahConfig(slot);
+  if(!getBlahConfig(slot)?.home) throw new Error('This build needs a decentralized Blah bootstrap.');
+  await bindHomeStorage(getBlahConfig(slot).home, slot);
   if(request.action === 'list') return {ids: await identityIDs()};
   if(request.action === 'lock') { lock(slot); return {}; }
   if(request.action === 'create' || request.action === 'restore' || request.action === 'unlock') {
@@ -124,7 +125,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         const salt = crypto.getRandomValues(new Uint8Array(16));
         key = await passwordKey(request.password || '', salt);
         secret = {domain, profile: '', identity: await signingKey(), device: await signingKey()};
-        info = await diem('create', secret);
+        info = await diem('create', secret, {}, slot);
         secret.profile = encode(new Uint8Array(info.profile));
         backup = await seal(info.id, secret, key, encode(salt));
       } else {
@@ -133,7 +134,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         validateBackup(backup);
         key = await passwordKey(request.password || '', decode(backup.salt));
         secret = await unseal<IdentitySecret>(backup, key);
-        info = await diem('inspect', secret);
+        info = await diem('inspect', secret, {}, slot);
         if(info.id !== backup.id) throw new Error('Identity backup mismatch.');
         // Never roll an existing vault back to an older device generation/revision.
         if(request.action === 'restore' && await stored('identity:' + backup.id)) {
@@ -168,7 +169,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
       }
       info = await diem(request.action, secret, request.device ? {
         device: request.action === 'removeDevice' ? Uint8Array.from(request.device.match(/../g), (h) => parseInt(h, 16)) : decode(request.device)
-      } : {});
+      } : {}, slot);
     }
     await save(info); // Durable first, so publication failures are retryable without losing keys/revisions.
     await publish(secret);
@@ -179,7 +180,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
 export async function numberIdentity(slot: number, account: string) {
   await withIdentity(slot, async(secret, info, save) => {
     if(info.account && info.account !== account) throw new Error('The DC returned a different identity account.');
-    if(!info.account) await save(await diem('account', secret, {account}));
+    if(!info.account) await save(await diem('account', secret, {account}, slot));
     await publish(secret);
   });
 }

@@ -1,3 +1,4 @@
+import blah from '@config/blah';
 import ServiceMessagePort from '@lib/serviceWorker/serviceMessagePort';
 import App from '@config/app';
 import {MOUNT_CLASS_TO} from '@config/debug';
@@ -155,7 +156,8 @@ export class AppManagersManager {
       for(let i = 1; i < accountNumber; i++) {
         const otherAccountNumber = i as ActiveAccountNumber;
         const accountData = await AccountController.get(otherAccountNumber);
-        if(accountData.userId === userId) {
+        if(accountData.userId === userId && (!blah ||
+          await (await import('@lib/blah/homeStorage')).accountsShareHome(accountNumber, otherAccountNumber))) {
           const managersByAccount = await this.getManagersByAccount();
           managersByAccount[accountNumber].apiManager.logOut(otherAccountNumber);
         }
