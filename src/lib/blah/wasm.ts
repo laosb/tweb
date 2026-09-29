@@ -52,7 +52,7 @@ export function diem(operation: string, secret: IdentitySecret, extra: Record<st
       dc: Array.from(Uint8Array.from(blah.home.identity.match(/../g), (hex) => parseInt(hex, 16))),
       dcDomain: blah.home.domain, generation: blah.home.generation,
       account: null, device: null, challenge: null, query: null, keyID: null, sessionID: null, expiresAt: null,
-      challengeKind: null, approvedChallenge: null,
+      challengeKind: null, approvedChallenge: null, domains: null, usernameDomains: null,
       ...extra}, backend);
   });
   queue = run.catch(() => {});

@@ -168,7 +168,7 @@ renewal, recovery and account-slot isolation without contacting Telegram.
 The server fixture additionally builds the Blah client, starts two disposable debug
 Teleblah DCs, and checks domain discovery with a signed profile, its exact WebSocket path/query,
 endpoint rotation with another tab open, accounts on two independent homes, sign-in
-keyboard/error handling and Axe (contrast in increased-contrast mode), signup, public profile publication, reload and restored-device
+keyboard/error handling and Axe (with `?a11y=1`, contrast in increased-contrast mode), signup, public profile publication, reload and restored-device
 login over PFS through the normal shared worker, plus dialog keyboard containment, focus restoration, narrow-screen
 layout and Axe checks. Screen-reader and touch-device testing remain manual.
 It uses Teleblah's test-only profile-directory transport; production
@@ -211,3 +211,15 @@ Build-time configuration and branding remain in `scripts/blah-config.mjs` and
 without editing upstream language sources, protocol identifiers or user content.
 Blah uses bundled language packs. Rebuild on application-credential, operator-bootstrap
 or push-key changes; discovered DC endpoints refresh at runtime.
+
+## Domain usernames
+
+Identity Manager lists each signed profile domain with a **Use as username** toggle.
+Add or remove domains there, keeping at least one discovery domain, and publish the new
+exported profile at every listed domain. Send `/check_profile` to the service account
+named after your DC domain to refresh availability. The DC checks at most 15 domains
+by default; its administrator can change that limit.
+
+In **Edit Profile**, enable the verified domains you want to display and drag active
+usernames to set their order. New verified names start hidden. These use Telegram's
+collectible-username controls; Blah does not offer an editable regular username.
