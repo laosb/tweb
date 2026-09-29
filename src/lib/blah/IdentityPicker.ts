@@ -107,7 +107,9 @@ export default class IdentityPicker extends InputField {
       element.style.gridTemplateColumns = option.icon ? '40px minmax(0, 1fr)' : 'minmax(0, 1fr)';
       if(option.icon) element.append(Icon(option.icon, styles.pickerIcon));
       const label = document.createElement('span');
+      label.classList.add(styles.pickerLabel);
       label.textContent = option.label;
+      label.title = option.label;
       element.append(label);
       const entry = {option, element};
       element.addEventListener('mousedown', (event) => event.preventDefault());
