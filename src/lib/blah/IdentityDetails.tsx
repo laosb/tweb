@@ -86,13 +86,13 @@ function IdentityDetails(props: DetailsProps) {
   return <div class={styles.panel}>
     <fieldset disabled={busy()}>
       <Show when={identity()} fallback={<form class={styles.lockedDetails} onSubmit={(event) => { event.preventDefault(); void run({action: 'unlock'}); }}>
-        <Row><Row.Title>{props.summary.domain}</Row.Title><Row.Subtitle class={styles.identifier}><code>{props.summary.id}</code></Row.Subtitle></Row>
+        <Row><Row.Title>{props.summary.domain}</Row.Title><Row.Subtitle><code class={styles.identifier} title={props.summary.id}>{props.summary.id}</code></Row.Subtitle></Row>
         <IdentityInput label="BlahIdentityPassword" type="password" autocomplete="current-password" ref={(value) => password = value} />
         <Button primaryFilled disabled={busy()} onClick={() => run({action: 'unlock'})} text="BlahUnlockIdentity" />
       </form>}>
         <Section noShadow noMarginBottom noDelimiter>
           <Row><Row.Icon icon="username" /><Row.Title>{identity().domain}</Row.Title><Row.Subtitle>{i18n('BlahProfileDomain')}</Row.Subtitle></Row>
-          <Row><Row.Icon icon="key" /><Row.Title class={styles.identifier}><code>{identity().id}</code></Row.Title><Row.Subtitle>{i18n('BlahIdentityID')}</Row.Subtitle></Row>
+          <Row><Row.Icon icon="key" /><Row.Title><code class={styles.identifier} title={identity().id}>{identity().id}</code></Row.Title><Row.Subtitle>{i18n('BlahIdentityID')}</Row.Subtitle></Row>
           <Row><Row.Icon icon="time_filled" /><Row.Title>{new Date(identity().expiresAt * 1000).toLocaleString()}</Row.Title><Row.Subtitle>{i18n('BlahProfileExpires')}</Row.Subtitle></Row>
         </Section>
         <Section noShadow noMarginBottom name="BlahIdentityFiles">
@@ -129,7 +129,7 @@ function IdentityDetails(props: DetailsProps) {
         <Section noShadow noMarginBottom>
           <details><summary>{i18n('Devices')}</summary>
             <For each={identity().devices}>{(entry) => <div class={styles.device}>
-              <code>{entry.id}</code> {entry.current ? '(this device)' : ''}
+              <code class={styles.identifier} title={entry.id}>{entry.id}</code> {entry.current ? '(this device)' : ''}
               <p>{i18n('BlahDeviceExpires', [new Date(entry.expiresAt * 1000).toLocaleString()])}</p>
               <Button primaryTransparent disabled={busy()} onClick={() => { navigator.clipboard.writeText(encode(new Uint8Array(entry.key))).catch(() => setMessage('Clipboard unavailable.')); }} text="BlahCopyDeviceKey" />
               <Show when={!entry.current}><Button primaryTransparent disabled={busy()} onClick={() => {
