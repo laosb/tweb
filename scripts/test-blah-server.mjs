@@ -11,6 +11,7 @@ import {once} from 'node:events';
 import assert from 'node:assert/strict';
 import AxeBuilder from '@axe-core/playwright';
 import {cbor} from '../tests/blah/cbor.mjs';
+import {checkIdentityLayout} from '../tests/blah/identityLayout.mjs';
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const tele = process.env.BLAH_SERVER_REPO;
 if(!tele) throw new Error('Set BLAH_SERVER_REPO to a Teleblah checkout with a built debug server.');
@@ -216,6 +217,7 @@ try {
   await page.evaluate(async() => { await window.useAppSettings()[1]('increaseContrast', false); window.themeController.setTheme(); });
   await page.keyboard.press('Enter');
   try {
+    await checkIdentityLayout(page);
     async function signUp(page, slot, domain, name, publisher) {
       const picker = page.getByRole('combobox', {name: 'Saved identity', exact: true});
       assert.equal(await page.getByText('Your keys are never uploaded.', {exact: false}).count(), 0);
