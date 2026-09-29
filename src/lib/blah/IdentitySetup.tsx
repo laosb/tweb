@@ -20,6 +20,7 @@ function SetupForm(props: IdentitySetupProps) {
   const [error, setError] = createSignal('');
   const [file, setFile] = createSignal<File>();
   const [hasPassword, setHasPassword] = createSignal(false);
+  const [profileDomain, setProfileDomain] = createSignal('');
   let password: HTMLInputElement;
   let domain: HTMLInputElement;
   let cancelled = false;
@@ -56,8 +57,7 @@ function SetupForm(props: IdentitySetupProps) {
         }} />
         <p role="status">{file()?.name}</p>
       </>}>
-        <IdentityInput label="BlahProfileDomain" ref={(value) => domain = value} />
-        <p>{i18n('BlahProfileHosting')}</p>
+        <IdentityInput label="BlahProfileDomain" onInput={setProfileDomain} ref={(value) => domain = value} />
       </Show>
       <IdentityInput label="BlahIdentityPassword" type="password"
         autocomplete={props.mode === 'create' ? 'new-password' : 'current-password'}
@@ -65,6 +65,11 @@ function SetupForm(props: IdentitySetupProps) {
       <Button primaryFilled disabled={busy() || (props.mode === 'import' && (!file() || !hasPassword()))}
         onClick={() => submit()} text={props.mode === 'create' ? 'BlahCreateIdentity' : 'BlahImportIdentity'} />
       <p class={styles.footnote}>{i18n('BlahIdentityCustody')}</p>
+      <Show when={props.mode === 'create'}>
+        <p class={styles.footnote}>{i18n('BlahProfileHosting', [
+          <code>{`https://${profileDomain().trim().toLowerCase() || 'your-domain'}/.well-known/blah/profile.cbor`}</code> as HTMLElement
+        ])}</p>
+      </Show>
     </fieldset>
     <p role="status">{busy() ? i18n('PleaseWait') : error()}</p>
   </form>;
