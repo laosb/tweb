@@ -92,12 +92,13 @@ export default function IdentityPanel(props: {
     try {
       const result = !request && identity() ? {identity: identity()} :
         await props.action({action: 'unlock', ...request, id: selected(), password: password?.value});
-      if(cancelled) return;
+      if(cancelled) { await props.action({action: 'lock', id: result.identity?.id}); return; }
       if(password) password.value = '';
       if(result.identity) {
         acceptIdentity(result.identity);
       }
       if(!request) await props.onSignIn(result.identity);
+      else if(request.action === 'unlock') openDetails();
     } catch(cause) {
       const error = cause as {type?: string, message?: string};
       setMessage(error.type || error.message || 'Identity operation failed.');
@@ -107,11 +108,11 @@ export default function IdentityPanel(props: {
     }
   }
 
-  return <section class={styles.panel} aria-label="Browser identities">
+  return <section class={styles.panel} aria-label={I18n.format('BlahBrowserIdentity', true)}>
     <fieldset disabled={busy()}>
       <div class={styles.pickerRow}>
         {picker.container}
-        <Show when={selected()}><Button.Icon ref={(element) => detailsButton = element} icon="info" disabled={busy()} aria-label={I18n.format('BlahIdentityDetails', true)} onClick={openDetails} /></Show>
+        <Show when={selected() && props.onSignIn}><Button.Icon ref={(element) => detailsButton = element} icon="info" disabled={busy()} aria-label={I18n.format('BlahIdentityDetails', true)} onClick={openDetails} /></Show>
       </div>
       <Show when={!identity()}>
         <IdentityInput label="BlahIdentityPassword" type="password" autocomplete="current-password" ref={(value) => {

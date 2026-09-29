@@ -48,6 +48,21 @@ try {
   assert.equal(created.identity.devices[0].expiresAt - created.identity.devices[0].notBefore, 180 * 86400);
   assert(!created.backup.includes('privateKey'));
   assert(!created.backup.includes('test identity password'));
+  let hostedProfile = Buffer.from(created.identity.profile);
+  let profileStatus = 200;
+  await page.route('https://alice.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
+    status: profileStatus, contentType: 'application/cbor', body: hostedProfile
+  }));
+  const publication = () => page.evaluate(() => fixture.identityAction(1, {action: 'publication'}));
+  assert.equal((await publication()).publication.pending, false, 'Manual publication clears the notice despite the stored pending flag');
+  hostedProfile = Buffer.from([1, 2, 3]);
+  assert.equal((await publication()).publication.pending, true, 'Different hosted content requires publication');
+  profileStatus = 404;
+  assert.equal((await publication()).publication.pending, true, 'Missing hosted content requires publication');
+  profileStatus = 503;
+  await assert.rejects(publication, /HTTP 503/, 'Unavailable hosting must not be reported as unpublished');
+  profileStatus = 200;
+  hostedProfile = Buffer.from(created.identity.profile);
   const checked = await page.evaluate(async() => {
     const {cbor} = await import('/cbor.mjs');
     const expiresAt = Math.floor(Date.now() / 1000) + 60;
@@ -86,7 +101,8 @@ try {
     try { await fixture.identityAction(1, {action: 'unlock', id: next.identity.id, password: 'second identity password'}); } catch{ refused = true; }
     const added = await fixture.identityAction(1, {action: 'addDevice',
       device: btoa(String.fromCharCode(...next.identity.devices[0].key))});
-    const removed = await fixture.identityAction(1, {action: 'removeDevice', device: next.identity.devices[0].id});
+    const removed = await fixture.identityAction(1, {action: 'removeOtherDevices'});
+    if(!removed.identity.devices[0].current) throw new Error('Termination must preserve the current device');
     let unbound = false;
     try { await fixture.requireAccountBinding(3, true); } catch{ unbound = true; }
     return {refused, wrongHome, id: next.identity.id, added: added.identity.devices.length, removed: removed.identity.devices.length, unbound};
