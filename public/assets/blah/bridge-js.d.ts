@@ -88,6 +88,8 @@ export interface IdentityRequest {
     kind: string;
     challengeKind: string | null;
     approvedChallenge: number[] | null;
+    domains: string[] | null;
+    usernameDomains: string[] | null;
 }
 export interface DeviceInfo {
     id: string;
@@ -106,6 +108,7 @@ export interface IdentityResult {
     notBefore: number;
     expiresAt: number;
     devices: DeviceInfo[];
+    usernameDomains: string[];
 }
 export type Exports = {
     /**

@@ -1,5 +1,13 @@
+import blah from '@config/blah';
+
+export function isDomainUsername(username: string) {
+  return username.length <= 253 && username.includes('.') && username.split('.').every((label) =>
+    /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+}
+
 // https://github.com/tdlib/td/blob/c95598e5e1493881d31211c1329bdbe4630f6136/td/telegram/misc.cpp#L246
 export function isUsernameValid(username: string) {
+  if(blah && username.includes('.')) return isDomainUsername(username);
   if(username.length < 3 || username.length > 32) {
     return false;
   }
@@ -29,5 +37,5 @@ export function isUsernameValid(username: string) {
 }
 
 export function isWebAppNameValid(name: string) {
-  return name.length >= 3 && isUsernameValid(name);
+  return !name.includes('.') && name.length >= 3 && isUsernameValid(name);
 }
