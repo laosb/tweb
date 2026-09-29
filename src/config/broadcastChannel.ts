@@ -10,4 +10,5 @@ export type MainBroadcastChannelEvents = {
   // * connections keep a database it upgrades at their version (every version reloads on it; `dropFlags` is always
   // * there, as one before this field reads it unchecked)
   reload: void | {dropFlags: string[], olderThan?: number};
+  blahLogout: import('@lib/rootScope').BroadcastEvents['logging_out'];
 };

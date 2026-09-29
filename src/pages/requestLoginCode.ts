@@ -13,7 +13,7 @@ export default async function requestLoginCode(
   if(ready) await ready;
   if(!isActive()) return;
   if(result._ !== 'auth.sentCode' && result._ !== 'auth.sentCodeSuccess') throw new Error(result._);
-  if(blah?.home && result._ === 'auth.sentCode' && result.phone_code_hash === 'diem' &&
+  if((blah?.discovery || blah?.home) && result._ === 'auth.sentCode' && result.phone_code_hash === 'diem' &&
     result.type._ === 'auth.sentCodeTypeApp' && result.type.length === 0) {
     flow.navigate({name: 'signUp', payload: {phone_number: identifier, phone_code_hash: result.phone_code_hash}});
     return;

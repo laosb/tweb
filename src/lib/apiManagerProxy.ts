@@ -1,4 +1,4 @@
-import blah from '@config/blah';
+import blah, {getBlahConfig} from '@config/blah';
 import type {ModifyFunctionsToAsync} from '@types';
 import {type State} from '@config/state';
 import type {Chat, ChatFull, ChatPhoto, Message, MessagePeerReaction, PeerNotifySettings, Reaction, User, UserProfilePhoto} from '@layer';
@@ -217,6 +217,7 @@ class ApiManagerProxy extends MTProtoMessagePort {
   public pushSingleManager: ModifyFunctionsToAsync<PushSingleManager>;
 
   private mainBroadcastChannel: BroadcastChannelWrapper<MainBroadcastChannelEvents>;
+  private blahLoggingOut = false;
 
   private cacheStorageThreadedControls: CacheStorageThreadedControls;
   private sharedObjectURLUpdateListeners = new Set<(update: SharedObjectURLUpdate) => void>();
@@ -569,7 +570,11 @@ class ApiManagerProxy extends MTProtoMessagePort {
         return;
       }
 
+      if(blah?.discovery) this.invokeVoid('terminate', undefined);
       appNavigationController.reload(payload ? getURLWithoutFlags(payload.dropFlags) : undefined);
+    });
+    this.mainBroadcastChannel.on('blahLogout', (payload) => {
+      if(blah?.discovery) rootScope.dispatchEventSingle('logging_out', payload);
     });
 
 
@@ -645,6 +650,13 @@ class ApiManagerProxy extends MTProtoMessagePort {
     });
 
     rootScope.addEventListener('logging_out', ({accountNumber, migrateTo}) => {
+      if(blah?.discovery) {
+        if(this.blahLoggingOut) return;
+        this.blahLoggingOut = true;
+        // Profile rotation can leave other tabs on an older worker. They must
+        // terminate it and apply the same slot move before restoring caches.
+        this.mainBroadcastChannel.emit('blahLogout', {accountNumber, migrateTo});
+      }
       // const toClear: CacheStorageDbName[] = ['cachedFiles', 'cachedStreamChunks'];
       Promise.all([
         toggleStorages(false, true),
@@ -1090,7 +1102,9 @@ class ApiManagerProxy extends MTProtoMessagePort {
     // constructing a URL dynamically here would emit the source .ts file unchanged.
     const workerUrl = makeWorkerURL(MainWorkerURL);
     // A refreshed profile must not reuse a live worker with the previous endpoint/key or expiry.
-    if(blah?.profileDigest) workerUrl.searchParams.set('blahProfile', blah.profileDigest);
+    if(blah?.discovery) {
+      workerUrl.searchParams.set('blahProfile', [1, 2, 3, 4].map((slot) => getBlahConfig(slot)?.profileDigest || '').join(','));
+    }
     workerUrl.searchParams.set(THREADED_WORKER_PROTOCOL_QUERY_PARAM, THREADED_WORKER_PROTOCOL_VERSION + '');
     let worker: SharedWorker | Worker;
     if(IS_SHARED_WORKER_SUPPORTED) {

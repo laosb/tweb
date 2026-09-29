@@ -107,7 +107,7 @@ export default function createManagers(
     networkerFactory: new NetworkerFactory,
     rootScope: new RootScope,
     authorizer: undefined as Authorizer,
-    dcConfigurator: new DcConfigurator,
+    dcConfigurator: new DcConfigurator(accountNumber),
     timeManager: new TimeManager,
     appStoragesManager: appStoragesManager,
     appStateManager: stateManager,
