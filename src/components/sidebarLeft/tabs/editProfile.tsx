@@ -1,3 +1,4 @@
+import blah from '@config/blah';
 import {createEffect, createMemo, createResource, createSignal, JSX, on, onCleanup, onMount, Show} from 'solid-js';
 import {useSuperTab} from '@components/solidJsTabs/superTabProvider';
 import {usePromiseCollector} from '@components/solidJsTabs/promiseCollector';
@@ -266,7 +267,7 @@ const EditProfileForm = (props: {
       }));
     }
 
-    if(usernameInputField.isValidToChange()) {
+    if(!blah && usernameInputField?.isValidToChange()) {
       promises.push(tab.managers.appUsersManager.updateUsername(usernameInputField.value));
     }
 
@@ -285,7 +286,7 @@ const EditProfileForm = (props: {
     firstNameInputField.setOriginalValue(user.first_name, true);
     lastNameInputField.setOriginalValue(user.last_name, true);
     bioInputField.setOriginalValue(userFull.about, true);
-    usernameInputField.setOriginalValue(getPeerEditableUsername(user), true);
+    usernameInputField?.setOriginalValue(getPeerEditableUsername(user), true);
     editPeer.handleChange();
   });
 
@@ -341,7 +342,7 @@ const EditProfileForm = (props: {
         </Show>
       </Section>
 
-      <UsernameSection
+      <Show when={!blah}><UsernameSection
         user={user}
         editPeer={editPeer}
         purchaseEl={purchaseEl}
@@ -351,6 +352,8 @@ const EditProfileForm = (props: {
           trackInputField(ref);
         }}
       />
+
+      </Show>
 
       <UsernamesSection
         peerId={rootScope.myId}
