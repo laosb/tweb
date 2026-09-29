@@ -72,7 +72,7 @@ export function validateBackup(value: SealedIdentity) {
   if(value?.version !== 1 || !/^[a-f0-9]{64}$/.test(value.id) ||
     typeof value.ciphertext !== 'string' || value.ciphertext.length > 500_000 ||
     decode(value.salt).length !== 16 || decode(value.iv).length !== 12 || decode(value.ciphertext).length < 16) {
-    throw new Error('Invalid Blah identity backup.');
+    throw new Error('Invalid Blah identity file.');
   }
 }
 
