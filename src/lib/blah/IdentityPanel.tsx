@@ -49,6 +49,7 @@ export default function IdentityPanel(props: {
     value: id, label: id, matches: (query: string) => id.toLowerCase().includes(query.toLowerCase())
   })), ...(['create', 'import'] as const).map((mode) => ({
     value: mode,
+    icon: mode === 'create' ? 'adduser' as const : 'document' as const,
     label: I18n.format(mode === 'create' ? 'BlahCreateIdentity' : 'BlahImportIdentity', true),
     matches: () => true
   }))]));
