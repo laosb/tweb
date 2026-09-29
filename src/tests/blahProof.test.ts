@@ -2,7 +2,7 @@ import {describe, expect, it, vi} from 'vitest';
 import type MTPNetworker from '@lib/mtproto/networker';
 import {TLSerialization} from '@lib/mtproto/tl_utils';
 const mocks = vi.hoisted(() => ({diem: vi.fn(), bind: vi.fn(), number: vi.fn()}));
-vi.mock('@config/blah', () => ({default: {home: {identity: 'ab'.repeat(32)}}}));
+vi.mock('@config/blah', () => ({getBlahConfig: () => ({home: {identity: 'ab'.repeat(32)}})}));
 vi.mock('@lib/blah/identity', () => ({
   bindIdentity: mocks.bind,
   numberIdentity: mocks.number,

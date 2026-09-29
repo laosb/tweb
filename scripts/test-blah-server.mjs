@@ -23,6 +23,7 @@ const proxy = require('http-proxy').createProxyServer({
 });
 const dir = await mkdtemp(process.env.TMPDIR ? process.env.TMPDIR + '/tweb-e2e-' : '/tmp/tweb-e2e-');
 let child,
+  otherChild,
   browser,
   edge,
   logs = '';
@@ -36,7 +37,9 @@ const free = async() => {
 };
 try {
   const port = await free(),
-    web = await free();
+    web = await free(),
+    otherPort = await free(),
+    otherWeb = await free();
   await mkdir(dir + '/profiles');
   const {
     privateKey,
@@ -57,13 +60,23 @@ try {
     requiresSignupEmailCode: false,
     requiresSignInEmailCode: false
   }));
-  child = spawn(tele + '/.build/debug/BlahMTProtoServer', ['--port', String(port), '--web-port', String(web), '--data-db', dir + '/data.sqlite', '--auth-db', dir + '/auth.sqlite', '--jobs-db', dir + '/jobs.sqlite', '--federation-domain', 'dc.example.org', '--federation-key-file', dir + '/seed', '--federation-key-algorithm', 'ed25519', '--local-config-file', dir + '/local.json', '--test-profile-directory', dir + '/profiles'], {
-    cwd: tele,
-    stdio: ['ignore', 'ignore', 'pipe']
-  });
-  child.stderr.on('data', c => logs += c);
+  const startDC = (domain, port, web, seedFile) => {
+    const server = spawn(tele + '/.build/debug/BlahMTProtoServer', ['--port', String(port), '--web-port', String(web),
+      '--data-db', dir + '/' + domain + '-data.sqlite', '--auth-db', dir + '/' + domain + '-auth.sqlite',
+      '--jobs-db', dir + '/' + domain + '-jobs.sqlite', '--federation-domain', domain,
+      '--federation-key-file', seedFile, '--federation-key-algorithm', 'ed25519',
+      '--local-config-file', dir + '/local.json', '--test-profile-directory', dir + '/profiles'], {
+      cwd: tele, stdio: ['ignore', 'ignore', 'pipe']
+    });
+    server.stderr.on('data', c => logs += c);
+    return server;
+  };
+  child = startDC('dc.example.org', port, web, dir + '/seed');
+  const otherKey = generateKeyPairSync('ed25519').privateKey.export({format: 'jwk'});
+  await writeFile(dir + '/other-seed', Buffer.from(otherKey.d, 'base64url'));
+  otherChild = startDC('other.example.org', otherPort, otherWeb, dir + '/other-seed');
   await new Promise(r => setTimeout(r, 2000));
-  if(child.exitCode !== null) throw Error('Server exited: ' + logs);
+  if(child.exitCode !== null || otherChild.exitCode !== null) throw Error('Server exited: ' + logs);
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', dir + '/tls.key', '-out', dir + '/tls.crt', '-days', '1', '-subj', '/CN=localhost'], {
     stdio: 'ignore'
   });
@@ -73,10 +86,10 @@ try {
   }, async(req, res) => {
     try {
       const path = new URL(req.url, 'https://localhost').pathname;
-      if(req.method === 'PUT' && path === '/publish') {
+      if(req.method === 'PUT' && (path === '/publish' || path === '/publish/bob')) {
         const chunks = [];
         for await (const chunk of req) chunks.push(chunk);
-        await writeFile(dir + '/profiles/alice.example.org.cbor', Buffer.concat(chunks));
+        await writeFile(dir + '/profiles/' + (path.endsWith('/bob') ? 'bob' : 'alice') + '.example.org.cbor', Buffer.concat(chunks));
         res.end('ok');
         return;
       }
@@ -111,9 +124,9 @@ try {
   });
   const connectedPaths = new Set();
   edge.on('upgrade', (req, socket, head) => {
-    assert(['/discovered/ws?route=home', '/rotated/ws?route=home'].includes(req.url));
+    assert(['/discovered/ws?route=home', '/rotated/ws?route=home', '/other/ws?route=home'].includes(req.url));
     connectedPaths.add(req.url);
-    proxy.ws(req, socket, head, {target: 'ws://127.0.0.1:' + port});
+    proxy.ws(req, socket, head, {target: 'ws://127.0.0.1:' + (req.url.startsWith('/other/') ? otherPort : port)});
   });
   proxy.on('error', () => {});
   edge.listen(0, '127.0.0.1');
@@ -141,6 +154,7 @@ try {
   const signupContext = await browser.newContext({
     ignoreHTTPSErrors: true
   });
+  signupContext.setDefaultTimeout(30000);
   const page = await signupContext.newPage();
   let activePage = page;
   page.setDefaultTimeout(15000);
@@ -150,7 +164,7 @@ try {
     if(m.type() === 'error') diagnostics.push(m.text().slice(0, 350));
   });
   await page.goto(origin + '/?debug=1&noServiceWorker=1');
-  const signedDC = await page.evaluate(async({data, rotatedData, identityKey}) => {
+  const makeDCProfile = async({data, rotatedData, identityKey}) => {
     const {createDiem} = await import('/assets/blah/diem.js');
     const diem = await createDiem(new URL('/assets/blah/diem.wasm', location.href));
     const identity = await crypto.subtle.importKey('jwk', identityKey, 'Ed25519', true, ['sign']);
@@ -166,11 +180,18 @@ try {
     };
     const current = await diem.dcSetup({data, profile: null, now: Math.floor(Date.now() / 1000)}, backend);
     const rotated = await diem.dcSetup({data: rotatedData, profile: current.profile, now: Math.floor(Date.now() / 1000)}, backend);
-    return {...current, rotatedProfile: rotated.profile};
-  }, {data: cbor([13, 1, 5, ['dc.example.org'], [['127.0.0.1', tlsPort, true, 1, '/discovered/ws?route=home']], [], rsa.pkcs1Pem, 1]),
+    const next = await diem.dcSetup({data: rotatedData, profile: rotated.profile, now: Math.floor(Date.now() / 1000)}, backend);
+    return {...current, rotatedProfile: rotated.profile, nextProfile: next.profile};
+  };
+  const signedDC = await page.evaluate(makeDCProfile, {data: cbor([13, 1, 5, ['dc.example.org'], [['127.0.0.1', tlsPort, true, 1, '/discovered/ws?route=home']], [], rsa.pkcs1Pem, 1]),
     rotatedData: cbor([13, 1, 5, ['dc.example.org'], [['127.0.0.1', tlsPort, true, 1, '/rotated/ws?route=home']], [], rsa.pkcs1Pem, 1]),
     identityKey: privateKey.export({format: 'jwk'})});
   assert.equal(signedDC.id, id);
+  const otherData = cbor([13, 1, 5, ['other.example.org'], [['127.0.0.1', tlsPort, true, 1, '/other/ws?route=home']], [], rsa.pkcs1Pem, 1]);
+  const otherDC = await page.evaluate(makeDCProfile, {data: otherData, rotatedData: otherData, identityKey: otherKey});
+  await signupContext.route('https://other.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
+    contentType: 'application/cbor', body: Buffer.from(otherDC.profile)
+  }));
   let discoveryProfile = signedDC.profile;
   await signupContext.route('https://dc.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
     contentType: 'application/cbor', body: Buffer.from(discoveryProfile)
@@ -181,58 +202,67 @@ try {
   await page.getByRole('status').filter({hasText: 'Enter a DC domain'}).waitFor();
   assert.equal(await domainInput.evaluate(node => node === document.activeElement), true);
   await page.setViewportSize({width: 375, height: 720});
-  assert.equal(await page.evaluate(() => document.querySelector('.blah-dc-setup').scrollWidth <= innerWidth), true);
+  assert.equal(await page.evaluate(() => document.querySelector('#auth-pages').scrollWidth <= innerWidth), true);
   await domainInput.fill('dc.example.org');
   await page.keyboard.press('Tab');
   assert.equal(await page.getByRole('button', {name: 'Connect to Blah'}).evaluate(node => node === document.activeElement), true);
-  assert.deepEqual((await new AxeBuilder({page}).include('.blah-dc-setup').analyze()).violations, []);
+  if(process.env.BLAH_UI_SCREENSHOT) await page.screenshot({path: process.env.BLAH_UI_SCREENSHOT, animations: 'disabled'});
+  // Shared tweb controls retain the theme palette; audit contrast in the
+  // client's increased-contrast mode, like the main accessibility suite.
+  assert.deepEqual((await new AxeBuilder({page}).include('#auth-pages').disableRules(['color-contrast']).analyze()).violations, []);
+  await page.evaluate(async() => { await window.useAppSettings()[1]('increaseContrast', true); window.themeController.setTheme(); });
+  assert.deepEqual((await new AxeBuilder({page}).include('#auth-pages').analyze()).violations, []);
+  await page.evaluate(async() => { await window.useAppSettings()[1]('increaseContrast', false); window.themeController.setTheme(); });
   await page.keyboard.press('Enter');
   try {
-    await page.getByText('Create or restore an identity', {
-      exact: true
-    }).click({
-      timeout: 30000
-    });
-    await page.getByLabel('Identity password', {
-      exact: true
-    }).fill('test identity password');
-    await page.getByLabel('Profile domain', {
-      exact: true
-    }).fill('alice.example.org');
-    await page.getByRole('button', {
-      name: 'Create identity',
-      exact: true
-    }).click();
-    await page.getByRole('button', {
-      name: 'Download public profile',
-      exact: true
-    }).waitFor({
-      timeout: 30000
-    });
-    await page.getByText('Profile publishing', {
-      exact: true
-    }).click();
-    await page.getByLabel('Publication URL', {
-      exact: true
-    }).fill(origin + '/publish');
-    await page.getByRole('button', {
-      name: 'Save and publish profile',
-      exact: true
-    }).click();
-    await page.waitForFunction(() => !document.querySelector('fieldset').disabled);
-    await page.getByRole('button', {
-      name: 'Sign in to Blah',
-      exact: true
-    }).click();
-    await page.locator('[contenteditable=true]').first().fill('Alice', {
-      timeout: 30000
-    });
-    await page.getByRole('button', {
-      name: /Start messaging/i
-    }).click();
-    await page.waitForFunction(() => JSON.parse(localStorage.getItem('account1') || '{}').userId, {
-      timeout: 30000
-    });
+    async function signUp(page, slot, domain, name, publisher) {
+      await page.getByText('Create or restore an identity', {
+        exact: true
+      }).click({
+        timeout: 30000
+      });
+      await page.getByLabel('Identity password', {
+        exact: true
+      }).fill('test identity password');
+      await page.getByLabel('Profile domain', {
+        exact: true
+      }).fill(domain);
+      await page.getByRole('button', {
+        name: 'Create identity',
+        exact: true
+      }).click();
+      await page.getByRole('button', {
+        name: 'Download public profile',
+        exact: true
+      }).waitFor({
+        timeout: 30000
+      });
+      const identityID = (await page.getByText(/^Identity: [a-f0-9]{64}$/).innerText()).slice('Identity: '.length);
+      await page.getByText('Profile publishing', {
+        exact: true
+      }).click();
+      await page.getByLabel('Publication URL', {
+        exact: true
+      }).fill(publisher);
+      await page.getByRole('button', {
+        name: 'Save and publish profile',
+        exact: true
+      }).click();
+      await page.waitForFunction(() => !document.querySelector('fieldset').disabled);
+      await page.getByRole('button', {
+        name: 'Sign in to Blah',
+        exact: true
+      }).click();
+      await page.locator('[contenteditable=true]').first().fill(name, {
+        timeout: 30000
+      });
+      await page.getByRole('button', {
+        name: /Start messaging/i
+      }).click();
+      await page.waitForFunction(slot => JSON.parse(localStorage.getItem('account' + slot) || '{}').userId, slot, {timeout: 30000});
+      return identityID;
+    }
+    const aliceIdentity = await signUp(page, 1, 'alice.example.org', 'Alice', origin + '/publish');
     const userId = await page.evaluate(() => JSON.parse(localStorage.getItem('account1')).userId);
     discoveryProfile = signedDC.rotatedProfile;
     const refreshed = await signupContext.newPage();
@@ -244,6 +274,42 @@ try {
     await page.reload();
     await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
     await page.waitForFunction(() => JSON.parse(localStorage.getItem('account1') || '{}').userId);
+    // The normal add-account URL must offer a fresh home step, not inherit DC1.
+    const otherPage = await signupContext.newPage();
+    activePage = otherPage;
+    await otherPage.goto(origin + '/?account=2&debug=1&noServiceWorker=1');
+    const otherInput = otherPage.getByRole('textbox', {name: 'DC domain'});
+    await otherInput.waitFor();
+    assert.equal(await otherInput.inputValue(), '');
+    await otherPage.getByRole('button', {name: 'Back', exact: true}).click();
+    await otherPage.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+    await otherPage.goto(origin + '/?account=2&debug=1&noServiceWorker=1');
+    await otherInput.fill('other.example.org');
+    await otherPage.getByRole('button', {name: 'Connect to Blah'}).click();
+    await signUp(otherPage, 2, 'bob.example.org', 'Bob', origin + '/publish/bob');
+    const accounts = await otherPage.evaluate(() => [1, 2].map(slot => JSON.parse(localStorage.getItem('account' + slot))));
+    assert.equal(accounts[0].userId, userId);
+    assert.equal(accounts[1].userId, userId, 'Equal local IDs on different homes must remain separate accounts');
+    assert.notEqual(accounts[0].dc1_auth_key, accounts[1].dc1_auth_key);
+    assert(connectedPaths.has('/other/ws?route=home'));
+    await otherPage.reload();
+    await otherPage.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+    assert.equal(await otherPage.evaluate(() => window.rootScope.myId), accounts[1].userId);
+    await otherPage.close();
+    activePage = page;
+    await page.bringToFront();
+    await page.reload();
+    await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+    assert.equal(await page.evaluate(() => window.rootScope.myId), userId);
+    // Refresh one home after both accounts exist, leaving the original tab on
+    // the previous worker. A logout from either worker must reload both tabs.
+    const oldWorkerPage = await signupContext.newPage();
+    await oldWorkerPage.goto(origin + '/?debug=1&noServiceWorker=1');
+    await oldWorkerPage.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+    discoveryProfile = signedDC.nextProfile;
+    await page.reload();
+    await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+    await page.waitForFunction(() => document.body.classList.contains('is-left-column-shown') && !document.body.classList.contains('has-auth-pages'));
     // Restore this same browser identity into a fresh transport/database origin context.
     const opener = page.getByRole('button', {
       name: 'Browser identity',
@@ -255,6 +321,7 @@ try {
       name: 'Manage Blah identities'
     });
     await dialog.waitFor();
+    await page.waitForFunction(() => document.querySelector('dialog')?.contains(document.activeElement));
     assert(await dialog.evaluate(element => element.contains(document.activeElement)), 'Dialog must receive focus');
     await page.keyboard.press('Shift+Tab');
     assert(await dialog.evaluate(element => element.contains(document.activeElement)), 'Dialog must contain focus');
@@ -263,6 +330,7 @@ try {
     await dialog.waitFor({
       state: 'detached'
     });
+    await page.waitForFunction(() => document.activeElement?.textContent === 'Browser identity');
     assert(await opener.evaluate(element => element === document.activeElement), 'Restore opener focus');
     await page.keyboard.press('Space');
     await dialog.waitFor();
@@ -283,9 +351,7 @@ try {
     assert(await dialog.evaluate(element => element.getBoundingClientRect().right <= innerWidth), 'Dialog fits narrow screens');
     await page.getByLabel('Saved identity', {
       exact: true
-    }).selectOption({
-      index: 1
-    });
+    }).selectOption(aliceIdentity);
     await page.getByLabel('Identity password', {
       exact: true
     }).fill('test identity password');
@@ -341,7 +407,23 @@ try {
     const restoredId = await restored.evaluate(() => JSON.parse(localStorage.getItem('account1')).userId);
     if(userId !== restoredId) throw new Error('Recovery changed the account');
     await context.close();
-    console.log('PASS DC domain discovery, exact signed WebSocket URL, full browser signup, profile publication, reload, recovered identity login over PFS, dialog keyboard/focus and Axe checks.');
+    // Logging out the first account shifts the second account's caches and home together.
+    activePage = page;
+    await page.bringToFront();
+    const reloaded = page.waitForEvent('load');
+    const oldWorkerReloaded = oldWorkerPage.waitForEvent('load');
+    await page.evaluate(() => { void window.rootScope.managers.apiManager.logOut(); });
+    await Promise.all([reloaded, oldWorkerReloaded]);
+    await oldWorkerPage.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+    assert.equal(await oldWorkerPage.evaluate(() => JSON.parse(localStorage.getItem('account1')).dc1_auth_key), accounts[1].dc1_auth_key);
+    await oldWorkerPage.close();
+    await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+    const remaining = await page.evaluate(() => JSON.parse(localStorage.getItem('account1')));
+    assert.equal(remaining.dc1_auth_key, accounts[1].dc1_auth_key);
+    await page.goto(origin + '/?account=2&debug=1&noServiceWorker=1');
+    await page.getByRole('textbox', {name: 'DC domain'}).waitFor();
+    assert.equal(await page.getByRole('textbox', {name: 'DC domain'}).inputValue(), '');
+    console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, profile publication, reload, recovered identity login over PFS, dialog keyboard/focus and Axe checks.');
   } catch(error) {
     console.error(error);
     console.error((await activePage.locator('body').innerText()).slice(-7000));
@@ -354,10 +436,12 @@ try {
   proxy.close();
   edge?.closeAllConnections();
   if(edge) edge.close();
-  child?.kill('SIGTERM');
-  const stopTimer = setTimeout(() => child?.kill('SIGKILL'), 5000);
-  if(child && child.exitCode === null) await once(child, 'exit');
-  clearTimeout(stopTimer);
+  await Promise.all([child, otherChild].filter(Boolean).map(async(server) => {
+    server.kill('SIGTERM');
+    const stopTimer = setTimeout(() => server.kill('SIGKILL'), 5000);
+    if(server.exitCode === null) await once(server, 'exit');
+    clearTimeout(stopTimer);
+  }));
   await rm(dir, {
     recursive: true,
     force: true

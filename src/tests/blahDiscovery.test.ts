@@ -3,7 +3,7 @@ import type {DCDiscoveryResult} from '@blahdiem/diem';
 
 const state = vi.hoisted(() => ({storage: new Map(), verify: vi.fn(), bind: vi.fn()}));
 vi.mock('@lib/blah/runtime', () => ({diemClient: async() => ({verifyDCProfile: state.verify}), verifySignature: vi.fn()}));
-vi.mock('@lib/blah/homeStorage', () => ({bindHomeStorage: state.bind}));
+vi.mock('@lib/blah/homeStorage', () => ({bindHomeStorage: state.bind, migrateHomeStorage: async() => {}}));
 vi.mock('@lib/blah/vault', () => ({
   stored: async(key: string, value?: unknown) => value === undefined ? state.storage.get(key) : state.storage.set(key, value),
   exclusively: async(action: () => Promise<unknown>) => action(),
@@ -87,14 +87,14 @@ it('pins identities and database generations while allowing forward profile and 
 
 it('persists only verified profiles after cache admission and re-verifies on worker restore', async() => {
   const selected = await connectDC('dc.example.org');
-  expect(state.bind).toHaveBeenCalledWith(selected.home);
-  expect(state.storage.get('dc-profile')).toEqual(saved);
+  expect(state.bind).toHaveBeenCalledWith(selected.home, 1);
+  expect(state.storage.get('dc-profile:1')).toEqual(saved);
   expect(await restoreDC()).toEqual(selected);
   expect(state.verify).toHaveBeenCalledTimes(2);
 });
 
 it('leaves the saved profile intact after signature, cache or identity rejection', async() => {
-  state.storage.set('dc-profile', saved);
+  state.storage.set('dc-profile:1', saved);
   state.verify.mockRejectedValueOnce(new Error('Invalid signature'));
   await expect(connectDC(saved.domain)).rejects.toThrow('signature');
   expect(state.bind).not.toHaveBeenCalled();
@@ -102,5 +102,21 @@ it('leaves the saved profile intact after signature, cache or identity rejection
   await expect(connectDC(saved.domain)).rejects.toThrow('Legacy');
   state.verify.mockResolvedValueOnce({...version, id: 'ef'.repeat(32)});
   await expect(connectDC(saved.domain)).rejects.toThrow('another DC');
-  expect(state.storage.get('dc-profile')).toEqual(saved);
+  expect(state.storage.get('dc-profile:1')).toEqual(saved);
+});
+
+it('keeps independent home pins and version floors for accounts sharing an origin', async() => {
+  const first = await connectDC(saved.domain, 1);
+  const other = {...version, id: 'ef'.repeat(32), revision: '1', digest: '12'.repeat(32),
+    endpoints: [{...version.endpoints[0], host: 'other.example.org'}]};
+  state.verify.mockResolvedValueOnce(other);
+  const second = await connectDC('other.example.org', 2);
+  expect(second.home.identity).not.toBe(first.home.identity);
+  expect(state.storage.get('dc-profile:1')).toEqual(saved);
+  expect(state.storage.get('dc-profile:2').domain).toBe('other.example.org');
+  expect(state.bind).toHaveBeenLastCalledWith(second.home, 2);
+  state.verify.mockResolvedValueOnce(other);
+  expect(await restoreDC(2)).toEqual(second);
+  expect(await restoreDC(1)).toEqual(first);
+  await expect(connectDC('other.example.org', 1)).rejects.toThrow('another DC');
 });
