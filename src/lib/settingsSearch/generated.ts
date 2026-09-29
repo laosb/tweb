@@ -7,6 +7,7 @@ import type {GeneratedSettingsSearchData} from '@lib/settingsSearch/types';
 const generated: GeneratedSettingsSearchData = {
   sections: [
     {id: 'AppSettingsTab', titleLangKey: 'Settings'},
+    {id: 'AppBlahIdentityTab', parentId: 'AppSettingsTab', titleLangKey: 'BlahBrowserIdentity', icon: 'key_filled'},
     {id: 'AppPrivacyAndSecurityTab', parentId: 'AppSettingsTab', titleLangKey: 'PrivacySettings', icon: 'key_filled', aliasLangKeys: ['AccountSettings.PrivacyAndSecurity']},
     {id: 'AppChatFoldersTab', parentId: 'AppSettingsTab', titleLangKey: 'ChatList.Filter.List.Title', icon: 'limit_folders_filled', aliasLangKeys: ['AccountSettings.Filters']},
     {id: 'AppEditProfileTab', parentId: 'AppSettingsTab', titleLangKey: 'EditAccount.Title', icon: 'newchat_filled'},
@@ -347,6 +348,7 @@ const generated: GeneratedSettingsSearchData = {
     {id: 'AppSessionTab:Info', sectionId: 'AppSessionTab', kind: 'subsection', titleLangKey: 'Info'},
     {id: 'AppSessionTab:Online', sectionId: 'AppSessionTab', kind: 'row', titleLangKey: 'Online'},
     {id: 'AppSettingsTab:AccountSettings.Language', sectionId: 'AppSettingsTab', kind: 'row', titleLangKey: 'AccountSettings.Language'},
+    {id: 'AppSettingsTab:BlahBrowserIdentity', sectionId: 'AppSettingsTab', kind: 'row', titleLangKey: 'BlahBrowserIdentity'},
     {id: 'AppSettingsTab:Chat.Menu.SendGift', sectionId: 'AppSettingsTab', kind: 'row', titleLangKey: 'Chat.Menu.SendGift'},
     {id: 'AppSettingsTab:Devices', sectionId: 'AppSettingsTab', kind: 'row', titleLangKey: 'Devices'},
     {id: 'AppSettingsTab:EditAccount.Logout', sectionId: 'AppSettingsTab', kind: 'menu', titleLangKey: 'EditAccount.Logout'},

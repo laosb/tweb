@@ -1,3 +1,5 @@
+import blah from '@config/blah';
+import {AppBlahIdentityTab} from '@components/solidJsTabs/tabs';
 import {createEffect, createRoot, createSignal, on} from 'solid-js';
 import appImManager from '@lib/appImManager';
 import rootScope from '@lib/rootScope';
@@ -725,6 +727,11 @@ export class AppSidebarLeft extends SidebarSlider {
         const totalAccounts = await AccountController.getTotalAccounts();
         return totalAccounts < MAX_ACCOUNTS;
       }
+    }, {
+      icon: 'key',
+      text: 'BlahBrowserIdentity',
+      verify: () => !!blah,
+      onClick: () => closeTabsBefore(() => this.createTab(AppBlahIdentityTab).open())
     }, newSubmenu, {
       icon: 'savedmessages',
       text: 'SavedMessages',
