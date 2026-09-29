@@ -1,7 +1,7 @@
 import encode from '@helpers/bytes/bytesToBase64';
 import decode from '@helpers/string/base64ToBytes';
 
-/** Browser custody is independent of Telegram caches and logout. Only ciphertext persists. */
+/** Browser custody is independent of Telegram caches and logout. Keys persist only as ciphertext; public domain labels are cached separately. */
 export type SealedIdentity = {
   version: 1,
   id: string,
