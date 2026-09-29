@@ -1,6 +1,9 @@
 import {createSignal, onCleanup, Show} from 'solid-js';
 import Button from '@components/buttonTsx';
 import MediaHeader from '@components/mediaHeader';
+import blah, {getBlahConfig} from '@config/blah';
+import {getCurrentAccount} from '@lib/accounts/getCurrentAccount';
+import HomeDCCard from '@lib/blah/HomeDCCard';
 import IdentityPanel from '@lib/blah/IdentityPanel';
 import type {IdentityView} from '@lib/blah/identity';
 import AuthCard from '@/pages/AuthCard';
@@ -9,6 +12,7 @@ import requestLoginCode from '@/pages/requestLoginCode';
 import styles from '@/pages/authFlow.module.scss';
 
 export default function BlahSignInCard() {
+  if(blah?.discovery && !getBlahConfig(getCurrentAccount())?.home) return <HomeDCCard />;
   const flow = useAuthFlow();
   const [identity, setIdentity] = createSignal<IdentityView>();
   const [busy, setBusy] = createSignal(false);

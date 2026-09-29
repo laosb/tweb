@@ -5,4 +5,5 @@ export const unversionedMainBroadcastChannelName = 'webk-main-broadcast-channel'
  */
 export type MainBroadcastChannelEvents = {
   reload: void;
+  blahLogout: import('@lib/rootScope').BroadcastEvents['logging_out'];
 };

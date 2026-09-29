@@ -8,8 +8,9 @@ An ordinary Telegram build keeps the upstream login flow.
 
 ## Configure a home
 
-The Blah build starts with **Connect to Blah**. Enter a DC domain (or its HTTPS
-origin), such as `dc.example.org`. The browser fetches
+Sign-in starts with **Connect to Blah**, using the same card, domain field and
+buttons as the rest of the login flow. Enter a DC domain (or its HTTPS origin),
+such as `dc.example.org`. The browser fetches
 `https://dc.example.org/.well-known/blah/profile.cbor` without credentials or
 redirects and verifies its Diem certificates, signature, validity and advertised
 domain with BlahDiem WASM. The current browser crypto adapter supports Ed25519 DC
@@ -20,7 +21,10 @@ generation. Blah uses the signed endpoint's exact path/query and RSA transport k
 TCP and plain WebSocket endpoints cannot be used by this browser client. The profile
 endpoint must allow cross-origin reads and return `application/cbor`.
 
-The first verified profile pins **one independent home DC per web origin**.
+The first verified profile pins **one independent home DC per account slot**.
+Use **Add Account** to sign in to another home on the same web origin; accounts
+keep separate transport keys, discovery profiles and identity namespaces.
+Selecting a home reloads open tabs so they share the updated account configuration.
 On reload, Blah fetches and verifies the profile again, allowing endpoint and RSA
 rotation while rejecting changed DC identities, database generations, and older or
 conflicting profile versions. Workers verify the saved public profile before
@@ -29,9 +33,12 @@ there is no fallback to Telegram or another DC. A link with `?dc=dc.example.org`
 prefills the field on first use; the user still selects **Connect to Blah**.
 
 Use a fresh origin, separate from Telegram and older number/email-based Blah
-installations. Populated legacy caches are refused. Choosing another home requires
-a separate origin; existing accounts and chat caches are not migrated. Each account
-slot also remains bound to its first Diem identity namespace after logout.
+installations. Populated legacy caches are refused. A selected slot cannot switch
+homes while it holds an account or transport cache.
+Logout clears that slot and moves the remaining accounts together with their home
+and identity bindings, leaving the freed slot available for another home. Encrypted
+identity custody survives logout. Existing origin-wide pins migrate to their
+original account slots; unused slots can select a different home.
 
 ### Build the client
 
@@ -51,7 +58,7 @@ are still embedded at build time; the DC profile does not register an applicatio
 
 An existing operator deployment can retain its release-time bootstrap by setting
 `BLAH_BOOTSTRAP_FILE` or `BLAH_SERVER_CONFIG_URL`. That mode skips the domain
-screen and continues to use its independently verified operator pins. The bootstrap
+step and continues to use its independently verified operator pins. The bootstrap
 format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs).
 
 ## Create, publish and sign in
@@ -128,9 +135,10 @@ The browser fixture needs Playwright Chromium (`pnpm exec playwright install
 --with-deps chromium`); `BLAH_BROWSER_EXECUTABLE` can select an installed browser.
 It exercises real WebCrypto/WASM creation, encryption, proof binding, numbering,
 renewal, recovery and account-slot isolation without contacting Telegram.
-The server fixture additionally builds the Blah client, starts a disposable debug
-Teleblah DC, and checks domain discovery with a signed profile, its exact WebSocket path/query,
-endpoint rotation with another tab open, setup keyboard/error handling and Axe, signup, public profile publication, reload and restored-device
+The server fixture additionally builds the Blah client, starts two disposable debug
+Teleblah DCs, and checks domain discovery with a signed profile, its exact WebSocket path/query,
+endpoint rotation with another tab open, accounts on two independent homes, sign-in
+keyboard/error handling and Axe (contrast in increased-contrast mode), signup, public profile publication, reload and restored-device
 login over PFS through the normal shared worker, plus dialog keyboard containment, focus restoration, narrow-screen
 layout and Axe checks. Screen-reader and touch-device testing remain manual.
 It uses Teleblah's test-only profile-directory transport; production
@@ -152,7 +160,10 @@ invocation proofs carry the reviewed challenge bytes and the current transport b
 There is no separate Swift package or copy of protocol rules in tweb.
 Do not duplicate Diem's CBOR, certificate or proof implementation in TypeScript.
 The Telegram schema is extended in memory, leaving generated upstream files intact.
-Small upstream hooks expose public transport identifiers, wrap identity login
+Blah home selection and persistence stay in `src/lib/blah/`; upstream account and
+transport hooks pass the account slot explicitly, including RSA key selection and
+duplicate-account detection. Small upstream hooks expose public transport
+identifiers, wrap identity login
 requests, gate cache loading, expose the manager action and mount the identity UI.
 Shared code/password/signup screens keep handling ordinary Telegram responses.
 

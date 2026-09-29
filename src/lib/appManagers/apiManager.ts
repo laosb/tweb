@@ -18,7 +18,7 @@ import {DC_IDS} from '@config/dc';
 import {MOUNT_CLASS_TO} from '@config/debug';
 import {IDB} from '@lib/files/idb';
 import ctx from '@environment/ctx';
-import blah, {ensureBlahConfig} from '@config/blah';
+import blah, {ensureBlahConfig, getBlahConfig} from '@config/blah';
 import {invokeBlah} from '@lib/blah/invoke';
 import {requireAccountBinding} from '@lib/blah/identity';
 import noop from '@helpers/noop';
@@ -138,7 +138,7 @@ export class ApiManager extends ApiManagerMethods {
         }
 
         if((transport as TcpObfuscated).connection) {
-          const url = constructTelegramWebSocketUrl(dcId, connectionType, isPremium);
+          const url = constructTelegramWebSocketUrl(dcId, connectionType, isPremium, this.getAccountNumber());
           (transport as TcpObfuscated).changeUrl(url);
         }
       });
@@ -359,6 +359,9 @@ export class ApiManager extends ApiManagerMethods {
           await saveEncryptionKeyForHandoff();
         }
       }
+      if(blah?.discovery || blah?.home) {
+        await (await import('@lib/blah/homeStorage')).shiftHomeStorage(accountNumber);
+      }
       IDB.closeDatabases();
       this.rootScope.dispatchEvent('logging_out', {accountNumber, migrateTo: migrateAccountTo});
     };
@@ -399,7 +402,7 @@ export class ApiManager extends ApiManagerMethods {
   }
 
   public getNetworker(dcId: DcId, options: InvokeApiOptions = {}): Promise<MTPNetworker> {
-    if(blah?.discovery && !blah.home) return ensureBlahConfig().then(() => this.getNetworker(dcId, options));
+    if(blah?.discovery && !getBlahConfig(this.getAccountNumber())) return ensureBlahConfig(this.getAccountNumber()).then(() => this.getNetworker(dcId, options));
     const connectionType: ConnectionType = options.fileDownload ? 'download' : (options.fileUpload ? 'upload' : 'client');
     // const connectionType: ConnectionType = 'client';
 
@@ -479,7 +482,7 @@ export class ApiManager extends ApiManagerMethods {
     return this.gettingNetworkers[getKey] = AccountController
     .get(this.getAccountNumber())
     .then(async(accountData) => {
-      if(blah?.home) await requireAccountBinding(this.getAccountNumber(), !!accountData.userId);
+      if(getBlahConfig(this.getAccountNumber())?.home) await requireAccountBinding(this.getAccountNumber(), !!accountData.userId);
       return [accountData[ak], accountData[ss]] as const;
     })
     .then(async([authKeyHex, serverSaltHex]) => {
@@ -706,7 +709,7 @@ export class ApiManager extends ApiManagerMethods {
         }
       }
 
-      const promise = blah?.home ?
+      const promise = getBlahConfig(this.getAccountNumber())?.home ?
         invokeBlah(this.getAccountNumber(), cachedNetworker, method, params, options) :
         cachedNetworker.wrapApiCall(method, params, options);
 
@@ -718,7 +721,7 @@ export class ApiManager extends ApiManagerMethods {
       }
 
       return promise.catch((error: ApiError) => {
-        if(blah?.home && (error.code === 303 || error.type?.startsWith('FILE_MIGRATE_'))) throw error;
+        if(getBlahConfig(this.getAccountNumber())?.home && (error.code === 303 || error.type?.startsWith('FILE_MIGRATE_'))) throw error;
         // if(!options.ignoreErrors) {
         if(error.type !== 'FILE_REFERENCE_EXPIRED' && error.type !== 'FILE_REFERENCE_INVALID'/*  && error.type !== 'MSG_WAIT_FAILED' */) {
           this.log.error('Error', error.code, error.type, this.baseDcId, dcId, method, params);
