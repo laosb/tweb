@@ -13,7 +13,6 @@
   p { margin: 0; }
   fieldset { border: 0; padding: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   :global(.btn-primary) { box-sizing: border-box; height: auto; min-height: 3.375rem; padding: .75rem .5rem; white-space: normal; }
-  summary { cursor: pointer; padding: 12px 0; }
 }
 .identifier {
   @include text-overflow();
@@ -23,7 +22,6 @@
   pointer-events: auto;
   font-size: 12px;
 }
-.device { min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
 .setupPopup { --popup-width: 420px; --popup-max-height: 90vh; --popup-background-color: var(--surface-color); }
 .setupBody { padding: 1rem; }
 .dropzone { min-height: 160px; margin: 4px 0; padding: 16px; border: 2px dashed currentColor; text-align: center; cursor: pointer; }
@@ -38,3 +36,9 @@
 .renewalSettings { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 1rem; padding-top: 1rem; }
 
 .renewalSettings :global(.row-title) { white-space: normal; }
+
+.sectionNote { font-size: 12px; color: var(--secondary-text-color); text-align: left; }
+
+.detailsSettings {
+  .lockedDetails { min-height: calc(100dvh - 10rem); align-content: center; max-width: 420px; margin-inline: auto; width: 100%; }
+}
