@@ -453,10 +453,6 @@ async function startApplication() {
   rootScope.managers = getProxiedManagers();
   if(blah?.discovery || blah?.home) {
     await (await import('@lib/blah/identity')).requireHomeStorage();
-    if(getBlahConfig(getCurrentAccount())?.home) {
-      const {installIdentityButton} = await import('@lib/blah/identityButton');
-      installIdentityButton(rootScope.managers);
-    }
   }
   await checkLastActiveAccountFromTMe();
 

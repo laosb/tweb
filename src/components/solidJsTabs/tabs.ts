@@ -1061,3 +1061,8 @@ const _origAddMembersInit = (AppAddMembersTab.prototype as any).init;
 (AppAddMembersTab.prototype as any).init = function(payload: AppAddMembersTabPayload, overrideTitle?: LangPackKey) {
   return _origAddMembersInit.call(this, payload, overrideTitle || payload.title);
 };
+
+export const AppBlahIdentityTab = scaffoldSolidJSTab({
+  title: 'BlahBrowserIdentity',
+  getComponentModule: () => import('@/lib/blah/IdentitySettings')
+});
