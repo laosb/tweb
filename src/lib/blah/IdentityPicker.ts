@@ -1,6 +1,7 @@
 import InputField, {InputFieldOptions} from '@components/inputField';
 import Scrollable from '@components/scrollable';
 import appNavigationController, {NavigationItem} from '@components/appNavigationController';
+import styles from '@lib/blah/identity.module.scss';
 
 export type IdentityPickerOption = {
   value: string,
@@ -25,10 +26,12 @@ export default class IdentityPicker extends InputField {
   private document: Document;
 
   constructor(options: InputFieldOptions, private onSelect: (value: string) => void) {
-    super({...options, plainText: true, name: 'identity-search', autocomplete: 'off'});
-    // This is a search control, not a login address or phone-number field.
-    const input = this.input as HTMLInputElement;
-    input.type = 'search';
+    // Safari can offer credentials on native inputs despite autocomplete=off.
+    // Reuse Web K's editable-text control so only our identity suggestions appear.
+    super({...options, plainText: undefined, withLinebreaks: false});
+    const input = this.input;
+    input.classList.add(styles.pickerInput);
+    input.setAttribute('autocomplete', 'off');
     input.inputMode = 'text';
     input.autocapitalize = 'none';
     input.spellcheck = false;
@@ -110,6 +113,13 @@ export default class IdentityPicker extends InputField {
     this.setActive(-1);
   }
 
+  public setDisabled(disabled: boolean) {
+    this.input.contentEditable = String(!disabled);
+    this.input.tabIndex = disabled ? -1 : 0;
+    this.input.setAttribute('aria-disabled', String(disabled));
+    if(disabled) this.hidePicker();
+  }
+
   private visible() { return this.entries.filter(({element}) => !element.hidden); }
 
   private filter(query: string) {
@@ -139,7 +149,7 @@ export default class IdentityPicker extends InputField {
   }
 
   private showPicker = () => {
-    if(this.navigation || this.input.matches(':disabled')) return;
+    if(this.navigation || this.input.getAttribute('aria-disabled') === 'true') return;
     clearTimeout(this.hideTimeout);
     this.entries.forEach(({element}) => { element.hidden = false; element.style.display = ''; });
     this.setActive(-1);
