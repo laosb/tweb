@@ -14,5 +14,7 @@ export function cbor(value) {
   if(typeof value === 'number' || typeof value === 'bigint') return head(0, value);
   if(typeof value === 'string') { const bytes = [...new TextEncoder().encode(value)]; return [...head(3, bytes.length), ...bytes]; }
   if(value instanceof Uint8Array) return [...head(2, value.length), ...value];
-  return [...head(4, value.length), ...value.flatMap(cbor)];
+  if(Array.isArray(value)) return [...head(4, value.length), ...value.flatMap(cbor)];
+  const entries = Object.entries(value).sort(([a], [b]) => Number(a) - Number(b));
+  return [...head(5, entries.length), ...entries.flatMap(([key, field]) => [...cbor(BigInt(key)), ...cbor(field)])];
 }
