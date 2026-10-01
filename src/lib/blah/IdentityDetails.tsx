@@ -31,7 +31,6 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
   const busy = () => pending() > 0;
   const [message, setMessage] = createSignal('');
   const [newDomain, setNewDomain] = createSignal('');
-  const [newUsername, setNewUsername] = createSignal(false);
   const [publicationPending, setPublicationPending] = createSignal<boolean>();
   const [publicationError, setPublicationError] = createSignal(false);
   let password: HTMLInputElement;
@@ -140,8 +139,7 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
   async function addDomain() {
     const domain = newDomain().trim().toLowerCase();
     if(busy() || !domain) return;
-    if(await run({action: 'domains', domains: [...identity().domains, domain],
-      usernameDomains: newUsername() ? [...identity().usernameDomains, domain] : identity().usernameDomains})) setNewDomain('');
+    if(await run({action: 'domains', domains: [...identity().domains, domain]})) setNewDomain('');
   }
 
   async function terminate(device?: string) {
@@ -222,19 +220,12 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
         <For each={identity().domains}>{(domain) => <div role="group" aria-label={domain}>
           <Row disabled={busy()}>
             <Row.Title>{domain}</Row.Title>
-            <Row.Subtitle>{i18n('BlahUseAsUsername')}</Row.Subtitle>
-            <Row.CheckboxFieldToggle><CheckboxField toggle checked={identity().usernameDomains.includes(domain)} disabled={busy()}
-              onChange={(checked) => run({action: 'domains', domains: identity().domains,
-                usernameDomains: checked ? [...identity().usernameDomains, domain] : identity().usernameDomains.filter((name) => name !== domain)})} /></Row.CheckboxFieldToggle>
           </Row>
           <Button text="Delete" disabled={busy() || identity().domains.length === 1} onClick={() => run({action: 'domains',
-            domains: identity().domains.filter((name) => name !== domain), usernameDomains: identity().usernameDomains.filter((name) => name !== domain)})} />
+            domains: identity().domains.filter((name) => name !== domain)})} />
         </div>}</For>
         <form onSubmit={(event) => { event.preventDefault(); void addDomain(); }}>
           <IdentityInput label="BlahProfileDomain" value={newDomain()} onInput={setNewDomain} disabled={busy()} />
-          <Row><Row.Title>{i18n('BlahUseAsUsername')}</Row.Title>
-            <Row.CheckboxFieldToggle><CheckboxField toggle checked={newUsername()} disabled={busy()} onChange={setNewUsername} /></Row.CheckboxFieldToggle>
-          </Row>
           <Button text="BlahAddDomain" disabled={busy() || !newDomain().trim()} onClick={addDomain} />
         </form>
       </Section>

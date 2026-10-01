@@ -54,7 +54,7 @@ try {
     format: 'jwk'
   }).x, 'base64url');
   // Diem's public identity key encoding, independently constructed by this fixture.
-  const key = Buffer.concat([Buffer.from([0x85, 0x68]), Buffer.from('Diem/key'), Buffer.from([3, 1, 1, 0x58, 0x20]), raw]);
+  const key = Buffer.from(cbor({0: 'Diem/key', 1: 3, 2: 1, 3: 1, 4: raw}));
   const id = createHash('sha256').update(key).digest('hex');
   await writeFile(dir + '/local.json', JSON.stringify({
     options: {},
@@ -185,11 +185,11 @@ try {
     const next = await diem.dcSetup({data: rotatedData, profile: rotated.profile, now: Math.floor(Date.now() / 1000)}, backend);
     return {...current, rotatedProfile: rotated.profile, nextProfile: next.profile};
   };
-  const signedDC = await page.evaluate(makeDCProfile, {data: cbor([13, 1, 5, ['dc.example.org'], [['127.0.0.1', tlsPort, true, 1, '/discovered/ws?route=home']], [], rsa.pkcs1Pem, 1]),
-    rotatedData: cbor([13, 1, 5, ['dc.example.org'], [['127.0.0.1', tlsPort, true, 1, '/rotated/ws?route=home']], [], rsa.pkcs1Pem, 1]),
+  const signedDC = await page.evaluate(makeDCProfile, {data: cbor({0: 13, 1: 1, 2: 5, 3: ['dc.example.org'], 4: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/discovered/ws?route=home'}], 5: [], 6: rsa.pkcs1Pem, 7: 1}),
+    rotatedData: cbor({0: 13, 1: 1, 2: 5, 3: ['dc.example.org'], 4: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/rotated/ws?route=home'}], 5: [], 6: rsa.pkcs1Pem, 7: 1}),
     identityKey: privateKey.export({format: 'jwk'})});
   assert.equal(signedDC.id, id);
-  const otherData = cbor([13, 1, 5, ['other.example.org'], [['127.0.0.1', tlsPort, true, 1, '/other/ws?route=home']], [], rsa.pkcs1Pem, 1]);
+  const otherData = cbor({0: 13, 1: 1, 2: 5, 3: ['other.example.org'], 4: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/other/ws?route=home'}], 5: [], 6: rsa.pkcs1Pem, 7: 1});
   const otherDC = await page.evaluate(makeDCProfile, {data: otherData, rotatedData: otherData, identityKey: otherKey});
   await signupContext.route('https://other.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
     contentType: 'application/cbor', body: Buffer.from(otherDC.profile)

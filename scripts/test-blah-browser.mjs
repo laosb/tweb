@@ -66,8 +66,8 @@ try {
   const checked = await page.evaluate(async() => {
     const {cbor} = await import('/cbor.mjs');
     const expiresAt = Math.floor(Date.now() / 1000) + 60;
-    const challenge = cbor([4, 1, 'alice.example.org', new Uint8Array(32).fill(7), expiresAt,
-      new Uint8Array(32).fill(0xab), 18446744073709551614n, 18446744073709551613n]);
+    const challenge = cbor({0: 4, 1: 1, 2: 'alice.example.org', 3: new Uint8Array(32).fill(7), 4: expiresAt,
+      5: new Uint8Array(32).fill(0xab), 6: 18446744073709551614n, 7: 18446744073709551613n});
     const extra = {challengeKind: 'invocation', challenge, approvedChallenge: challenge,
       expiresAt, keyID: '18446744073709551614', sessionID: '18446744073709551613', query: [1, 2, 3, 4]};
     const proof = await fixture.withIdentity(1, (secret) => fixture.diem('prove', secret, extra));

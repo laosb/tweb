@@ -23,7 +23,7 @@ defineStories('Blah', [{
   open: async() => {
     const {default: showIdentityDetails} = await import('@lib/blah/IdentityDetails');
     let identity: IdentityView = {
-      id: '123456'.padEnd(64, '0'), domain: 'alice.example.org', domains: ['alice.example.org'], usernameDomains: [], publisher: '',
+      id: '123456'.padEnd(64, '0'), domain: 'alice.example.org', domains: ['alice.example.org'], publisher: '',
       renewal: {profileDays: 180, deviceDays: 180, autoRenew: true}, publicationPending: true,
       notBefore: 1877904000, namespace: '', profile: [], account: '', expiresAt: 1893456000, devices: []
     };
@@ -31,7 +31,7 @@ defineStories('Blah', [{
       summary: identity, identity,
       action: async(request) => {
         if(request.action === 'domains') {
-          identity = {...identity, domains: request.domains, usernameDomains: request.usernameDomains};
+          identity = {...identity, domains: request.domains};
           return {identity};
         }
         if(request.action === 'inspect') return {identity};

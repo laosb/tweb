@@ -13,7 +13,6 @@ export type IdentityRequest = {
   password?: string,
   domain?: string,
   domains?: string[],
-  usernameDomains?: string[],
   backup?: string,
   publisher?: string,
   token?: string,
@@ -238,7 +237,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         secret.profile = encode(new Uint8Array(info.profile));
       }
     } else if(request.action === 'domains') {
-      info = await diem('domains', secret, {domains: request.domains, usernameDomains: request.usernameDomains}, slot);
+      info = await diem('domains', secret, {domains: request.domains}, slot);
       secret.domain = info.domains[0];
     } else if(request.action === 'publisher') {
       if(request.publisher) publicationURL(request.publisher);
