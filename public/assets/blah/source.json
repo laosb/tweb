@@ -1,9 +1,9 @@
 {
-  "release": "20260929-c70d",
-  "manifestSHA256": "2cd84fc5265624733081ad424466d4eac98352b543896142f0ddd6a8ea306b98",
+  "release": null,
+  "manifestSHA256": "017e6f4ce42f048f7c895e392a0b0a06ec5ed028d63de17a40685a324f637a8c",
   "source": {
     "repository": "https://github.com/UInt8Co/BlahDiem",
-    "commit": "c70dc29a98687bab4459ff2d54c7f5d214a41232",
+    "commit": "f0a7b85cd2c5936c6d6d0f3edabe9fbcaf504dbf",
     "dirty": false
   }
 }
