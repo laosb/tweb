@@ -2,7 +2,7 @@
   "format": 1,
   "source": {
     "repository": "https://github.com/UInt8Co/BlahDiem",
-    "commit": "54c685676f4b3dac78cdeb17ba6fb5fc681e3389",
+    "commit": "228dad43fa59f692b169fbb4a1ee488c7514d746",
     "dirty": false
   },
   "swift": "Swift version 6.4 (swift-6.4-RELEASE)",
@@ -10,28 +10,28 @@
   "binaryen": "wasm-opt version 133 (version_133)",
   "files": {
     "diem.js": {
-      "bytes": 56246,
-      "sha256": "abec05ee12bcf2fcd0f78d7d40af32f39d288c2a3ba440982bbc171e585ae73b"
+      "bytes": 56251,
+      "sha256": "6122fae4e7f16a4ffcd40eae5e47d729e6aabf86424988e5d06508161763ac4b"
     },
     "diem.js.gz": {
-      "bytes": 14304,
-      "sha256": "31d4b2bf10f7ed3124c90c2a022b145ccc5d404db78145809adeaefe733ab455"
+      "bytes": 14305,
+      "sha256": "e434821d47f31fe5304ef5031f6ffb1f3ab22032d8614ede4d16c6074eb55829"
     },
     "diem.js.br": {
-      "bytes": 12874,
-      "sha256": "ae4d787d9b454e4e2d53d4a557686def49eb7a792330763efa58176b0e91c227"
+      "bytes": 12848,
+      "sha256": "e5bf0aff9ccb4dbb01a733daee92e24e76b525796a16af8a6b337c53551dbb11"
     },
     "diem.wasm": {
-      "bytes": 378205,
-      "sha256": "0cb6f8a1ea4b1d8d118b07bac86859c6a5029718a523b638aba49551dab58555"
+      "bytes": 380617,
+      "sha256": "09e493ea4b441e3ece6c179a2636e00088bab14702e183029d97dda5d8b644f5"
     },
     "diem.wasm.gz": {
-      "bytes": 167525,
-      "sha256": "4e9c0a49e5ad477f609cc1c85e943670c9f132d1ee526b4f54f7a4e91827026f"
+      "bytes": 168988,
+      "sha256": "8336eff5a3cbff7210cb92bd3b2a9b105389538ff368045fd9defd1a94f4cebf"
     },
     "diem.wasm.br": {
-      "bytes": 133317,
-      "sha256": "ae583a9b15df988b9e9e83d5dd3d345a91b37799e4ad2cf92382eb7bb5ecad53"
+      "bytes": 134611,
+      "sha256": "5ad27ce2c936a469ec07d8b44a54705c4826e68e064071db532265466653c2bf"
     },
     "diem.d.ts": {
       "bytes": 1759,
@@ -54,8 +54,8 @@
       "sha256": "1bf9be81d10fb3a721a86bca43a944cdf94a2bcad74d0e1d8da797019f1d17f1"
     },
     "README.md": {
-      "bytes": 4851,
-      "sha256": "d80151ccb474c1ad009a6aa79a0725cf37cec5bb3f5bb83892c5b4e7f7e40818"
+      "bytes": 5120,
+      "sha256": "f78d774d338fbab4b7de12f53f10ceefae558e761853b3e5412a780b677025b4"
     }
   }
 }
