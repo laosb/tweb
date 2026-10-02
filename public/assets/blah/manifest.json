@@ -2,7 +2,7 @@
   "format": 1,
   "source": {
     "repository": "https://github.com/UInt8Co/BlahDiem",
-    "commit": "f0a7b85cd2c5936c6d6d0f3edabe9fbcaf504dbf",
+    "commit": "54c685676f4b3dac78cdeb17ba6fb5fc681e3389",
     "dirty": false
   },
   "swift": "Swift version 6.4 (swift-6.4-RELEASE)",
@@ -23,15 +23,15 @@
     },
     "diem.wasm": {
       "bytes": 378205,
-      "sha256": "802d36721c4e3b00f2a4de0cc19572aaa38b4b140d31067b65827195e6bbc9c6"
+      "sha256": "0cb6f8a1ea4b1d8d118b07bac86859c6a5029718a523b638aba49551dab58555"
     },
     "diem.wasm.gz": {
-      "bytes": 167521,
-      "sha256": "1a1172fca1439ff305af4f144f1acd2a0dab3c8d218d0166d0e4c647d039746e"
+      "bytes": 167525,
+      "sha256": "4e9c0a49e5ad477f609cc1c85e943670c9f132d1ee526b4f54f7a4e91827026f"
     },
     "diem.wasm.br": {
-      "bytes": 133252,
-      "sha256": "35b7542e87fc7aff6b7d4bc3e6853fbeaf45cadef1c54591436fbbc94388edd9"
+      "bytes": 133317,
+      "sha256": "ae583a9b15df988b9e9e83d5dd3d345a91b37799e4ad2cf92382eb7bb5ecad53"
     },
     "diem.d.ts": {
       "bytes": 1759,
