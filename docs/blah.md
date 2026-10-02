@@ -181,10 +181,11 @@ already built. This validates identity/login support, not every post-login Teleg
 BlahDiem owns the Swift bridge, minimization and release workflow.
 `public/assets/blah/manifest.json` identifies the build and checksums.
 `source.json` distinguishes a published release from an unpublished local build.
-Published pins let a fresh checkout download matching WASM automatically. Local imports
-use `release: null` and require a matching local BlahDiem build. After publishing that
-commit’s release, import it with `--release` before distributing the client; local
-builds are never silently replaced by a public release.
+Keep a published pin on shared branches so a fresh checkout can download matching WASM
+automatically. Local imports use `release: null` and require a matching local BlahDiem
+build; without that ignored binary, builds fail. After a local experiment, import a
+compatible published release with `--release` before sharing the pin. Local builds are
+never silently replaced by a public release.
 The importer verifies every asset before replacing the bundle, and restoring the pin
 also verifies the manifest hash. User identity requests explicitly select `kind: 'user'`;
 invocation proofs carry the reviewed challenge bytes and the current transport binding.
