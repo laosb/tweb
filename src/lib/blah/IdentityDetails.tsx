@@ -110,7 +110,7 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
       if(props.session.isClosed()) return false;
       if(result.identity) accept(result.identity, request.action !== 'renewal');
       if(request.action === 'unlock') focusWhenSettled(exportButton, () => !props.session.isClosed());
-      if(result.backup) exportFile(`${identity().domain}-identity.json`, result.backup, 'application/json');
+      if(result.backup) exportFile(`${identity().domain}-identity.cbor`, new Uint8Array(result.backup), 'application/cbor');
       if(result.identity && request.action !== 'renewal') void checkPublication();
       return true;
     } catch(cause) {
