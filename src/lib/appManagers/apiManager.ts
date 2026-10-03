@@ -20,7 +20,7 @@ import {IDB} from '@lib/files/idb';
 import ctx from '@environment/ctx';
 import blah, {ensureBlahConfig, getBlahConfig} from '@config/blah';
 import {invokeBlah} from '@lib/blah/invoke';
-import {requireAccountBinding} from '@lib/blah/identity';
+import {requireAccountBinding} from '@lib/blah/accountStorage';
 import noop from '@helpers/noop';
 import Modes from '@config/modes';
 import bytesFromHex from '@helpers/bytes/bytesFromHex';
@@ -479,12 +479,9 @@ export class ApiManager extends ApiManagerMethods {
     }
 
     let transport = this.chooseServer(dcId, connectionType, transportType);
-    return this.gettingNetworkers[getKey] = AccountController
-    .get(this.getAccountNumber())
-    .then(async(accountData) => {
-      if(getBlahConfig(this.getAccountNumber())?.home) await requireAccountBinding(this.getAccountNumber(), !!accountData.userId);
-      return [accountData[ak], accountData[ss]] as const;
-    })
+    return this.gettingNetworkers[getKey] = requireAccountBinding(this.getAccountNumber())
+    .then(() => AccountController.get(this.getAccountNumber()))
+    .then((accountData) => [accountData[ak], accountData[ss]] as const)
     .then(async([authKeyHex, serverSaltHex]) => {
       await ApiManager.fillTimeManagerOffsetPromise;
 
