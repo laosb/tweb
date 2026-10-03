@@ -268,7 +268,6 @@ async function loadStateForAccount(accountNumber: ActiveAccountNumber): Promise<
     ...COMMON_KEYS.map((key) => commonStateStorage.get(key)),
     ...ALL_KEYS.map((key) => stateStorage.get(key))
   ]);
-  await (await import('@lib/blah/identity')).requireAccountBinding(accountNumber, !!accountData.userId);
 
   const commonWriter = CommonStateWriter(log);
   commonWriter.readFromArray(arr.splice(0, COMMON_KEYS.length));
@@ -472,6 +471,7 @@ async function applyBuildVersionToStorage() {
 
 async function loadStateForAllAccounts() {
   await (await import('@lib/blah/identity')).requireHomeStorage();
+  await (await import('@lib/blah/accountStorage')).prepareAccountStorage();
   if(TEST_MULTI_MIGRATION) {
     // * clear all storages to test migration
     await Promise.all([1, 2, 3, 4].map(async(i) => {

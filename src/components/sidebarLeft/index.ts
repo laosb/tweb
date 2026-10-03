@@ -862,13 +862,12 @@ export class AppSidebarLeft extends SidebarSlider {
         buttons.splice(targetIdx, 0, ...attachMenuBotsButtons);
         buttons[targetIdx].separator = true;
 
-        const [totalAccounts, notificationsCount] = await Promise.all([
-          AccountController.getTotalAccounts(),
+        const [accountNumbers, notificationsCount] = await Promise.all([
+          AccountController.getAccountNumbers(),
           uiNotificationsManager.getNotificationsCountForAllAccounts()
         ]);
         const accountButtons: typeof buttons = [];
-        for(let i = 1; i <= totalAccounts; i++) {
-          const accountNumber = i as ActiveAccountNumber;
+        for(const accountNumber of accountNumbers) {
           if(accountNumber === getCurrentAccount()) {
             const user = await managers.appUsersManager.getSelf();
             accountButtons.push({
@@ -1893,7 +1892,7 @@ export class AppSidebarLeft extends SidebarSlider {
       return;
     }
 
-    const accountNumber = (totalAccounts + 1) as ActiveAccountNumber;
+    const accountNumber = await AccountController.getAvailableAccount();
     if(e?.ctrlKey || e?.metaKey) {
       // * the sign-in screen's back button returns here
       await sessionStorage.set({previous_account: getCurrentAccount()});
