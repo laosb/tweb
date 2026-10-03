@@ -14,10 +14,20 @@ import bytesToHex from '@helpers/bytes/bytesToHex';
 import randomize from '@helpers/array/randomize';
 
 export class AccountController extends StaticUtilityClass {
-  static async getTotalAccounts() {
-    const promises = ([1, 2, 3, 4] as const).map((accountNumber) => this.get(accountNumber));
+  static async getAccountNumbers() {
+    const slots = [1, 2, 3, 4] as const;
+    const promises = slots.map((accountNumber) => this.get(accountNumber));
     const allAccountsData = await Promise.all(promises);
-    return allAccountsData.filter((accountData) => !!accountData.userId).length;
+    return slots.filter((_, index) => !!allAccountsData[index].userId);
+  }
+
+  static async getTotalAccounts() {
+    return (await this.getAccountNumbers()).length;
+  }
+
+  static async getAvailableAccount() {
+    const accounts = await this.getAccountNumbers();
+    return ([1, 2, 3, 4] as const).find((slot) => !accounts.includes(slot));
   }
 
   static async getUnencryptedTotalAccounts() {
