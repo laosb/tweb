@@ -1,7 +1,8 @@
-import {readFile, writeFile, rename, rm} from 'node:fs/promises';
+import {readFile, writeFile, rename, rm, mkdir} from 'node:fs/promises';
 import {createHash, randomUUID} from 'node:crypto';
 import {join} from 'node:path';
 
+export const assetFiles = ['diem.js', 'diem.wasm', 'diem.d.ts', 'bridge-js.d.ts', 'LICENSE', 'THIRD_PARTY_LICENSES', 'README.md'];
 export const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export function verify(name, bytes, manifest) {
   const expected = manifest.files[name];
@@ -19,32 +20,65 @@ export async function download(url) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-/** Verify the cached binary, or fetch exactly the version described by the checked-in pin. */
-export async function ensureBlahWasm(directory) {
-  const pin = JSON.parse(await readFile(join(directory, 'source.json'), 'utf8'));
-  const manifestBytes = await readFile(join(directory, 'manifest.json'));
-  if(hash(manifestBytes) !== pin.manifestSHA256) throw new Error('Pinned release manifest changed');
+export function parseManifest(manifestBytes, release) {
   const manifest = JSON.parse(manifestBytes);
-  const wasm = join(directory, 'diem.wasm');
-  let cached;
-  try { cached = await readFile(wasm); } catch(error) { if(error.code !== 'ENOENT') throw error; }
-  if(cached) {
-    verify('diem.wasm', cached, manifest);
-    return;
+  if(manifest.format !== 1 || manifest.source?.repository !== 'https://github.com/UInt8Co/BlahDiem' ||
+    (release && (manifest.source.dirty || !manifest.source.commit?.startsWith(release.slice(9))))) {
+    throw new Error('Invalid BlahDiem release manifest');
   }
-  if(!pin.release) {
-    throw new Error('BlahDiem WASM is missing and this pin is an unpublished local build. ' +
-      'Build the pinned BlahDiem source and run node scripts/update-blah-wasm.mjs --from-dir /path/to/BlahDiem/Web/dist, ' +
-      'or select a compatible published release with --release YYYYMMDD-sha4.');
+  return manifest;
+}
+
+/** Call only after verifying the complete bundle. Readers never see partially written files. */
+export async function writeAssets(directory, entries) {
+  await mkdir(directory, {recursive: true});
+  for(const [name, bytes] of entries) {
+    const destination = join(directory, name);
+    const temporary = `${destination}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, bytes);
+      await rename(temporary, destination);
+    } finally {
+      await rm(temporary, {force: true});
+    }
   }
-  const bytes = await download(releaseURL(pin.release) + 'diem.wasm');
-  verify('diem.wasm', bytes, manifest);
-  const temporary = `${wasm}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temporary, bytes);
-    await rename(temporary, wasm);
-  } finally {
-    await rm(temporary, {force: true});
+}
+
+async function readCached(path) {
+  try { return await readFile(path); } catch(error) { if(error.code !== 'ENOENT') throw error; }
+}
+
+/** Restore missing or stale release assets using only the checked-in pin as the trust anchor. */
+export async function ensureBlahAssets(directory) {
+  const pin = JSON.parse(await readFile(join(directory, 'source.json'), 'utf8'));
+  const base = pin.release && releaseURL(pin.release);
+  const fetchAsset = name => {
+    if(!base) {
+      throw new Error('BlahDiem assets are missing or invalid and this pin is an unpublished local build. ' +
+        'Build the pinned BlahDiem source and run node scripts/update-blah-wasm.mjs --from-dir /path/to/BlahDiem/Web/dist, ' +
+        'or select a compatible published release with --release YYYYMMDD-sha4.');
+    }
+    return download(base + name);
+  };
+
+  let manifestBytes = await readCached(join(directory, 'manifest.json'));
+  const restoreManifest = !manifestBytes || hash(manifestBytes) !== pin.manifestSHA256;
+  if(restoreManifest) manifestBytes = await fetchAsset('manifest.json');
+  if(hash(manifestBytes) !== pin.manifestSHA256) throw new Error('Pinned release manifest changed');
+  const manifest = parseManifest(manifestBytes, pin.release);
+
+  const entries = (await Promise.all(assetFiles.map(async(name) => {
+    const cached = await readCached(join(directory, name));
+    if(cached) {
+      try { verify(name, cached, manifest); return; } catch{} // A different pin or damaged cache needs a verified replacement.
+    }
+    const bytes = await fetchAsset(name);
+    verify(name, bytes, manifest);
+    return [name, bytes];
+  }))).filter(Boolean);
+  if(restoreManifest) entries.push(['manifest.json', manifestBytes]);
+  if(entries.length) {
+    await writeAssets(directory, entries);
+    console.log(`Prepared ${entries.length} BlahDiem assets from ${pin.release}`);
   }
-  console.log(`Prepared ${bytes.length} byte BlahDiem WASM from ${pin.release}`);
 }
