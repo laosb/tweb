@@ -15,4 +15,6 @@ export function resetAccount(slot?: ActiveAccountNumber) {
 }
 export {default as accounts} from '@lib/accounts/accountController';
 export {diem} from '@lib/blah/wasm';
-export {stored, unseal, passwordKey, decode} from '@lib/blah/vault';
+export {stored, decode} from '@lib/blah/vault';
+
+export {setBlahConfig};
