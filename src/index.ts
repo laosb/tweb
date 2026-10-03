@@ -629,14 +629,12 @@ async function startApplication() {
     console.log('Will mount auth page:', authState._, Date.now() / 1000);
 
     (async() => {
-      const totalAccounts = await AccountController.getTotalAccounts();
+      const accountNumbers = await AccountController.getAccountNumbers();
       const hasSomeonePremium = await apiManagerProxy.hasSomeonePremium();
       const maxAccountNumber = hasSomeonePremium ? MAX_ACCOUNTS_PREMIUM : MAX_ACCOUNTS_FREE;
 
-      const currentAccount = getCurrentAccount();
-
-      if(currentAccount > Math.min(maxAccountNumber, totalAccounts + 1)) {
-        changeAccount(1);
+      if(!accountNumbers.includes(getCurrentAccount()) && accountNumbers.length >= maxAccountNumber) {
+        changeAccount(accountNumbers[0]);
       }
     })();
 

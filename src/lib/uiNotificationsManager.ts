@@ -832,9 +832,8 @@ export class UiNotificationsManager {
 
     this.stopped = false;
 
-    const totalAccounts = await AccountController.getTotalAccounts();
-    for(let i = 1; i <= totalAccounts; i++) {
-      const accountNumber = i as ActiveAccountNumber;
+    const accountNumbers = await AccountController.getAccountNumbers();
+    for(const accountNumber of accountNumbers) {
       this.constructAndStartNotificationManagerFor(accountNumber);
     }
 
