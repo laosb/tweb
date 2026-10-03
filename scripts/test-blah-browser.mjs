@@ -37,7 +37,7 @@ try {
   page.on('pageerror', (error) => console.error(error));
   await page.goto(origin);
   const created = await page.evaluate(async() => {
-    const response = await fixture.identityAction(1, {action: 'create', domain: 'alice.example.org', password: 'test identity password'});
+    const response = await fixture.identityAction(1, {action: 'create', domain: 'alice.example.org', password: 'x'});
     const backup = (await fixture.identityAction(1, {action: 'backup'})).backup;
     await fixture.bindIdentity(1);
     return {identity: response.identity, backup};
@@ -46,8 +46,8 @@ try {
   assert.equal(created.identity.devices.length, 1);
   assert.equal(created.identity.expiresAt - created.identity.notBefore, 180 * 86400);
   assert.equal(created.identity.devices[0].expiresAt - created.identity.devices[0].notBefore, 180 * 86400);
-  assert(!created.backup.includes('privateKey'));
-  assert(!created.backup.includes('test identity password'));
+  assert(Array.isArray(created.backup) && (created.backup[0] >> 5) === 5);
+  assert(!Buffer.from(created.backup).includes('privateKey'));
   let hostedProfile = Buffer.from(created.identity.profile);
   let profileStatus = 200;
   await page.route('https://alice.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
@@ -89,7 +89,7 @@ try {
     let locked = false, badPassword = false;
     try { await fixture.identityAction(1, {action: 'inspect'}); } catch{ locked = true; }
     try { await fixture.identityAction(1, {action: 'unlock', id, password: 'wrong password here'}); } catch{ badPassword = true; }
-    const result = await fixture.identityAction(1, {action: 'unlock', id, password: 'test identity password'});
+    const result = await fixture.identityAction(1, {action: 'unlock', id, password: 'x'});
     return {locked, badPassword, account: result.identity.account};
   }, created.identity.id);
   assert.deepEqual(reopened, {locked: true, badPassword: true, account: '12345'});
@@ -119,9 +119,9 @@ try {
   const restoredPage = await context.newPage();
   await restoredPage.goto(origin);
   const restored = await restoredPage.evaluate(async(backup) => {
-    const result = await fixture.identityAction(1, {action: 'restore', backup, password: 'test identity password'});
+    const result = await fixture.identityAction(1, {action: 'restore', backup, password: 'x'});
     let refused = false;
-    try { await fixture.identityAction(1, {action: 'restore', backup, password: 'test identity password'}); } catch{ refused = true; }
+    try { await fixture.identityAction(1, {action: 'restore', backup, password: 'x'}); } catch{ refused = true; }
     return {id: result.identity.id, refused};
   }, created.backup);
   assert.equal(restored.id, created.identity.id);
@@ -135,10 +135,10 @@ try {
     await fixture.identityAction(1, {action: 'renewal', renewal: {profileDays: 60, deviceDays: 90, autoRenew: false}});
     try {
       Date.now = () => at * 1000;
-      const disabled = (await fixture.identityAction(1, {action: 'unlock', id, password: 'test identity password'})).identity;
+      const disabled = (await fixture.identityAction(1, {action: 'unlock', id, password: 'x'})).identity;
       await fixture.identityAction(1, {action: 'renewal', renewal: {profileDays: 60, deviceDays: 90, autoRenew: true}});
-      const renewed = (await fixture.identityAction(1, {action: 'unlock', id, password: 'test identity password'})).identity;
-      const again = (await fixture.identityAction(1, {action: 'unlock', id, password: 'test identity password'})).identity;
+      const renewed = (await fixture.identityAction(1, {action: 'unlock', id, password: 'x'})).identity;
+      const again = (await fixture.identityAction(1, {action: 'unlock', id, password: 'x'})).identity;
       const realFetch = window.fetch;
       let attempts = 0;
       window.fetch = async() => new Response('', {status: ++attempts < 3 ? 503 : 200});
@@ -166,7 +166,7 @@ try {
   });
   const timerBoundary = timerProfile.notBefore + (timerProfile.expiresAt - timerProfile.notBefore) * .8;
   await page.clock.setSystemTime(new Date((timerBoundary - 30) * 1000));
-  await page.evaluate(id => fixture.identityAction(1, {action: 'unlock', id, password: 'test identity password'}), created.identity.id);
+  await page.evaluate(id => fixture.identityAction(1, {action: 'unlock', id, password: 'x'}), created.identity.id);
   await page.clock.runFor(60_000);
   await page.waitForFunction(async(previous) => (await fixture.identityAction(1, {action: 'inspect'})).identity.notBefore > previous, timerProfile.notBefore);
   for(let minute = 0; minute < 16; minute++) {
@@ -210,6 +210,47 @@ try {
       await fixture.stored('slot:1') && !Object.keys(await fixture.accounts.get(2)).length &&
       (await fixture.accounts.getTotalAccounts()) === 1;
   }, created.identity.id));
+  const dcImport = await page.evaluate(async() => {
+    const {createDiem} = await import('/assets/blah/diem.js');
+    const {cbor} = await import('/cbor.mjs');
+    const sdk = await createDiem(new URL('/assets/blah/diem.wasm', location.href));
+    const encode = value => btoa(String.fromCharCode(...value));
+    const decode = value => Uint8Array.from(atob(value), c => c.charCodeAt(0));
+    const identity = await sdk.generateSigningKey(), device = await sdk.generateSigningKey();
+    const keys = {};
+    for(const [role, key] of Object.entries({identity, device})) {
+      keys[role] = await crypto.subtle.importKey('pkcs8', decode(key.privateKey), 'Ed25519', false, ['sign']);
+    }
+    const backend = {
+      random: size => crypto.getRandomValues(new Uint8Array(size)),
+      publicKey: role => decode(({identity, device})[role].publicKey),
+      sign: async(role, data) => new Uint8Array(await crypto.subtle.sign('Ed25519', keys[role], new Uint8Array(data))),
+      verify: async(key, data, signature) => crypto.subtle.verify('Ed25519',
+        await crypto.subtle.importKey('raw', new Uint8Array(key), 'Ed25519', false, ['verify']),
+        new Uint8Array(signature), new Uint8Array(data))
+    };
+    const domain = 'operator.example.org', now = Math.floor(Date.now() / 1000);
+    const dc = await sdk.dcSetup({data: cbor({0: 13, 1: 1, 2: 5, 3: [domain],
+      4: [{0: domain, 1: 443, 2: true, 3: 1, 4: '/apiws'}], 5: [], 6: 'transport-key', 7: 1}),
+      profile: null, now}, backend);
+    const session = await sdk.keyFiles.create('x');
+    const backup = await session.seal({domain, profile: encode(dc.profile), device,
+      renewal: {profileDays: 90, deviceDays: 90, autoRenew: false}});
+    session.destroy();
+    fixture.setBlahConfig(4, {discovery: true, home: {domain, identity: dc.id, generation: '1'},
+      defaultDcId: 1, dcs: [], expiresAt: '9999999999'});
+    const restored = await fixture.identityAction(4, {action: 'restore', backup: Array.from(backup), password: 'x'});
+    const challenge = cbor({0: 4, 1: 1, 2: domain, 3: new Uint8Array(32).fill(7), 4: now + 60,
+      5: Uint8Array.from(dc.id.match(/../g), hex => parseInt(hex, 16)), 6: 10, 7: 11});
+    const result = await fixture.withIdentity(4, secret => {
+      if(secret.identity) throw new Error('Device file acquired recovery authority');
+      return fixture.diem('prove', secret, {challengeKind: 'invocation', challenge,
+        approvedChallenge: challenge, expiresAt: now + 60, keyID: '10', sessionID: '11', query: [1, 2, 3]}, 4);
+    });
+    return {account: restored.identity.account, proof: result.proof.length};
+  });
+  assert.equal(dcImport.account, '777000');
+  assert(dcImport.proof > 64);
   console.log('PASS: real BlahDiem WASM creation, encrypted custody, proof/session binding, numbering, renewal, devices, reload, home/slot isolation and recovery.');
 } finally {
   await browser?.close();
