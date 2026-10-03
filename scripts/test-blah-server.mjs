@@ -431,7 +431,7 @@ try {
       exact: true
     }).click();
     const download = await downloadPromise;
-    const backupFile = dir + '/identity.json';
+    const backupFile = dir + '/identity.cbor';
     await download.saveAs(backupFile);
     await page.keyboard.press('Escape');
     await identityDetails.waitFor({state: 'detached'});
@@ -455,7 +455,7 @@ try {
     await restored.getByRole('option', {name: 'Import identity from file', exact: true}).click();
     assert.equal(await restored.getByRole('dialog').getByLabel('Profile domain', {exact: true}).count(), 0);
     const fileDropzone = restored.getByRole('dialog').getByRole('button', {name: /^Identity file/});
-    const invalidFile = {name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('invalid identity file')};
+    const invalidFile = {name: 'invalid.cbor', mimeType: 'application/cbor', buffer: Buffer.from('invalid identity file')};
     for(const activate of [() => fileDropzone.click(), () => fileDropzone.press('Space')]) {
       const chooser = restored.waitForEvent('filechooser');
       await activate();
@@ -464,18 +464,18 @@ try {
     const importButton = restored.getByRole('dialog').getByRole('button', {name: 'Import identity from file', exact: true});
     assert(await importButton.isDisabled(), 'Import requires a password');
     // Supplying a password must not start import until explicitly submitted.
-    await restored.getByRole('dialog').getByRole('status').filter({hasText: /^invalid.json$/}).waitFor();
+    await restored.getByRole('dialog').getByRole('status').filter({hasText: /^invalid.cbor$/}).waitFor();
     await restored.getByRole('dialog').getByLabel('Identity password', {exact: true}).fill('test identity password');
     await restored.waitForTimeout(800);
-    assert.equal(await restored.getByRole('dialog').getByRole('status').filter({hasText: /Unexpected token/i}).count(), 0);
+    assert.equal(await restored.getByRole('dialog').getByRole('status').filter({hasText: /invalidProfile|invalidEncoding/i}).count(), 0);
     await importButton.click();
-    await restored.getByRole('dialog').getByRole('status').filter({hasText: /Unexpected token/i}).waitFor();
+    await restored.getByRole('dialog').getByRole('status').filter({hasText: /invalidProfile|invalidEncoding/i}).waitFor();
     // Replacing the failed file also waits for explicit submission.
     const transfer = await restored.evaluateHandle((contents) => {
       const data = new DataTransfer();
-      data.items.add(new File([contents], 'identity.json', {type: 'application/json'}));
+      data.items.add(new File([new Uint8Array(contents)], 'identity.cbor', {type: 'application/cbor'}));
       return data;
-    }, await readFile(backupFile, 'utf8'));
+    }, Array.from(await readFile(backupFile)));
     await restored.getByRole('dialog').locator('.drop').dispatchEvent('drop', {dataTransfer: transfer});
     await transfer.dispose();
     await restored.waitForTimeout(800);

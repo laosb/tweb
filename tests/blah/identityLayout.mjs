@@ -61,7 +61,7 @@ export async function checkIdentityLayout(page) {
   assert.equal(await option.locator('span').evaluate(element => getComputedStyle(element).whiteSpace), 'nowrap');
   await picker.fill('import');
   await page.getByRole('option', {name: 'Import identity from file', exact: true}).click();
-  await dialog.locator('input[type=file]').setInputFiles({name: 'identity'.repeat(30) + '.json', mimeType: 'application/json', buffer: Buffer.from('{}')});
+  await dialog.locator('input[type=file]').setInputFiles({name: 'identity'.repeat(30) + '.cbor', mimeType: 'application/cbor', buffer: Buffer.from([0xa0])});
   await widths(dialog);
   await dialog.getByRole('button', {name: 'Close', exact: true}).click();
   await dialog.waitFor({state: 'detached'});

@@ -22,7 +22,7 @@ export default function BackupDropzone(props: {disabled: boolean, onFile: (file:
   drop.container.addEventListener('dragover', (event) => { event.preventDefault(); event.stopPropagation(); });
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = 'application/json,.json';
+  input.accept = 'application/cbor,.cbor';
   input.hidden = true;
   input.setAttribute('aria-label', I18n.format('BlahIdentityFile', true));
   input.addEventListener('change', () => {
