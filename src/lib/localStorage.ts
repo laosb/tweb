@@ -144,7 +144,7 @@ export interface LocalStorageProxyTask extends WorkerTaskTemplate {
   }
 };
 
-type EncryptedLocalStorageProxyTaskType = 'save' | 'get' | 'delete';
+type EncryptedLocalStorageProxyTaskType = 'save' | 'get' | 'delete' | 'reEncrypt';
 
 export interface LocalStorageEncryptedProxyTaskPayload {
   type: EncryptedLocalStorageProxyTaskType;
