@@ -30,14 +30,14 @@ function SetupForm(props: IdentitySetupProps) {
     if(busy() || cancelled) return;
     const importing = props.mode === 'import';
     if(importing && (!file() || !password.value)) return;
-    if(importing && file().size > 600_000) {
-      setError('Choose a Blah identity file under 600 KB.');
+    if(importing && file().size > 262_144) {
+      setError('Choose a Blah identity file under 256 KiB.');
       return;
     }
     setBusy(true); setError('');
     try {
       const result = await props.action(importing ?
-        {action: 'restore', password: password.value, backup: await file().text()} :
+        {action: 'restore', password: password.value, backup: Array.from(new Uint8Array(await file().arrayBuffer()))} :
         {action: 'create', password: password.value, domain: domain.value});
       if(cancelled) return;
       props.onIdentity(result.identity);
