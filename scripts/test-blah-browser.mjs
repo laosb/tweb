@@ -106,7 +106,7 @@ try {
     const removed = await fixture.identityAction(1, {action: 'removeOtherDevices'});
     if(!removed.identity.devices[0].current) throw new Error('Termination must preserve the current device');
     await fixture.accounts.update(3, {userId: 123, dc1_auth_key: 'ab'.repeat(256)});
-    const reset = await fixture.requireAccountBinding(3);
+    const reset = await fixture.resetAccount(3);
     const empty = !Object.keys(await fixture.accounts.get(3)).length;
     return {refused, wrongHome, id: next.identity.id, added: added.identity.devices.length, removed: removed.identity.devices.length, reset, empty};
   });
@@ -194,8 +194,7 @@ try {
   });
   await page.reload();
   assert(await page.evaluate(async(id) => {
-    await fixture.prepareAccountStorage();
-    const {ids} = await fixture.identityAction(1, {action: 'list'});
+    await fixture.resetAccount();
     const emptyCache = await new Promise((resolve, reject) => {
       const request = indexedDB.open('tweb-account-1');
       request.onsuccess = () => {
@@ -207,9 +206,9 @@ try {
       };
       request.onerror = () => reject(request.error);
     });
-    return ids.includes(id) && emptyCache && !Object.keys(await fixture.accounts.get(1)).length &&
-      !await fixture.stored('slot:1') && (await fixture.accounts.get(2)).userId === 2 &&
-      await fixture.accounts.getAvailableAccount() === 1;
+    return !!await fixture.stored('identity:' + id) && emptyCache && (await fixture.accounts.get(1)).userId === 2 &&
+      await fixture.stored('slot:1') && !Object.keys(await fixture.accounts.get(2)).length &&
+      (await fixture.accounts.getTotalAccounts()) === 1;
   }, created.identity.id));
   console.log('PASS: real BlahDiem WASM creation, encrypted custody, proof/session binding, numbering, renewal, devices, reload, home/slot isolation and recovery.');
 } finally {
