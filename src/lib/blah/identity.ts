@@ -121,6 +121,8 @@ function scheduleRenewal(slot: number) {
   }, 60_000);
 }
 
+export {requireAccountBinding} from '@lib/blah/accountStorage';
+
 export async function bindIdentity(slot: number) {
   return withIdentity(slot, async(secret, info) => {
     await stored('slot:' + slot, info.namespace);
