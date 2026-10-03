@@ -38,6 +38,8 @@ ignore
 /.cloudflare/
 /.wrangler/
 
-# BlahDiem binary fetched or imported from the pinned build; never committed.
-/public/assets/blah/diem.wasm
-/public/assets/blah/diem.wasm.*.tmp
+# BlahDiem release assets are a verified local cache. Track only the pin and tweb branding.
+/public/assets/blah/*
+!/public/assets/blah/source.json
+!/public/assets/blah/icon-*.png
+!/public/assets/blah/logo.svg

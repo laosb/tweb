@@ -142,16 +142,17 @@ the identity dialogs remind you below their main action button. Keys are never u
 
 The minimized `public/assets/blah/diem.js` / `diem.wasm` pair is built and released
 by [BlahDiem](https://github.com/UInt8Co/BlahDiem/tree/main/Web), using generated
-BridgeJS bindings and Swift 6.4 Embedded. Tweb tracks the JavaScript bindings, generated
-declarations, licenses and provenance. WASM binaries are never committed. The binary
-is an ignored local cache: Vite builds, the dev server and the browser fixture verify
-its checksum and download it from the pinned release if absent. With a published
-release, the client build needs no Swift, Binaryen or WASI shim dependency. WASM loads
+BridgeJS bindings and Swift 6.4 Embedded. Tweb tracks only the release pin and its own
+branding. All BlahDiem release files, including JavaScript, WASM, generated declarations,
+the manifest and licenses, are an ignored local cache. Vite builds, the dev server,
+typechecking and the browser fixture verify and restore missing or stale files from
+the pinned release. With a published release, the client build needs no Swift,
+Binaryen or WASI shim dependency. WASM loads
 lazily in the account manager's worker (and supports the in-process fallback). Vite resolves
 asset URLs for both workers and pages, including deployments under a URL prefix.
 
 The release tag and manifest hash in `public/assets/blah/source.json` pin the bundle.
-To prepare the binary, update to another dated release, or test a local build:
+To prepare the assets, update to another dated release, or test a local build:
 
 ```sh
 node scripts/update-blah-wasm.mjs
@@ -159,7 +160,7 @@ node scripts/update-blah-wasm.mjs --release YYYYMMDD-sha4
 # Local development: build Web/ in the BlahDiem checkout first.
 node scripts/update-blah-wasm.mjs --from-dir ../BlahDiem/Web/dist
 
-# Verify the vendored library and client integration:
+# Verify the pinned library and client integration:
 pnpm exec vitest run src/tests/blah src/tests/webPushApiManager.test.ts
 pnpm run typecheck
 node scripts/test-blah-browser.mjs
@@ -186,9 +187,9 @@ already built. This validates identity/login support, not every post-login Teleg
 BlahDiem owns the Swift bridge, minimization and release workflow.
 `public/assets/blah/manifest.json` identifies the build and checksums.
 `source.json` distinguishes a published release from an unpublished local build.
-Keep a published pin on shared branches so a fresh checkout can download matching WASM
+Keep a published pin on shared branches so a fresh checkout can download matching assets
 automatically. Local imports use `release: null` and require a matching local BlahDiem
-build; without that ignored binary, builds fail. After a local experiment, import a
+build; without the complete ignored bundle, builds fail. After a local experiment, import a
 compatible published release with `--release` before sharing the pin. Local builds are
 never silently replaced by a public release.
 The importer verifies every asset before replacing the bundle, and restoring the pin
