@@ -95,10 +95,11 @@ export async function bindHomeStorage(binding: BlahConfig['home'], slot = 1) {
   });
 }
 
-/** Called only after upstream has cleared/moved the corresponding account caches. */
-export async function shiftHomeStorage(upTo: number) {
+/** Move pins with account caches, optionally clearing them under the same vault lock. */
+export async function shiftHomeStorage(upTo: number, beforeShift?: () => Promise<boolean>) {
   await migrateHomeStorage();
-  await exclusively(async() => {
+  return exclusively(async() => {
+    if(beforeShift && !await beforeShift()) return false;
     const entries: [string, unknown][] = [];
     for(let slot = upTo; slot <= 4; slot++) {
       for(const prefix of ['home:', 'dc-profile:', 'slot:', 'reset-slot:']) {
@@ -106,6 +107,7 @@ export async function shiftHomeStorage(upTo: number) {
       }
     }
     await storeEntries(entries);
+    return true;
   });
 }
 

@@ -5,7 +5,16 @@ let vault: typeof import('@lib/blah/vault');
 let accountStorage: typeof import('@lib/blah/accountStorage');
 let accounts: typeof import('@lib/accounts/accountController')['default'];
 const session = vi.hoisted(() => ({encrypted: new Map<string, unknown>(), passcode: false, flush: vi.fn()}));
-vi.mock('@config/debug', () => ({MOUNT_CLASS_TO: {}}));
+const logout = vi.hoisted(() => vi.fn(() => { throw new Error('Reloading after logout'); }));
+vi.mock('@config/debug', () => ({default: false, MOUNT_CLASS_TO: {}}));
+vi.mock('@lib/rootScope', () => ({default: {dispatchEventSingle: logout, dispatchEvent: logout}}));
+vi.mock('@lib/passcode/keyHandoff', () => ({saveEncryptionKeyForHandoff: vi.fn()}));
+vi.mock('@lib/crypto/cryptoMessagePort', () => ({default: {
+  invokeCryptoNew: async({method, args}: {method: string, args: [any]}) => {
+    const {encryptLocalData, decryptLocalData} = await import('@lib/crypto/utils/aesLocal');
+    return (await (method === 'aes-local-encrypt' ? encryptLocalData : decryptLocalData)(args[0])).value;
+  }
+}}));
 vi.mock('@lib/passcode/deferredIsUsingPasscode', () => ({default: {isUsingPasscode: async() => session.passcode}}));
 vi.mock('@lib/sessionStorage', () => ({default: {
   get: async(key: string) => session.passcode && /^(account\d|user_auth|dc|auth_key_fingerprint)$/.test(key) ?
@@ -29,8 +38,11 @@ beforeEach(async() => {
   session.passcode = false;
   session.encrypted.clear();
   session.flush.mockReset();
+  logout.mockClear();
   localStorage.clear();
   vi.stubGlobal('indexedDB', new IDBFactory());
+  // IndexedDB clones typed arrays in Node's realm; use that realm for the encryption layer's check.
+  vi.stubGlobal('Uint8Array', new TextEncoder().encode('').constructor);
   let queue = Promise.resolve();
   Object.defineProperty(navigator, 'locks', {configurable: true, value: {
     request: (_name: string, action: () => Promise<void>) => {
@@ -75,33 +87,36 @@ async function cacheCount(name: string, store = 'users') {
   });
 }
 
-it('clears an incompatible home while preserving other slots and encrypted identity custody', async() => {
+async function resetAccount() {
+  await expect(accountStorage.prepareAccountStorage()).rejects.toThrow('Reloading after logout');
+}
+
+it('removes an incompatible home using normal account moves, preserving caches and identity custody', async() => {
   await homeStorage.bindHomeStorage(first, 1);
   await cache('tweb-account-1');
   localStorage.setItem('account1', JSON.stringify({userId: 1, dc1_auth_key: 'a'.repeat(512)}));
-  await homeStorage.bindHomeStorage(first, 2);
-  await homeStorage.bindHomeStorage(second, 3);
-  localStorage.setItem('account3', JSON.stringify({userId: 3, dc1_auth_key: 'b'.repeat(512)}));
-  await cache('tweb-account-3');
+  await homeStorage.bindHomeStorage(second, 2);
+  localStorage.setItem('account2', JSON.stringify({userId: 2, dc1_auth_key: 'b'.repeat(512)}));
+  await cache('tweb-account-2');
   await vault.storeEntries([
-    ['slot:1', 'identity-one'], ['slot:3', 'identity-three'],
+    ['slot:1', 'identity-one'], ['slot:2', 'identity-two'],
     ['identity:one', {ciphertext: 'preserved'}], ['dc-profile:1', {domain: first.domain}]
   ]);
-  expect(await homeStorage.accountsShareHome(1, 2)).toBe(true);
-  expect(await homeStorage.accountsShareHome(1, 3)).toBe(false);
+  expect(await homeStorage.accountsShareHome(1, 2)).toBe(false);
   await homeStorage.bindHomeStorage(second, 1);
-  await accountStorage.prepareAccountStorage();
-  expect(await accounts.get(1)).toEqual({});
-  expect(await cacheCount('tweb-account-1')).toBe(0);
-  expect(await cacheCount('tweb-account-3')).toBe(1);
-  expect(await accounts.getAccountNumbers()).toEqual([3]);
-  expect(await accounts.getAvailableAccount()).toBe(1);
+  await resetAccount();
+  expect(await accounts.get(1)).toMatchObject({userId: 2, dc1_auth_key: 'b'.repeat(512)});
+  expect(await accounts.get(2)).toEqual({});
+  expect(await cacheCount('tweb-account-1')).toBe(1);
+  expect(await cacheCount('tweb-account-2')).toBe(0);
+  expect(await accounts.getTotalAccounts()).toBe(1);
   expect(await vault.stored('home:1')).toBe(JSON.stringify(second));
   expect(await vault.stored('dc-profile:1')).toBeNull();
-  expect(await vault.stored('slot:1')).toBeNull();
-  expect(await vault.stored('slot:3')).toBe('identity-three');
+  expect(await vault.stored('slot:1')).toBe('identity-two');
+  expect(await vault.stored('slot:2')).toBeNull();
   expect(await vault.stored('identity:one')).toEqual({ciphertext: 'preserved'});
   expect(localStorage.getItem('number_of_accounts')).toBe('1');
+  expect(logout).toHaveBeenCalledWith('logging_out', {accountNumber: 1});
   expect(await accountStorage.requireAccountBinding(1)).toBe(false);
 });
 
@@ -111,7 +126,8 @@ it('clears unbound legacy and encrypted account caches, even beside a valid acco
   await homeStorage.bindHomeStorage(second, 2);
   localStorage.setItem('account3', JSON.stringify({userId: 1}));
   await homeStorage.bindHomeStorage(second, 3);
-  await accountStorage.prepareAccountStorage();
+  await resetAccount();
+  await resetAccount();
   expect(await cacheCount('tweb-account-2', 'users__encrypted')).toBe(0);
   expect(await accounts.get(3)).toEqual({});
   expect(await vault.stored('home:1')).toBe(JSON.stringify(first));
@@ -125,7 +141,7 @@ it('clears origin-wide legacy keys and old caches so migration cannot restore th
   localStorage.setItem('auth_key_fingerprint', JSON.stringify('aaaaaaaa'));
   await cache('tweb', 'session');
   await cache('telegram', 'users');
-  await accountStorage.prepareAccountStorage();
+  await resetAccount();
   for(const key of ['dc1_auth_key', 'dc255_auth_key', 'dc255_server_salt', 'user_auth', 'auth_key_fingerprint']) {
     expect(localStorage.getItem(key)).toBeNull();
   }
@@ -133,38 +149,64 @@ it('clears origin-wide legacy keys and old caches so migration cannot restore th
   expect(await cacheCount('telegram', 'users')).toBe(0);
 });
 
-it('clears signed-in sessions without a Diem binding, but keeps compatible sessions and signed-out transport keys', async() => {
+it('removes sessions without a Diem binding and preserves compatible sessions', async() => {
   for(const slot of [1, 2, 3] as const) await homeStorage.bindHomeStorage(first, slot);
   await accounts.update(1, {userId: 1, dc1_auth_key: 'a'.repeat(512)});
   await accounts.update(2, {userId: 2, dc1_auth_key: 'b'.repeat(512)});
-  await accounts.update(3, {dc1_auth_key: 'c'.repeat(512)});
+  await accounts.update(3, {userId: 3, dc1_auth_key: 'c'.repeat(512)});
   await vault.stored('slot:2', 'identity-two');
+  await vault.stored('slot:3', 'identity-three');
   await cache('tweb-account-1', 'session');
-  await accountStorage.prepareAccountStorage();
-  expect(await accounts.get(1)).toEqual({});
+  await resetAccount();
+  expect(await accounts.get(1)).toMatchObject({userId: 2, dc1_auth_key: 'b'.repeat(512)});
   expect(await cacheCount('tweb-account-1', 'session')).toBe(0);
-  expect(await accounts.get(2)).toMatchObject({userId: 2, dc1_auth_key: 'b'.repeat(512)});
-  expect(await accounts.get(3)).toMatchObject({dc1_auth_key: 'c'.repeat(512)});
+  expect(await accounts.get(2)).toMatchObject({userId: 3, dc1_auth_key: 'c'.repeat(512)});
+  expect(await accounts.get(3)).toEqual({});
+});
+
+it('keeps compatible sessions and signed-out transport keys without reloading', async() => {
+  await homeStorage.bindHomeStorage(first, 1);
+  await homeStorage.bindHomeStorage(second, 2);
+  await accounts.update(1, {userId: 1, dc1_auth_key: 'a'.repeat(512)});
+  await accounts.update(2, {dc1_auth_key: 'b'.repeat(512)});
+  await vault.stored('slot:1', 'identity-one');
+  await accountStorage.prepareAccountStorage();
+  expect(await accounts.get(1)).toMatchObject({userId: 1});
+  expect(await accounts.get(2)).toMatchObject({dc1_auth_key: 'b'.repeat(512)});
+  expect(logout).not.toHaveBeenCalled();
 });
 
 it('removes only the incompatible credentials from shared passcode storage after unlocking', async() => {
+  const {getDatabaseState} = await import('@config/databases/state');
+  const {default: AppStorage} = await import('@lib/storage');
+  const {default: EncryptionKeyStore} = await import('@lib/passcode/keyStore');
+  const {decryptLocalData} = await import('@lib/crypto/utils/aesLocal');
   await homeStorage.bindHomeStorage(first, 1);
   await homeStorage.bindHomeStorage(second, 2);
   await vault.stored('slot:2', 'identity-two');
   session.passcode = true;
+  const key = await crypto.subtle.generateKey({name: 'AES-GCM', length: 256}, true, ['encrypt', 'decrypt']);
+  EncryptionKeyStore.save(key);
   session.encrypted.set('account1', {userId: 1, dc1_auth_key: 'a'.repeat(512)});
   localStorage.setItem('account1', JSON.stringify({userId: 1, dc1_auth_key: 'old-plaintext'}));
   const preserved = {userId: 2, dc1_auth_key: 'b'.repeat(512), auth_key_fingerprint: 'bbbbbbbb', push_key: 'push'};
   session.encrypted.set('account2', preserved);
   await cache('tweb-account-1', 'session__encrypted');
-  await cache('tweb-account-2', 'users__encrypted');
+  await new AppStorage(getDatabaseState(2), 'users').set({'2': {id: 2}});
+  await AppStorage.reEncryptEncrypted();
   await cache('tweb-common', 'session');
-  await accountStorage.prepareAccountStorage();
-  expect(session.encrypted.get('account1')).toEqual({});
+  await resetAccount();
+  expect(session.encrypted.get('account1')).toEqual(preserved);
   expect(localStorage.getItem('account1')).toBeNull();
-  expect(session.encrypted.get('account2')).toEqual(preserved);
+  expect(session.encrypted.has('account2')).toBe(false);
   expect(await cacheCount('tweb-account-1', 'session__encrypted')).toBe(0);
-  expect(await cacheCount('tweb-account-2', 'users__encrypted')).toBe(1);
+  expect(await cacheCount('tweb-account-2', 'users__encrypted')).toBe(0);
+  // Logout closes existing handles; reload the storage module to verify the persisted ciphertext.
+  vi.resetModules();
+  const {default: IDBStorage} = await import('@lib/files/idb');
+  const moved = await new IDBStorage(getDatabaseState(1), 'users__encrypted').get<Uint8Array>('data');
+  const decrypted = await decryptLocalData({key, encryptedData: moved});
+  expect(JSON.parse(new TextDecoder().decode(decrypted.value))).toEqual({'2': {id: 2}});
   expect(await cacheCount('tweb-common', 'session')).toBe(1);
   expect(session.flush).toHaveBeenCalledWith('reEncrypt');
 });
@@ -172,11 +214,11 @@ it('removes only the incompatible credentials from shared passcode storage after
 it('retries an interrupted reset before allowing the slot to be restored', async() => {
   await homeStorage.bindHomeStorage(first, 1);
   await accounts.update(1, {userId: 1});
-  const update = vi.spyOn(accounts, 'update').mockRejectedValueOnce(new Error('Storage unavailable'));
+  const update = vi.spyOn(accounts, 'shiftAccounts').mockRejectedValueOnce(new Error('Storage unavailable'));
   await expect(accountStorage.prepareAccountStorage()).rejects.toThrow('Storage unavailable');
   expect(await vault.stored('reset-slot:1')).toBe(true);
   update.mockRestore();
-  await accountStorage.prepareAccountStorage();
+  await resetAccount();
   expect(await accounts.get(1)).toEqual({});
   expect(await vault.stored('reset-slot:1')).toBeNull();
 });
@@ -187,7 +229,7 @@ it('preserves test-mode sessions and unrelated databases when clearing a product
   await cache('tweb-account-1');
   await cache('tweb-account-1_test');
   await cache('tweb-unrelated');
-  await accountStorage.prepareAccountStorage();
+  await resetAccount();
   expect(await cacheCount('tweb-account-1')).toBe(0);
   expect(await cacheCount('tweb-account-1_test')).toBe(1);
   expect(await cacheCount('tweb-unrelated')).toBe(1);

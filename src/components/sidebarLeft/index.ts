@@ -829,12 +829,13 @@ export class AppSidebarLeft extends SidebarSlider {
         buttons.splice(targetIdx, 0, ...attachMenuBotsButtons);
         buttons[targetIdx].separator = true;
 
-        const [accountNumbers, notificationsCount] = await Promise.all([
-          AccountController.getAccountNumbers(),
+        const [totalAccounts, notificationsCount] = await Promise.all([
+          AccountController.getTotalAccounts(),
           uiNotificationsManager.getNotificationsCountForAllAccounts()
         ]);
         const accountButtons: typeof buttons = [];
-        for(const accountNumber of accountNumbers) {
+        for(let i = 1; i <= totalAccounts; i++) {
+          const accountNumber = i as ActiveAccountNumber;
           if(accountNumber === getCurrentAccount()) {
             const user = await this.managers.appUsersManager.getSelf();
             accountButtons.push({
@@ -1810,7 +1811,7 @@ export class AppSidebarLeft extends SidebarSlider {
       await pause(200);
     }
 
-    changeAccount(await AccountController.getAvailableAccount(), newTab);
+    changeAccount((totalAccounts + 1) as ActiveAccountNumber, newTab);
   };
 }
 

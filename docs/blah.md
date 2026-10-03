@@ -37,8 +37,8 @@ An account slot containing a legacy Telegram/number-email session, caches from a
 different home, or a signed-in session without a Diem identity binding is emptied
 automatically before its state or transport keys are restored. With an app passcode,
 credential cleanup finishes after unlocking, preserving other accounts in the shared
-encrypted storage. The empty slot returns to sign-in and can be reused through
-**Add Account**; compatible accounts keep their slot numbers. Network, signature and
+encrypted storage. Cleanup uses the normal logout account moves and reloads open
+tabs; compatible accounts keep their sessions, caches and home bindings. Network, signature and
 profile rollback errors do not erase a compatible session.
 Logout clears that slot and moves the remaining accounts together with their home
 and identity bindings, leaving the freed slot available for another home. Encrypted
