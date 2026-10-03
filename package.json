@@ -36,7 +36,11 @@
     "build:solid": "node ./src/scripts/build_solid.js",
     "format-lang": "node ./src/scripts/format_lang.js",
     "lottie-to-svg": "node ./src/scripts/lottie_to_svg.js",
-    "generate-scss-types": "node scss-types.js"
+    "generate-scss-types": "node scss-types.js",
+    "start:widget": "vite --config vite.widget.config.ts",
+    "build:widget": "pnpm test:widget && pnpm run typecheck && vite build --config vite.widget.config.ts",
+    "serve:widget": "pnpm run build:widget && vite preview --config vite.widget.config.ts",
+    "test:widget": "vitest run --config vite.widget.config.ts"
   },
   "author": "",
   "license": "GPL-3.0-only",
