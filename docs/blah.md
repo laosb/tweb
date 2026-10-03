@@ -26,19 +26,24 @@ Use **Add Account** to sign in to another home on the same web origin; accounts
 keep separate transport keys, discovery profiles and identity namespaces.
 Selecting a home reloads open tabs so they share the updated account configuration.
 On reload, Blah fetches and verifies the profile again, allowing endpoint and RSA
-rotation while rejecting changed DC identities, database generations, and older or
-conflicting profile versions. Workers verify the saved public profile before
-connecting. If discovery fails, the screen shows the error and lets you retry;
+rotation while rejecting older or conflicting profile versions within the same
+home namespace. A changed DC identity or database generation empties the slot's old
+session before it can connect to the new namespace. Workers verify the saved public
+profile before connecting. If discovery fails, the screen shows the error and lets you retry;
 there is no fallback to Telegram or another DC. A link with `?dc=dc.example.org`
 prefills the field on first use; the user still selects **Connect to Blah**.
 
-Use a fresh origin, separate from Telegram and older number/email-based Blah
-installations. Populated legacy caches are refused. A selected slot cannot switch
-homes while it holds an account or transport cache.
+An account slot containing a legacy Telegram/number-email session, caches from a
+different home, or a signed-in session without a Diem identity binding is emptied
+automatically before its state or transport keys are restored. With an app passcode,
+credential cleanup finishes after unlocking, preserving other accounts in the shared
+encrypted storage. The empty slot returns to sign-in and can be reused through
+**Add Account**; compatible accounts keep their slot numbers. Network, signature and
+profile rollback errors do not erase a compatible session.
 Logout clears that slot and moves the remaining accounts together with their home
 and identity bindings, leaving the freed slot available for another home. Encrypted
-identity custody survives logout. Existing origin-wide pins migrate to their
-original account slots; unused slots can select a different home.
+identity custody survives logout and automatic slot cleanup. Existing origin-wide pins
+migrate to their original account slots; unused slots can select a different home.
 
 ### Build the client
 
