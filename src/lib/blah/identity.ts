@@ -128,14 +128,6 @@ export async function bindIdentity(slot: number) {
   });
 }
 
-export async function requireAccountBinding(slot: number, signedIn: boolean) {
-  await requireHomeStorage();
-  if(!blah?.discovery && !getBlahConfig(slot)?.home) return;
-  if(signedIn && !await stored<string>('slot:' + slot)) {
-    throw new Error('This cached authorization has no Diem identity binding. Use a fresh browser origin.');
-  }
-}
-
 function publicationURL(value: string) {
   const url = new URL(value);
   if(url.protocol !== 'https:' || url.username || url.password || url.hash) throw new Error('Use an HTTPS publication endpoint.');
