@@ -95,6 +95,8 @@ try {
   assert.deepEqual(reopened, {locked: true, badPassword: true, account: '12345'});
   const second = await page.evaluate(async() => {
     const next = await fixture.identityAction(2, {action: 'create', domain: 'bob.example.org', password: 'second identity password'});
+    await fixture.bindIdentity(2);
+    await fixture.accounts.update(2, {userId: 2, dc1_auth_key: 'cd'.repeat(256)});
     let wrongHome = false;
     try { await fixture.withIdentity(2, (secret) => fixture.diem('inspect', secret, {}, 1)); } catch{ wrongHome = true; }
     let refused = false;
@@ -103,15 +105,16 @@ try {
       device: btoa(String.fromCharCode(...next.identity.devices[0].key))});
     const removed = await fixture.identityAction(1, {action: 'removeOtherDevices'});
     if(!removed.identity.devices[0].current) throw new Error('Termination must preserve the current device');
-    let unbound = false;
-    try { await fixture.requireAccountBinding(3, true); } catch{ unbound = true; }
-    return {refused, wrongHome, id: next.identity.id, added: added.identity.devices.length, removed: removed.identity.devices.length, unbound};
+    await fixture.accounts.update(3, {userId: 123, dc1_auth_key: 'ab'.repeat(256)});
+    const reset = await fixture.requireAccountBinding(3);
+    const empty = !Object.keys(await fixture.accounts.get(3)).length;
+    return {refused, wrongHome, id: next.identity.id, added: added.identity.devices.length, removed: removed.identity.devices.length, reset, empty};
   });
   assert(second.refused);
   assert(second.wrongHome);
   assert.equal(second.added, 2);
   assert.equal(second.removed, 1);
-  assert(second.unbound);
+  assert(second.reset && second.empty);
   const context = await browser.newContext();
   const restoredPage = await context.newPage();
   await restoredPage.goto(origin);
@@ -173,11 +176,41 @@ try {
   assert(await page.evaluate(async() => {
     try { await fixture.identityAction(1, {action: 'inspect'}); return false; } catch{ return true; }
   }), 'Background checks must not extend the unlock timeout');
-  await page.evaluate(() => fixture.stored('home:1', 'another home'));
+  await page.evaluate(async() => {
+    await fixture.accounts.update(1, {userId: 12345, dc1_auth_key: 'ab'.repeat(256)});
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.open('tweb-account-1', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('session');
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('session', 'readwrite');
+        tx.objectStore('session').put({_: 'authStateSignedIn'}, 'authState');
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+      };
+      request.onerror = () => reject(request.error);
+    });
+    await fixture.stored('home:1', 'another home');
+  });
   await page.reload();
-  assert(await page.evaluate(async() => {
-    try { await fixture.identityAction(1, {action: 'list'}); return false; } catch{ return true; }
-  }));
+  assert(await page.evaluate(async(id) => {
+    await fixture.prepareAccountStorage();
+    const {ids} = await fixture.identityAction(1, {action: 'list'});
+    const emptyCache = await new Promise((resolve, reject) => {
+      const request = indexedDB.open('tweb-account-1');
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('session');
+        const count = tx.objectStore('session').count();
+        tx.oncomplete = () => { db.close(); resolve(count.result === 0); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+      };
+      request.onerror = () => reject(request.error);
+    });
+    return ids.includes(id) && emptyCache && !Object.keys(await fixture.accounts.get(1)).length &&
+      !await fixture.stored('slot:1') && (await fixture.accounts.get(2)).userId === 2 &&
+      await fixture.accounts.getAvailableAccount() === 1;
+  }, created.identity.id));
   console.log('PASS: real BlahDiem WASM creation, encrypted custody, proof/session binding, numbering, renewal, devices, reload, home/slot isolation and recovery.');
 } finally {
   await browser?.close();
