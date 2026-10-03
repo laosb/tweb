@@ -69,7 +69,7 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
 ## Create, publish and sign in
 
 1. Choose **Create identity** in the **Saved identity** picker to open its dialog.
-   Choose a password of at least 12 characters and enter a domain you control,
+   Choose a nonempty password and enter a domain you control,
    such as `alice.example.org`.
 2. Create the identity. Its details dialog opens immediately; export its encrypted
    identity file there. The password is separate
@@ -127,7 +127,8 @@ identity files remain supported; details does not offer publisher configuration.
 **Lock identity** (or 15 minutes without an identity operation) discards the in-memory unlock key without logging out of the
 chat session. Reloading the worker also requires unlocking before the next identity
 operation. Identity files contain the identity and current device keys and publisher
-settings, encrypted with PBKDF2-SHA-256/AES-256-GCM. Importing an identity file recovers that
+settings in BlahDiem’s password-protected CBOR/HPKE format. No password length or
+complexity rules apply beyond requiring a nonempty value; JSON files are unsupported. Importing an identity file recovers that
 same device; it does not enroll a distinct device. Choose **Import identity from file**
 in the saved-identity picker to open its own dialog, then drop the identity file
 onto the file area or click that area to choose one. Enter its password below the file area
