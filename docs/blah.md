@@ -142,12 +142,16 @@ the identity dialogs remind you below their main action button. Keys are never u
 ## Update and verify the WASM adapter
 
 [BlahDiem](https://github.com/UInt8Co/BlahDiem/tree/main/Web) owns the JavaScript/WASM
-runtime. Tweb imports its pinned module from `bd-cdn.blahim.com` lazily in the account
-manager's worker (with an in-process fallback). The module loads matching WASM relative
-to its own CDN URL. The CDN admits HTTPS `*.blahim.com` page origins. Builds and
-typechecking use checked-in declarations and need no runtime download or WASM toolchain.
+runtime. Tweb imports its pinned module lazily in the account manager's worker (with an
+in-process fallback). Set `BLAH_DIEM_CDN_HOST` in the build environment or
+`.env.blah.local` to override the default `bd-cdn.blahim.com` for both the worker and page.
+Supply a DNS hostname without a scheme, port or path; HTTPS and the release path stay pinned.
+The module loads matching WASM relative to its own CDN URL. The default CDN admits HTTPS
+`*.blahim.com` page origins; a replacement must allow the page origin through CORS for both
+assets. Builds and typechecking use checked-in declarations and need no runtime download
+or WASM toolchain.
 
-To change releases, update the versioned URL in [`runtime.ts`](../src/lib/blah/runtime.ts)
+To change releases, update the versioned path in [`blah-config.mjs`](../scripts/blah-config.mjs)
 and replace `diem.d.ts` and `bridge-js.d.ts` in `src/vendor/blahdiem/` with the declarations
 from the same release, retaining its license. JavaScript and WASM stay on the CDN.
 Verify the library and client integration:

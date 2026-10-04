@@ -6,13 +6,15 @@ import {readFile, mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import assert from 'node:assert/strict';
-import {diemRuntimeURL} from '../src/lib/blah/runtime.ts';
+import {blahDiemRuntimeURL} from './blah-config.mjs';
 
+const diemRuntimeURL = blahDiemRuntimeURL(process.env.BLAH_DIEM_CDN_HOST);
 const home = {domain: 'dc.example.org', identity: 'ab'.repeat(32), generation: '1'};
 const directory = await mkdtemp(join(tmpdir(), 'blah-browser-test-'));
 await build({entryPoints: ['tests/blah/browser-entry.ts'], bundle: true, format: 'iife', globalName: 'fixture',
   target: 'es2022', outfile: join(directory, 'fixture.js'),
-  define: {'import.meta.env': '{}', __BLAH_CONFIG__: JSON.stringify({discovery: true, home, defaultDcId: 1, dcs: [], expiresAt: '9999999999'}), 'import.meta.env.BASE_URL': '"/"'}});
+  define: {'import.meta.env': '{}', __BLAH_CONFIG__: JSON.stringify({discovery: true, home, defaultDcId: 1, dcs: [], expiresAt: '9999999999'}),
+    __BLAH_DIEM_RUNTIME_URL__: JSON.stringify(diemRuntimeURL), 'import.meta.env.BASE_URL': '"/"'}});
 const server = createServer(async(req, res) => {
   try {
     const path = req.url === '/fixture.js' ? join(directory, 'fixture.js') :
