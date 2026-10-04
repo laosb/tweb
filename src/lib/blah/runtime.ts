@@ -1,6 +1,8 @@
 import type {DiemClient, CryptoBackend} from '@blahdiem/diem';
 
-export const diemRuntimeURL = 'https://bd-cdn.blahim.com/bd-web/20261004-9c0a/diem.js';
+// Resolved from BLAH_DIEM_CDN_HOST by Vite for both pages and workers.
+declare const __BLAH_DIEM_RUNTIME_URL__: string;
+export const diemRuntimeURL = __BLAH_DIEM_RUNTIME_URL__;
 
 let ready: Promise<DiemClient>;
 export function diemClient(): Promise<DiemClient> {

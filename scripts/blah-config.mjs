@@ -4,6 +4,17 @@ import {readFileSync} from 'node:fs';
 import {loadEnv} from 'vite';
 import blahBrandingPlugin from './blah-branding.mjs';
 
+const domainNamePattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/** Keep the release path pinned while allowing an operator's HTTPS CDN hostname. */
+export function blahDiemRuntimeURL(cdnHost = '') {
+  const host = (cdnHost || 'bd-cdn.blahim.com').toLowerCase();
+  if(host.trim() !== host || host.length > 253 || !domainNamePattern.test(host)) {
+    throw new Error('BLAH_DIEM_CDN_HOST must be a DNS hostname without a scheme, port or path');
+  }
+  return `https://${host}/bd-web/20261004-9c0a/diem.js`;
+}
+
 /**
  * Legacy operator bootstrap parser. Domain discovery uses verified profiles at runtime.
  */
@@ -60,8 +71,9 @@ export function parseBlahServerConfig(value) {
 /** @returns {Promise<Record<string, string>>} */
 export default async function blahBuildDefines(mode, root) {
   const env = loadEnv(mode, root, '');
+  const runtime = {__BLAH_DIEM_RUNTIME_URL__: JSON.stringify(blahDiemRuntimeURL(env.BLAH_DIEM_CDN_HOST))};
   if(env.VITE_BLAH !== '1') {
-    return {__BLAH_CONFIG__: 'undefined'};
+    return {...runtime, __BLAH_CONFIG__: 'undefined'};
   }
 
   if(!/^[1-9]\d*$/.test(env.BLAH_API_ID || '') || !env.BLAH_API_HASH?.trim()) {
@@ -85,6 +97,7 @@ export default async function blahBuildDefines(mode, root) {
   }
 
   return {
+    ...runtime,
     __BLAH_CONFIG__: JSON.stringify(config),
     ...Object.fromEntries(Object.entries({
       VITE_API_ID: env.BLAH_API_ID,
@@ -106,7 +119,7 @@ export function parseBlahBootstrap(value) {
   const home = value.home;
   if(config.dcs.length !== 1 || config.defaultDcId !== 1 ||
     typeof home?.domain !== 'string' || home.domain.length > 253 ||
-    !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(home.domain) ||
+    !domainNamePattern.test(home.domain) ||
     !/^[a-f0-9]{64}$/.test(home?.identity || '') || typeof home?.generation !== 'string' ||
     !/^[1-9][0-9]*$/.test(home?.generation || '') || BigInt(home.generation) > 9223372036854775807n) {
     throw new Error('Blah bootstrap requires one DC1 and a pinned home domain, identity and generation');
