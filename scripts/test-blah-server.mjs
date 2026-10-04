@@ -11,6 +11,7 @@ import {once} from 'node:events';
 import assert from 'node:assert/strict';
 import AxeBuilder from '@axe-core/playwright';
 import {cbor} from '../tests/blah/cbor.mjs';
+import {makeDCProfile} from '../tests/blah/dcProfile.mjs';
 import {checkIdentityLayout} from '../tests/blah/identityLayout.mjs';
 import {loadEnv} from 'vite';
 import {blahDiemRuntimeURL} from './blah-config.mjs';
@@ -171,25 +172,6 @@ try {
     if(m.type() === 'error') diagnostics.push(m.text().slice(0, 350));
   });
   await page.goto(origin + '/?debug=1&noServiceWorker=1&a11y=1');
-  const makeDCProfile = async({data, rotatedData, identityKey, runtimeURL}) => {
-    const {createDiem} = await import(runtimeURL);
-    const diem = await createDiem();
-    const identity = await crypto.subtle.importKey('jwk', identityKey, 'Ed25519', true, ['sign']);
-    const device = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']);
-    const publicKeys = {identity: Uint8Array.from(atob(identityKey.x.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)),
-      device: new Uint8Array(await crypto.subtle.exportKey('raw', device.publicKey))};
-    const backend = {
-      random: length => crypto.getRandomValues(new Uint8Array(length)),
-      publicKey: role => publicKeys[role],
-      sign: async(role, bytes) => new Uint8Array(await crypto.subtle.sign('Ed25519', role === 'identity' ? identity : device.privateKey, new Uint8Array(bytes))),
-      verify: async(key, bytes, signature) => crypto.subtle.verify('Ed25519',
-        await crypto.subtle.importKey('raw', new Uint8Array(key), 'Ed25519', false, ['verify']), new Uint8Array(signature), new Uint8Array(bytes))
-    };
-    const current = await diem.dcSetup({data, profile: null, now: Math.floor(Date.now() / 1000)}, backend);
-    const rotated = await diem.dcSetup({data: rotatedData, profile: current.profile, now: Math.floor(Date.now() / 1000)}, backend);
-    const next = await diem.dcSetup({data: rotatedData, profile: rotated.profile, now: Math.floor(Date.now() / 1000)}, backend);
-    return {...current, rotatedProfile: rotated.profile, nextProfile: next.profile};
-  };
   const signedDC = await page.evaluate(makeDCProfile, {data: cbor({9: ['dc.example.org'], 16: 5, 18: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/discovered/ws?route=home'}], 19: [], 20: rsa.pkcs1Pem, 21: 1}),
     rotatedData: cbor({9: ['dc.example.org'], 16: 5, 18: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/rotated/ws?route=home'}], 19: [], 20: rsa.pkcs1Pem, 21: 1}),
     identityKey: privateKey.export({format: 'jwk'}), runtimeURL: diemRuntimeURL});
