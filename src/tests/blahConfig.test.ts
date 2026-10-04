@@ -1,5 +1,5 @@
 import {generateKeyPairSync} from 'node:crypto';
-import blahBuildDefines, {parseBlahServerConfig, parseBlahBootstrap} from '../../scripts/blah-config.mjs';
+import blahBuildDefines, {blahDiemRuntimeURL, parseBlahServerConfig, parseBlahBootstrap} from '../../scripts/blah-config.mjs';
 
 const {publicKey} = generateKeyPairSync('rsa', {modulusLength: 2048});
 const rsaPublicKey = publicKey.export({type: 'pkcs1', format: 'pem'});
@@ -58,12 +58,33 @@ describe('Blah release configuration', () => {
 
   it('does not fetch C3 or override Telegram flags in an ordinary build', async() => {
     vi.stubEnv('VITE_BLAH', '');
+    vi.stubEnv('BLAH_DIEM_CDN_HOST', '');
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     expect(await blahBuildDefines('test', process.cwd())).toEqual({
+      __BLAH_DIEM_RUNTIME_URL__: '"https://bd-cdn.blahim.com/bd-web/20261004-9c0a/diem.js"',
       __BLAH_CONFIG__: 'undefined'
     });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('uses a configured CDN host for the pinned runtime at build time', async() => {
+    enableBlah();
+    vi.stubEnv('BLAH_SERVER_CONFIG_URL', '');
+    vi.stubEnv('BLAH_BOOTSTRAP_FILE', '');
+    vi.stubEnv('BLAH_DIEM_CDN_HOST', 'CDN.Example.org');
+    const defines = await blahBuildDefines('test', process.cwd());
+    expect(JSON.parse(defines.__BLAH_DIEM_RUNTIME_URL__)).toBe('https://cdn.example.org/bd-web/20261004-9c0a/diem.js');
+    expect(blahDiemRuntimeURL()).toBe('https://bd-cdn.blahim.com/bd-web/20261004-9c0a/diem.js');
+    expect(blahDiemRuntimeURL('')).toBe(blahDiemRuntimeURL());
+  });
+
+  it.each([
+    'https://cdn.example.org', 'cdn.example.org/path', 'user@cdn.example.org',
+    'cdn.example.org:443', 'cdn..example.org', 'cdn.example.org;script-src *', 'cdn.example.org\n'
+  ])('rejects invalid CDN hosts during the build: %s', async(host) => {
+    vi.stubEnv('BLAH_DIEM_CDN_HOST', host);
+    await expect(blahBuildDefines('test', process.cwd())).rejects.toThrow('BLAH_DIEM_CDN_HOST');
   });
 
   function enableBlah() {
