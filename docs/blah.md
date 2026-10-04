@@ -139,29 +139,20 @@ Ordinary chat logout does not delete identity custody. Clearing all site data do
 and browsers may clear it after inactivity. Keep a copy of your identity and key files;
 the identity dialogs remind you below their main action button. Keys are never uploaded.
 
-## Build and verify the WASM adapter
+## Update and verify the WASM adapter
 
-The minimized `public/assets/blah/diem.js` / `diem.wasm` pair is built and released
-by [BlahDiem](https://github.com/UInt8Co/BlahDiem/tree/main/Web), using generated
-BridgeJS bindings and Swift 6.4 Embedded. Tweb tracks only the release pin and its own
-branding. All BlahDiem release files, including JavaScript, WASM, generated declarations,
-the manifest and licenses, are an ignored local cache. Vite builds, the dev server,
-typechecking and the browser fixture verify and restore missing or stale files from
-the pinned release. With a published release, the client build needs no Swift,
-Binaryen or WASI shim dependency. WASM loads
-lazily in the account manager's worker (and supports the in-process fallback). Vite resolves
-asset URLs for both workers and pages, including deployments under a URL prefix.
+[BlahDiem](https://github.com/UInt8Co/BlahDiem/tree/main/Web) owns the JavaScript/WASM
+runtime. Tweb imports its pinned module from `bd-cdn.blahim.com` lazily in the account
+manager's worker (with an in-process fallback). The module loads matching WASM relative
+to its own CDN URL. The CDN admits HTTPS `*.blahim.com` page origins. Builds and
+typechecking use checked-in declarations and need no runtime download or WASM toolchain.
 
-The release tag and manifest hash in `public/assets/blah/source.json` pin the bundle.
-To prepare the assets, update to another dated release, or test a local build:
+To change releases, update the versioned URL in [`runtime.ts`](../src/lib/blah/runtime.ts)
+and replace `diem.d.ts` and `bridge-js.d.ts` in `src/vendor/blahdiem/` with the declarations
+from the same release, retaining its license. JavaScript and WASM stay on the CDN.
+Verify the library and client integration:
 
 ```sh
-node scripts/update-blah-wasm.mjs
-node scripts/update-blah-wasm.mjs --release YYYYMMDD-sha4
-# Local development: build Web/ in the BlahDiem checkout first.
-node scripts/update-blah-wasm.mjs --from-dir ../BlahDiem/Web/dist
-
-# Verify the pinned library and client integration:
 pnpm exec vitest run src/tests/blah src/tests/webPushApiManager.test.ts
 pnpm run typecheck
 node scripts/test-blah-browser.mjs
@@ -172,6 +163,8 @@ The browser fixture needs Playwright Chromium (`pnpm exec playwright install
 --with-deps chromium`); `BLAH_BROWSER_EXECUTABLE` can select an installed browser.
 It exercises real WebCrypto/WASM creation, encryption, proof binding, numbering,
 renewal, recovery and account-slot isolation without contacting Telegram.
+Both browser fixtures serve local content under test `blahim.com` origins and need
+network access to load the real CDN module and WASM under its CORS policy.
 The server fixture additionally builds the Blah client, starts two disposable debug
 Teleblah DCs, and checks domain discovery with a signed profile, its exact WebSocket path/query,
 endpoint rotation with another tab open, accounts on two independent homes, sign-in
@@ -186,15 +179,7 @@ already built. This validates identity/login support, not every post-login Teleg
 
 `src/lib/blah/` owns custody, the identity UI and application proof adapters;
 BlahDiem owns the Swift bridge, minimization and release workflow.
-`public/assets/blah/manifest.json` identifies the build and checksums.
-`source.json` distinguishes a published release from an unpublished local build.
-Keep a published pin on shared branches so a fresh checkout can download matching assets
-automatically. Local imports use `release: null` and require a matching local BlahDiem
-build; without the complete ignored bundle, builds fail. After a local experiment, import a
-compatible published release with `--release` before sharing the pin. Local builds are
-never silently replaced by a public release.
-The importer verifies every asset before replacing the bundle, and restoring the pin
-also verifies the manifest hash. User identity requests explicitly select `kind: 'user'`;
+User identity requests explicitly select `kind: 'user'`;
 invocation proofs carry the reviewed challenge bytes and the current transport binding.
 There is no separate Swift package or copy of protocol rules in tweb.
 Do not duplicate Diem's CBOR, certificate or proof implementation in TypeScript.
