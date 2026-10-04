@@ -37,9 +37,3 @@ ignore
 # Cloudflare deployment artifact and local Wrangler state
 /.cloudflare/
 /.wrangler/
-
-# BlahDiem release assets are a verified local cache. Track only the pin and tweb branding.
-/public/assets/blah/*
-!/public/assets/blah/source.json
-!/public/assets/blah/icon-*.png
-!/public/assets/blah/logo.svg

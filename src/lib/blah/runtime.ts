@@ -1,13 +1,12 @@
-import runtimeURL from '/assets/blah/diem.js?url';
-import wasmURL from '/assets/blah/diem.wasm?url';
 import type {DiemClient, CryptoBackend} from '@blahdiem/diem';
+
+export const diemRuntimeURL = 'https://bd-cdn.blahim.com/bd-web/20261004-9c0a/diem.js';
 
 let ready: Promise<DiemClient>;
 export function diemClient(): Promise<DiemClient> {
   return ready ??= (async() => {
-    const path = new URL(runtimeURL, globalThis.location.href).href;
-    const {createDiem} = await import(/* @vite-ignore */ path);
-    return createDiem(new URL(wasmURL, globalThis.location.href));
+    const {createDiem}: typeof import('@blahdiem/diem') = await import(/* @vite-ignore */ diemRuntimeURL);
+    return createDiem();
   })().catch((error) => { ready = undefined; throw error; });
 }
 

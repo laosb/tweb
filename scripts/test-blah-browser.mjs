@@ -6,36 +6,41 @@ import {readFile, mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import assert from 'node:assert/strict';
-import {ensureBlahAssets} from './blah-wasm.mjs';
+import {diemRuntimeURL} from '../src/lib/blah/runtime.ts';
 
-await ensureBlahAssets('public/assets/blah');
 const home = {domain: 'dc.example.org', identity: 'ab'.repeat(32), generation: '1'};
 const directory = await mkdtemp(join(tmpdir(), 'blah-browser-test-'));
 await build({entryPoints: ['tests/blah/browser-entry.ts'], bundle: true, format: 'iife', globalName: 'fixture',
-  plugins: [{name: 'public-assets', setup(build) {
-    build.onResolve({filter: /^\/assets\/blah\/.*\?url$/}, ({path}) => ({path, namespace: 'public-asset'}));
-    build.onLoad({filter: /.*/, namespace: 'public-asset'}, ({path}) => ({contents: 'export default ' + JSON.stringify(path.replace('?url', '')), loader: 'js'}));
-  }}],
   target: 'es2022', outfile: join(directory, 'fixture.js'),
   define: {'import.meta.env': '{}', __BLAH_CONFIG__: JSON.stringify({discovery: true, home, defaultDcId: 1, dcs: [], expiresAt: '9999999999'}), 'import.meta.env.BASE_URL': '"/"'}});
 const server = createServer(async(req, res) => {
   try {
     const path = req.url === '/fixture.js' ? join(directory, 'fixture.js') :
-      req.url === '/cbor.mjs' ? 'tests/blah/cbor.mjs' :
-      req.url === '/assets/blah/diem.js' ? 'public/assets/blah/diem.js' :
-      req.url === '/assets/blah/diem.wasm' ? 'public/assets/blah/diem.wasm' : undefined;
-    res.setHeader('Content-Type', req.url.endsWith('.wasm') ? 'application/wasm' : path ? 'text/javascript' : 'text/html');
+      req.url === '/cbor.mjs' ? 'tests/blah/cbor.mjs' : undefined;
+    res.setHeader('Content-Type', path ? 'text/javascript' : 'text/html');
     res.end(path ? await readFile(path) : '<!doctype html><title>Blah identity fixture</title><script src="/fixture.js"></script>');
   } catch(error) { res.writeHead(500); res.end(String(error)); }
 });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
+// Intercept only the fixture origin; real CDN requests exercise its *.blahim.com CORS policy.
+const browserOrigin = 'https://blah-browser-test.blahim.com';
+const serveLocal = async(route) => {
+  const response = await route.fetch({url: route.request().url().replace(browserOrigin, origin)});
+  await route.fulfill({response});
+};
 let browser;
 try {
   browser = await chromium.launch({headless: true, executablePath: process.env.BLAH_BROWSER_EXECUTABLE, args: ['--no-sandbox']});
   const page = await browser.newPage();
+  await page.route(`${browserOrigin}/**`, serveLocal);
+  const runtimeRequests = new Set();
+  page.on('request', (request) => {
+    if(new URL(request.url()).origin === new URL(diemRuntimeURL).origin) runtimeRequests.add(request.url());
+    assert(!new URL(request.url()).pathname.startsWith('/assets/blah/diem'), 'BlahDiem must load from the CDN');
+  });
   page.on('pageerror', (error) => console.error(error));
-  await page.goto(origin);
+  await page.goto(browserOrigin);
   const created = await page.evaluate(async() => {
     const response = await fixture.identityAction(1, {action: 'create', domain: 'alice.example.org', password: 'x'});
     const backup = (await fixture.identityAction(1, {action: 'backup'})).backup;
@@ -43,6 +48,7 @@ try {
     return {identity: response.identity, backup};
   });
   assert.equal(created.identity.id.length, 64);
+  assert.deepEqual([...runtimeRequests].sort(), [diemRuntimeURL, new URL('./diem.wasm', diemRuntimeURL).href].sort());
   assert.equal(created.identity.devices.length, 1);
   assert.equal(created.identity.expiresAt - created.identity.notBefore, 180 * 86400);
   assert.equal(created.identity.devices[0].expiresAt - created.identity.devices[0].notBefore, 180 * 86400);
@@ -117,7 +123,8 @@ try {
   assert(second.reset && second.empty);
   const context = await browser.newContext();
   const restoredPage = await context.newPage();
-  await restoredPage.goto(origin);
+  await restoredPage.route(`${browserOrigin}/**`, serveLocal);
+  await restoredPage.goto(browserOrigin);
   const restored = await restoredPage.evaluate(async(backup) => {
     const result = await fixture.identityAction(1, {action: 'restore', backup, password: 'x'});
     let refused = false;
@@ -211,9 +218,8 @@ try {
       (await fixture.accounts.getTotalAccounts()) === 1;
   }, created.identity.id));
   const dcImport = await page.evaluate(async() => {
-    const {createDiem} = await import('/assets/blah/diem.js');
     const {cbor} = await import('/cbor.mjs');
-    const sdk = await createDiem(new URL('/assets/blah/diem.wasm', location.href));
+    const sdk = await fixture.diemClient();
     const encode = value => btoa(String.fromCharCode(...value));
     const decode = value => Uint8Array.from(atob(value), c => c.charCodeAt(0));
     const identity = await sdk.generateSigningKey(), device = await sdk.generateSigningKey();
