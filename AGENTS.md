@@ -481,8 +481,8 @@ unit test of the layer imports `@/tests/helpers/a11yLayer`.
   Iterating on a feature must not produce a trail of commits: keep the work in
   the working tree, and when asked to commit, fold the whole feature into ONE
   commit (directly on master, no feature branch) unless told otherwise.
-- Never commit downloaded or locally built BlahDiem release assets. Track only the
-  release pin and prepare the ignored assets using the workflow in `docs/blah.md`.
+- BlahDiem JavaScript and WASM load from the CDN at runtime. Keep only its type
+  declarations in `src/vendor/blahdiem/`; the update workflow is in `docs/blah.md`.
 - Do not add `oxlint-disable` (or legacy `eslint-disable`) comments without a reason
 - Never hand-edit or manually run `format-lang` to regenerate `src/scripts/out/langPack.strings` — it is auto-generated from `lang.ts`/`langSign.ts` by the Vite-wired lang watcher (`watch-lang.js`) on dev-server start, on every `lang.ts` change, and on build. Edit the lang `.ts` source only.
 - Never hand-edit `src/lib/settingsSearch/generated.ts` — it is the settings-search index, generated from the tabs (see "Settings tabs are indexed for search"). Change what the tabs render, or the extractor, and let it regenerate.

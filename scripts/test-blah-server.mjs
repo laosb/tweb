@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import AxeBuilder from '@axe-core/playwright';
 import {cbor} from '../tests/blah/cbor.mjs';
 import {checkIdentityLayout} from '../tests/blah/identityLayout.mjs';
+import {diemRuntimeURL} from '../src/lib/blah/runtime.ts';
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const tele = process.env.BLAH_SERVER_REPO;
 if(!tele) throw new Error('Set BLAH_SERVER_REPO to a Teleblah checkout with a built debug server.');
@@ -133,7 +134,7 @@ try {
   edge.listen(0, '127.0.0.1');
   await once(edge, 'listening');
   const tlsPort = edge.address().port,
-    origin = 'https://127.0.0.1:' + tlsPort;
+    origin = 'https://blah-server-test.blahim.com';
   const rsa = JSON.parse(await readFile(tele + '/Schemas/blah-rsa-key.json', 'utf8'));
   execFileSync(repo + '/node_modules/.bin/vite', ['build', '--mode', 'blah'], {
     cwd: repo,
@@ -150,7 +151,9 @@ try {
     headless: true,
     executablePath: process.env.BLAH_BROWSER_EXECUTABLE,
     // SharedWorker requests do not inherit a Playwright context's ignoreHTTPSErrors.
-    args: ['--no-sandbox', '--ignore-certificate-errors']
+    args: ['--no-sandbox', '--ignore-certificate-errors',
+      // Keep the page and worker on an allowed CDN origin while serving everything locally.
+      `--host-resolver-rules=MAP blah-server-test.blahim.com 127.0.0.1:${tlsPort}`]
   });
   const signupContext = await browser.newContext({
     ignoreHTTPSErrors: true
@@ -166,9 +169,9 @@ try {
     if(m.type() === 'error') diagnostics.push(m.text().slice(0, 350));
   });
   await page.goto(origin + '/?debug=1&noServiceWorker=1&a11y=1');
-  const makeDCProfile = async({data, rotatedData, identityKey}) => {
-    const {createDiem} = await import('/assets/blah/diem.js');
-    const diem = await createDiem(new URL('/assets/blah/diem.wasm', location.href));
+  const makeDCProfile = async({data, rotatedData, identityKey, runtimeURL}) => {
+    const {createDiem} = await import(runtimeURL);
+    const diem = await createDiem();
     const identity = await crypto.subtle.importKey('jwk', identityKey, 'Ed25519', true, ['sign']);
     const device = await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify']);
     const publicKeys = {identity: Uint8Array.from(atob(identityKey.x.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)),
@@ -187,10 +190,10 @@ try {
   };
   const signedDC = await page.evaluate(makeDCProfile, {data: cbor({0: 13, 1: 1, 2: 5, 3: ['dc.example.org'], 4: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/discovered/ws?route=home'}], 5: [], 6: rsa.pkcs1Pem, 7: 1}),
     rotatedData: cbor({0: 13, 1: 1, 2: 5, 3: ['dc.example.org'], 4: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/rotated/ws?route=home'}], 5: [], 6: rsa.pkcs1Pem, 7: 1}),
-    identityKey: privateKey.export({format: 'jwk'})});
+    identityKey: privateKey.export({format: 'jwk'}), runtimeURL: diemRuntimeURL});
   assert.equal(signedDC.id, id);
   const otherData = cbor({0: 13, 1: 1, 2: 5, 3: ['other.example.org'], 4: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/other/ws?route=home'}], 5: [], 6: rsa.pkcs1Pem, 7: 1});
-  const otherDC = await page.evaluate(makeDCProfile, {data: otherData, rotatedData: otherData, identityKey: otherKey});
+  const otherDC = await page.evaluate(makeDCProfile, {data: otherData, rotatedData: otherData, identityKey: otherKey, runtimeURL: diemRuntimeURL});
   await signupContext.route('https://other.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
     contentType: 'application/cbor', body: Buffer.from(otherDC.profile)
   }));
