@@ -1,0 +1,166 @@
+name: Feedback widget release
+
+on:
+  push:
+    branches: [feedback-widget]
+  pull_request:
+    branches: [feedback-widget]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: widget-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      BLAH_DIEM_CDN_HOST: ${{ vars.BLAH_DIEM_CDN_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.11.1'
+      - uses: pnpm/action-setup@v4
+      - name: Locate pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-widget-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-widget-pnpm-
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test, typecheck and build the widget
+        run: pnpm build:widget
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Verify setup and the generated entry in Chromium
+        run: node scripts/test-widget-setup.mjs
+      - name: Package the compiled widget and setup
+        shell: bash
+        run: |
+          test -s dist/widget/index.html
+          test -s dist/widget/setup.html
+          cp LICENSE dist/widget/LICENSE
+          cp docs/widget.md dist/widget/README.md
+          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -czf feedback-widget.tar.gz -C dist/widget .
+          sha256sum feedback-widget.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: feedback-widget
+          path: |
+            feedback-widget.tar.gz
+            SHA256SUMS
+          if-no-files-found: error
+
+  release:
+    if: github.ref == 'refs/heads/feedback-widget' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: feedback-widget
+      - name: Determine release tag
+        id: release
+        shell: bash
+        run: |
+          # UTC commit date makes retries on later days use the same release.
+          commit_time=$(git show -s --format=%ct "$GITHUB_SHA")
+          release_date=$(date -u -d "@$commit_time" +%Y%m%d)
+          echo "tag=$release_date-${GITHUB_SHA:0:4}" >> "$GITHUB_OUTPUT"
+      - name: Publish the tested archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          sha256sum -c SHA256SUMS
+          cat > "$RUNNER_TEMP/widget-release-notes.md" <<'NOTES'
+          Compiled customer feedback widget with the original, unconfigured index.html,
+          setup.html, and widget assets. Setup loads the pinned BlahDiem runtime from CDN.
+
+          Extract feedback-widget.tar.gz and serve it on an HTTPS origin allowed by
+          the BlahDiem CDN's CORS policy (see README.md for the build-time CDN override).
+          Open setup.html, verify your DC profile domain, enter your app ID/hash and
+          preview CSS styling. Replace index.html with the downloaded configuration,
+          keeping the assets folder beside it. See README.md for embedding and tokens.
+          NOTES
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            # Four-character prefixes can collide. Never replace another commit's assets.
+            test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA"
+            gh release upload "$RELEASE_TAG" feedback-widget.tar.gz SHA256SUMS --clobber
+          else
+            if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+              test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA"
+            fi
+            gh release create "$RELEASE_TAG" feedback-widget.tar.gz SHA256SUMS \
+              --target "$GITHUB_SHA" --title "$RELEASE_TAG" \
+              --notes-file "$RUNNER_TEMP/widget-release-notes.md"
+          fi
+
+  deploy:
+    name: Publish latest widget to Cloudflare
+    needs: release
+    runs-on: ubuntu-24.04
+    env:
+      WRANGLER_VERSION: '4.147.0'
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check that this is still the latest release
+        id: latest
+        shell: bash
+        run: |
+          latest_tag=$(gh release view --json tagName --jq .tagName)
+          if [ "$latest_tag" = "$RELEASE_TAG" ]; then
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'A newer release exists; keeping its hosted assets.'
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.latest.outputs.current == 'true'
+        with:
+          node-version: '24.11.1'
+      - uses: pnpm/action-setup@v4
+        if: steps.latest.outputs.current == 'true'
+      - name: Download and assemble the published release
+        if: steps.latest.outputs.current == 'true'
+        shell: bash
+        run: |
+          release_dir="$RUNNER_TEMP/widget-release"
+          mkdir -p "$release_dir" .cloudflare/widget
+          gh release download "$RELEASE_TAG" --dir "$release_dir" \
+            --pattern feedback-widget.tar.gz --pattern SHA256SUMS
+          (cd "$release_dir" && sha256sum -c SHA256SUMS)
+          tar -xzf "$release_dir/feedback-widget.tar.gz" -C .cloudflare/widget
+          test -s .cloudflare/widget/index.html
+          test -s .cloudflare/widget/setup.html
+          cp "$release_dir/feedback-widget.tar.gz" "$release_dir/SHA256SUMS" .cloudflare/widget/
+          cp widget/hosting/_headers widget/hosting/_redirects .cloudflare/widget/
+      - name: Validate Worker assets
+        if: steps.latest.outputs.current == 'true'
+        run: pnpm --allow-build=esbuild,workerd dlx "wrangler@$WRANGLER_VERSION" deploy --dry-run --config wrangler.widget.jsonc
+      - name: Deploy feedback-widget.blahim.com
+        if: steps.latest.outputs.current == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        shell: bash
+        run: |
+          : "${CLOUDFLARE_API_TOKEN:?Set the CLOUDFLARE_API_TOKEN GitHub Actions secret}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?Set the CLOUDFLARE_ACCOUNT_ID GitHub Actions secret}"
+          pnpm --allow-build=esbuild,workerd dlx "wrangler@$WRANGLER_VERSION" deploy --config wrangler.widget.jsonc
