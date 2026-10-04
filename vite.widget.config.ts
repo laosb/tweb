@@ -1,7 +1,8 @@
 import {resolve} from 'node:path';
-import {defineConfig} from 'vite';
+import {defineConfig, loadEnv} from 'vite';
 import solid from 'vite-plugin-solid';
 import upstream from './vite.config';
+import {blahDiemRuntimeURL} from './scripts/blah-config.mjs';
 
 export default defineConfig({
   root: resolve(__dirname, 'widget'),
@@ -9,6 +10,18 @@ export default defineConfig({
   publicDir: false,
   envDir: __dirname,
   plugins: [solid(), {
+    name: 'widget-setup',
+    config(config, {mode}) {
+      // The server fixture also uses this config for its separate library driver.
+      return {
+        define: {__BLAH_DIEM_RUNTIME_URL__: JSON.stringify(blahDiemRuntimeURL(loadEnv(mode, __dirname, '').BLAH_DIEM_CDN_HOST))},
+        ...config.build?.lib ? {} : {build: {rolldownOptions: {input: {
+          widget: resolve(__dirname, 'widget/index.html'),
+          setup: resolve(__dirname, 'widget/setup.html')
+        }}}}
+      };
+    }
+  }, {
     name: 'widget-boundary',
     generateBundle() {
       for(const id of this.getModuleIds()) {

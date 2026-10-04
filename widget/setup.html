@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>Set up your support widget</title>
+  </head>
+  <body>
+    <main class="setup">
+      <header class="setup-intro">
+        <p class="setup-eyebrow">Blah · Customer support</p>
+        <h1>Set up your support widget</h1>
+        <p>Connect your DC, choose your colors, then download a configured <code>index.html</code>.</p>
+        <p class="setup-help">Open setup on an HTTPS origin allowed by your BlahDiem CDN. The default CDN allows <code>*.blahim.com</code>; custom builds can use a CDN configured for your own origin.</p>
+      </header>
+      <div class="setup-layout">
+        <div class="setup-controls">
+          <section class="setup-card" aria-labelledby="dc-heading">
+            <h2 id="dc-heading">1. Connect your DC</h2>
+            <form id="dc-form">
+              <label for="dc-domain">DC profile domain</label>
+              <div class="setup-domain">
+                <input id="dc-domain" type="text" placeholder="dc.example.org" required autocomplete="off" spellcheck="false" aria-describedby="dc-help">
+                <button id="verify" type="submit">Verify DC</button>
+              </div>
+              <p class="setup-help" id="dc-help">The public profile must allow cross-origin requests. BlahDiem verifies it before the widget uses its connection details.</p>
+            </form>
+            <p id="dc-status" class="setup-status" role="status"></p>
+            <dl id="dc-details" hidden>
+              <dt>Identity</dt><dd id="dc-identity"></dd>
+              <dt>WebSocket endpoint</dt><dd id="dc-endpoint"></dd>
+              <dt>Profile valid until</dt><dd id="dc-expires"></dd>
+            </dl>
+          </section>
+          <form id="configuration-form">
+            <section class="setup-card" aria-labelledby="app-heading">
+              <h2 id="app-heading">2. Application credentials</h2>
+              <p class="setup-help">Use the app ID and hash from your DC's application settings. These public client credentials are separate from customer tokens.</p>
+              <div class="setup-fields">
+                <label>App ID<input id="api-id" type="number" min="1" max="2147483647" step="1" required autocomplete="off"></label>
+                <label>App hash<input id="api-hash" type="text" pattern="[a-fA-F0-9]{32}" minlength="32" maxlength="32" required autocomplete="off" spellcheck="false" title="32 hexadecimal characters"></label>
+              </div>
+            </section>
+            <section class="setup-card" aria-labelledby="theme-heading">
+              <h2 id="theme-heading">3. Make it yours</h2>
+              <p id="theme-help" class="setup-help">Leave a field blank for the default. Colors accept CSS values such as <code>#235347</code>; radii use lengths such as <code>12px</code>. For an image, use <code>url("https://…")</code>.</p>
+              <div class="setup-fields" id="theme-fields"></div>
+              <button id="reset-theme" class="setup-secondary" type="button">Reset styling</button>
+            </section>
+            <section class="setup-card" aria-labelledby="download-heading">
+              <h2 id="download-heading">4. Save and embed</h2>
+              <p class="setup-help">Replace the release's <code>index.html</code> with your download. Keep it beside the same <code>assets/</code> folder and serve over HTTPS. Your application supplies a customer token when it opens the widget.</p>
+              <button id="download" type="submit" disabled>Download index.html</button>
+              <p id="download-status" class="setup-status" role="status">Verify a DC to enable download.</p>
+            </section>
+          </form>
+        </div>
+        <aside class="setup-preview" aria-labelledby="preview-heading">
+          <h2 id="preview-heading">Preview</h2>
+          <p class="setup-help">Sample conversation · no messages are sent.</p>
+          <iframe id="preview" title="Widget style preview" sandbox="" referrerpolicy="no-referrer"></iframe>
+        </aside>
+      </div>
+      <noscript>This setup page requires JavaScript.</noscript>
+    </main>
+    <script type="module" src="../src/widget/setupPage.ts"></script>
+  </body>
+</html>
