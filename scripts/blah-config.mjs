@@ -1,10 +1,8 @@
 import {createPublicKey} from 'node:crypto';
 import {isIP} from 'node:net';
-import {join} from 'node:path';
 import {readFileSync} from 'node:fs';
 import {loadEnv} from 'vite';
 import blahBrandingPlugin from './blah-branding.mjs';
-import {ensureBlahAssets} from './blah-wasm.mjs';
 
 /**
  * Legacy operator bootstrap parser. Domain discovery uses verified profiles at runtime.
@@ -121,7 +119,6 @@ export function blahPlugin(root) {
   return [{
     name: 'blah-config',
     async config(_config, {mode}) {
-      await ensureBlahAssets(join(root, 'public/assets/blah'));
       return {
         define: await blahBuildDefines(mode, root),
         worker: {plugins: () => [blahBrandingPlugin(root)]}
