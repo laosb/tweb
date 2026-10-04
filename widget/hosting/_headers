@@ -1,0 +1,21 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+
+/setup.html
+  Cache-Control: no-store
+
+/index.html
+  Cache-Control: no-store
+
+/feedback-widget.tar.gz
+  Cache-Control: no-store
+  Content-Type: application/gzip
+  Content-Disposition: attachment; filename="feedback-widget.tar.gz"
+
+/SHA256SUMS
+  Cache-Control: no-store
+  Content-Type: text/plain; charset=utf-8
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
