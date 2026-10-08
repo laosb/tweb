@@ -585,6 +585,7 @@ async function startApplication() {
 
   let authState = stateResult.state.authState;
   if(blah?.discovery && !getBlahConfig(getCurrentAccount())?.home) authState = {_: 'authStateSignIn'};
+  if(blah?.widget) return (await import('@/widget')).startWidget(authState);
 
   const hash = location.hash;
   const splitted = hash.split('?');
