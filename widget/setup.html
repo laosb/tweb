@@ -44,7 +44,7 @@
             </section>
             <section class="setup-card" aria-labelledby="theme-heading">
               <h2 id="theme-heading">3. Make it yours</h2>
-              <p id="theme-help" class="setup-help">Leave a field blank for the default. Colors accept CSS values such as <code>#235347</code>; radii use lengths such as <code>12px</code>. For an image, use <code>url("https://…")</code>.</p>
+              <p id="theme-help" class="setup-help">Leave a field blank for the default. Dark values apply when the customer's system uses dark mode. Colors accept CSS values such as <code>#235347</code>; radii use lengths such as <code>12px</code>. For an image, use <code>url("https://…")</code>.</p>
               <div class="setup-fields" id="theme-fields"></div>
               <button id="reset-theme" class="setup-secondary" type="button">Reset styling</button>
             </section>
@@ -59,6 +59,7 @@
         <aside class="setup-preview" aria-labelledby="preview-heading">
           <h2 id="preview-heading">Preview</h2>
           <p class="setup-help">Sample conversation · no messages are sent.</p>
+          <label class="setup-toggle"><input id="preview-dark" type="checkbox"> Dark mode</label>
           <iframe id="preview" title="Widget style preview" sandbox="" referrerpolicy="no-referrer"></iframe>
         </aside>
       </div>
