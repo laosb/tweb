@@ -15,8 +15,8 @@ export const DEFAULT_BACKGROUND_SLUG = 'pattern';
 const threads = Math.min(4, navigator.hardwareConcurrency ?? 4);
 
 const App = {
-  id: +import.meta.env.VITE_API_ID,
-  hash: import.meta.env.VITE_API_HASH,
+  id: blah?.app ? blah.app.id : +import.meta.env.VITE_API_ID,
+  hash: blah?.app ? blah.app.hash : import.meta.env.VITE_API_HASH,
   pushServerKey: import.meta.env.VITE_PUSH_SERVER_KEY,
   version: import.meta.env.VITE_VERSION,
   versionFull: import.meta.env.VITE_VERSION_FULL,

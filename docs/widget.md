@@ -1,18 +1,20 @@
 # Embed customer support
 
 The `feedback-widget` branch ships one conversation with the configured DC support
-account. Text, ordinary Unicode emoji, photos and files up to 20 MB are supported.
-There are no chat lists, profiles, account settings, calls, contact sharing, sticker
-or GIF pickers, inline bots or custom emoji. Pasted content is plain text. Messages
-with other media show a placeholder; profile names and mentions do not navigate.
+account, rendered by the full client's own chat page. Customers get its message
+bubbles, history, replies, editing and media viewer, and can send text, system emoji,
+photos, videos and files. There are no chat lists, profiles, account settings, calls,
+voice or round messages, contact sharing, sticker or GIF pickers, inline bots, custom
+emoji or attach-menu apps; links to other chats and profiles do not navigate.
+The widget follows the system's light or dark appearance.
 
 ## Build and configure
 
 Download the latest [widget archive](https://feedback-widget.blahim.com/feedback-widget.tar.gz)
 and [SHA256SUMS](https://feedback-widget.blahim.com/SHA256SUMS), or use a dated tweb GitHub release,
 verify it with `sha256sum -c SHA256SUMS`, and extract the archive. It contains the
-compiled widget, the original unconfigured `index.html`, `setup.html` and their
-assets. The [hosted setup page](https://feedback-widget.blahim.com/setup.html) configures
+compiled client, the original unconfigured `index.html`, `setup.html` and the
+static files they load. The [hosted setup page](https://feedback-widget.blahim.com/setup.html) configures
 the latest archive; use the setup page inside a dated archive for that version.
 No build is needed to configure a release:
 
@@ -25,19 +27,20 @@ No build is needed to configure a release:
    cross-origin reads. Setup shows the verified identity and exact endpoint.
 3. Enter your application ID and hash from the DC's application settings. They are
    not part of the public DC profile. Do not enter customer tokens in setup.
-4. Set CSS variables while checking the sample preview. Blank values use the
-   widget defaults; the preview sends no messages and needs no account.
+4. Set CSS variables while checking the sample preview, in light and dark mode.
+   Blank values keep the client's defaults; the preview sends no messages and
+   needs no account.
 5. Select **Download index.html** and replace the extracted entry with that file.
-   Keep the matching `assets/` folder beside it, then serve the widget over HTTPS.
+   Keep the release's other files beside it, then serve the widget over HTTPS.
    Repeat setup when deployment pins change; the running widget does not refresh them.
 
 Setup uses the same pinned CDN release and `BLAH_DIEM_CDN_HOST` build override as
 the [Blah client](blah.md#update-and-verify-the-wasm-adapter). The default CDN allows
 HTTPS `*.blahim.com` origins. A custom CDN must allow the setup origin for both its
-JavaScript and WASM. The runtime is loaded only for setup and is not packaged in the
-archive; the generated widget can be hosted on any suitable HTTPS origin independently
-of setup's CDN access. For GitHub builds, set the `BLAH_DIEM_CDN_HOST` repository
-variable to use your own CDN hostname.
+JavaScript and WASM. Only setup loads the runtime: the running widget takes its
+DC and application pins from its `index.html` and never contacts the CDN, so it can be
+hosted on any suitable HTTPS origin. For GitHub builds, set the `BLAH_DIEM_CDN_HOST`
+repository variable to use your own CDN hostname.
 
 To build from source:
 
@@ -48,8 +51,8 @@ pnpm build:widget
 
 Serve **only `dist/widget/`** over HTTPS. `pnpm start:widget` runs the widget locally;
 `pnpm serve:widget` builds and previews it. The existing `pnpm start` / `pnpm build`
-commands continue to target the full client, which is excluded from the widget artifact.
-The existing full-client Docker and Cloudflare packaging are not widget packaging.
+commands continue to build the ordinary client; the full-client Docker and Cloudflare
+packaging are not widget packaging.
 
 Setup writes these public deployment tags. They can also be set manually in
 `widget/index.html` before building, or in `dist/widget/index.html` afterwards:
@@ -64,10 +67,11 @@ Setup writes these public deployment tags. They can also be set manually in
 ```
 
 Use the DC's 2048-bit RSA **public** key, encoded as hexadecimal modulus/exponent.
-The exact WebSocket path and query are retained. Missing or invalid tags fail closed;
-the running widget has no Telegram endpoint/key, discovery, HTTP fallback or numeric DC migration.
-Query parameters such as `test=1` and `debug=1` cannot change the widget's transport
-or enable credential logging. Configure the support account in the DC's admin UI.
+The exact WebSocket path and query are retained. The page hands the validated pins to
+the client's workers. Missing or invalid tags fail closed; the running widget has no
+Telegram endpoint/key, discovery, HTTP fallback or numeric DC migration. Query
+parameters such as `test=1` and `debug=1` cannot change the widget's transport or
+enable credential logging. Configure the support account in the DC's admin UI.
 
 The DC must include the managed-account support exception: ordinary customer tokens
 may initiate a conversation with that DC's configured support contact. Blocks and
@@ -95,54 +99,60 @@ Use a dedicated widget origin and configure its response headers to permit your
 application's origin in CSP `frame-ancestors`. Do not send `X-Frame-Options: DENY`
 or `SAMEORIGIN` on a cross-origin widget. If using an iframe sandbox, allow scripts,
 same-origin storage and downloads. No camera, microphone or popup permission is needed.
-The page needs a secure context and working session storage.
+The page needs a secure context and working IndexedDB storage.
 
-Every load requires the hash token and revalidates it, even when the transport key
-is restored. Changing or removing the token clears the visible conversation
-immediately and revokes the old authorization before any replacement login.
-Changes to the fragment in a running frame follow the same path. Offline revocation
-keeps the old key for retry and does not expose the previous account or sign in the
-replacement prematurely. Invalid credentials show an error with no login form.
+Every load requires the hash token and revalidates it, even for a restored session.
+A token for a different account logs the previous one out before the replacement
+signs in; removing the token logs out. Changes to the fragment in a running frame
+reload it and follow the same path. A revoked or invalid token shows an error with no
+login form, and the chat stays hidden.
 
-Transport keys and a token digest live in session storage scoped to the widget
-path and iframe name; the token is not copied to storage. Give sibling widgets
-distinct names. Unnamed frames receive random names which survive same-origin
-reloads. The normal client's accounts, IndexedDB, service workers and shared
-workers are not used. Message content stays in memory and is discarded on account
-changes. Reloading fetches history again; difference replay catches missed updates.
+The widget is the ordinary client with its storage: the session and message cache
+live in the widget origin's IndexedDB and storage, with its shared and service
+workers, and reloading restores them before revalidating the token. The token
+itself is not stored. One origin holds one customer at a time, so sibling widgets
+for different customers need different origins.
 
 ## Theme with CSS variables
 
 Put overrides in the **widget document**, for example a stylesheet linked from its
 head. CSS variables on the parent page do not cross an iframe boundary. A
 same-origin host may set them on `iframe.contentDocument.documentElement.style`.
+Scope dark-mode values with `:root.night`, the class the client sets in dark mode:
 
 ```css
 :root {
+  --widget-bubble-radius: 12px;
+}
+:root:not(.night) {
   --widget-chat-background-color: #f6f2ec;
-  --widget-chat-background-image: url('/brand/support-background.png');
-  --widget-chat-background-size: cover;
-  --widget-incoming-bubble-color: white;
-  --widget-incoming-text-color: #182230;
   --widget-outgoing-bubble-color: #235347;
   --widget-outgoing-text-color: white;
-  --widget-bubble-radius: 12px;
   --widget-accent-color: #235347;
+}
+:root.night {
+  --widget-outgoing-bubble-color: #2f6b5c;
 }
 ```
 
-`--widget-incoming-bubble-radius` and `--widget-outgoing-bubble-radius` optionally
-override the shared radius. `--widget-surface-color` and `--widget-text-color`
-control the shell. Background images default to `none`; no Telegram wallpaper is
-loaded. Maintain readable contrast when changing bubble/text pairs.
+The other variables are `--widget-surface-color` and `--widget-text-color` for the
+header and composer, `--widget-chat-background-image` and `-size`, the incoming
+bubble and text colors, and `--widget-incoming-bubble-radius` and
+`--widget-outgoing-bubble-radius` to override the shared radius. Unset variables keep
+the client's light or dark theme, including its default wallpaper; a background color
+or image replaces the wallpaper. Maintain readable contrast for each pair in both modes.
 
 ## Maintain and verify
 
-The independent entry and domain adapter live in [`src/widget/`](../src/widget/).
-They reuse tweb's authorizer, networker, crypto worker, generated TL schema and Solid
-runtime. [`vite.widget.config.ts`](../vite.widget.config.ts) reuses the upstream
-aliases and supplies widget-only transport/debug adapters. A build assertion
-rejects imports of full-client pages, components and manager bootstrap.
+The widget mode lives in [`src/widget/`](../src/widget/). `vite build --mode widget`
+(through [`vite.widget.config.ts`](../vite.widget.config.ts)) reads the pins from the
+document instead of build-time configuration, renders emoji with the system font so
+the release carries no emoji images, and pins the URL modes. The client's startup hands
+over to [`src/widget/index.ts`](../src/widget/index.ts) in place of the auth flow; it
+signs in with the token and opens the support chat.
+[`src/widget/restrictions.ts`](../src/widget/restrictions.ts) narrows the client by
+wrapping a few upstream entry points rather than editing them, and fails at startup if
+one is renamed.
 
 [`widget-release.yml`](../.github/workflows/widget-release.yml) builds and verifies
 pushes and pull requests targeting `feedback-widget`. Successful branch pushes and
@@ -174,12 +184,11 @@ so setup can fetch `/index.html` without following a redirect. `/index.html` als
 any origin to read it, so a provisioning page hosted elsewhere, such as the Blah server's
 feedback DC setup page, can configure the same release.
 
-Keep future rebase conflicts small: widget behavior belongs in these separate files
-and adapters. Reuse upstream code through imports; keep shared chat, auth, transport
-and component files intact. The only integration edits are the README pointer and
-additional `*:widget` package scripts. Existing scripts remain upstream-owned; do
-not copy their pipelines into widget-specific client commands. Adapt to upstream
-API changes within the widget modules and run the checks below after rebasing.
+Keep future rebase conflicts small: widget behavior belongs in `src/widget/`, its
+build config and tests. Upstream files carry only the widget's configuration hooks
+(`src/config/blah.ts`, `src/config/app.ts`, the worker URL helper, the DC URL and the
+start-up hand-over) plus `*:widget` package scripts and the README pointer. After
+rebasing, adapt the wrapped entry points in `restrictions.ts` and run the checks below.
 
 ```sh
 pnpm test:widget
@@ -198,9 +207,10 @@ or account. The workflow runs it before packaging the unchanged build output.
 The last command needs a built debug DC, OpenSSL and Playwright Chromium with its
 OS dependencies. It seeds disposable managed accounts, runs the production widget
 inside a cross-origin iframe and uses real encrypted WebSockets. It checks customer-first
-messaging, a support reply, reload, account replacement/logout across page loads and
-fragment changes, revoked/missing/invalid tokens, CSS customization, narrow layout,
-keyboard focus and Axe. Its second-client
-driver is built only into a temporary directory. Unit fixtures cover attachment
-restrictions and upload requests; screen-reader and physical touch testing remain
-manual.
+messaging, a support reply, reload, the single-chat restrictions, account
+replacement/logout across page loads and fragment changes, revoked/missing/invalid
+tokens, CSS customization in light and dark mode, narrow layout and Axe, and that no
+request leaves the widget origin. Its second-client driver is built only into a
+temporary directory. The client's opt-in `?a11y=1` keyboard layer currently leaves the
+composer without a usable editor, so the fixture runs without it. Screen-reader and
+physical touch testing remain manual.
