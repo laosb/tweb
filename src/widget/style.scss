@@ -1,0 +1,56 @@
+// One conversation in an iframe: no chat list, profile column or chat-level actions.
+body.blah-widget {
+  #column-left,
+  #column-right,
+  .sidebar-left-overlay,
+  .chat .topbar .sidebar-close-button,
+  .chat .topbar .chat-utils,
+  .chat-input .toggle-send-gift {
+    display: none !important;
+  }
+
+  // Never shifted aside for the hidden columns.
+  #column-center {
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}
+
+#widget {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-content: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  text-align: center;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--widget-text-color, #182230);
+  background: var(--widget-surface-color, #fff);
+
+  &:empty {
+    display: none;
+  }
+
+  :root.night & {
+    color: var(--widget-text-color, #fff);
+    background: var(--widget-surface-color, #212121);
+  }
+
+  p {
+    margin: 0;
+  }
+
+  button {
+    justify-self: center;
+    min-height: 2.25rem;
+    padding: .5rem 1rem;
+    border: 0;
+    border-radius: .5rem;
+    font: inherit;
+    color: #fff;
+    background: var(--widget-accent-color, #285cc4);
+    cursor: pointer;
+  }
+}
