@@ -34,8 +34,8 @@ there is no fallback to Telegram or another DC. A link with `?dc=dc.example.org`
 prefills the field on first use; the user still selects **Connect to Blah**.
 
 An account slot containing a legacy Telegram/number-email session, caches from a
-different home, or a signed-in session without a Diem identity binding is emptied
-automatically before its state or transport keys are restored. With an app passcode,
+different home, or a signed-in session bound to neither a Diem identity nor a managed
+account is emptied automatically before its state or transport keys are restored. With an app passcode,
 credential cleanup finishes after unlocking, preserving other accounts in the shared
 encrypted storage. Cleanup uses the normal logout account moves and reloads open
 tabs; compatible accounts keep their sessions, caches and home bindings. Network, signature and
@@ -90,6 +90,16 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
 The DC refetches the numbered profile through a proof-wrapped account read before
 login completes. Failed publication leaves the new profile durably available for
 retry. There is no email-only, phone-number or QR identity login.
+
+### Sign in to a managed account
+
+An account an application manages has no browser identity. After connecting to its home
+DC, choose **Sign in with a managed account token** and enter either of its tokens; the
+ordinary token cannot change the profile. The token goes to `auth.importBotAuthorization`
+and is not stored. A bot token is logged out again and refused, and a token for an account
+homed on another DC asks you to connect to that DC instead. The account slot records
+the managed account in place of an identity binding, so the session survives reloads;
+identity custody operations are unavailable in that slot.
 
 ## Manage custody
 
