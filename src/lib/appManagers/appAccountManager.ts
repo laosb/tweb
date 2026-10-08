@@ -411,6 +411,25 @@ export default class AppAccountManager extends AppManager {
     return identityAction(this.getAccountNumber(), request);
   }
 
+  /** Blah managed accounts sign in with their token, like a bot, but are ordinary users. */
+  public async importManagedAccountAuthorization(token: string) {
+    const authorization = await this.apiManager.invokeApi('auth.importBotAuthorization', {
+      api_id: App.id,
+      api_hash: App.hash,
+      bot_auth_token: token
+    }, {ignoreErrors: true});
+    const {managedAccountUser} = await import('@lib/blah/managedAccount');
+    const user = managedAccountUser(authorization);
+    if(!user) {
+      await this.apiManager.invokeApi('auth.logOut', {}, {ignoreErrors: true}).catch(() => {});
+      throw new Error('MANAGED_ACCOUNT_REQUIRED');
+    }
+    // Bind before saving the user, or the next load resets a slot without an identity.
+    await (await import('@lib/blah/accountStorage')).bindManagedAccount(this.getAccountNumber());
+    await this.apiManager.setUser(user);
+    return authorization;
+  }
+
   public async finishPasskeyLogin(credential: InputPasskeyCredential, fromDcId?: TrueDcId) {
     const fromAuthKey = fromDcId ? await this.apiManager.getAuthKeyFromHex((await AccountController.get(this.getAccountNumber()))[`dc${fromDcId as TrueDcId}_auth_key`]) : undefined;
     return this.apiManager.invokeApi('auth.finishPasskeyLogin', {

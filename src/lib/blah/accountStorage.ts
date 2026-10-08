@@ -12,6 +12,11 @@ import AppStorage from '@lib/storage';
 import DeferredIsUsingPasscode from '@lib/passcode/deferredIsUsingPasscode';
 import {saveEncryptionKeyForHandoff} from '@lib/passcode/keyHandoff';
 
+/** A managed account has no browser identity; this binding keeps its session across reloads. */
+export async function bindManagedAccount(slot: number) {
+  if(blah?.discovery || blah?.home) await stored('slot:' + slot, 'managed-account');
+}
+
 /** Called after passcode unlock, before reading account state or using transport keys. */
 export async function requireAccountBinding(slot: ActiveAccountNumber, _signedIn?: boolean) {
   if(!blah?.discovery && !blah?.home) return false;
