@@ -61,7 +61,8 @@ export function constructTelegramWebSocketUrl(_dcId: DcId, connectionType: Conne
   const path = connectionType !== 'client' ? 'apiws' + TEST_SUFFIX + (premium ? PREMIUM_SUFFIX : '') : ('apiws' + TEST_SUFFIX);
   const blahDc = getBlahDc(dcId, slot);
   if(blahDc) {
-    return getBlahConfig(slot)?.home ? blahDc.url : blahDc.url + path.slice('apiws'.length);
+    const config = getBlahConfig(slot);
+    return config?.home || config?.widget ? blahDc.url : blahDc.url + path.slice('apiws'.length);
   }
   const chosenServer = `wss://${App.suffix.toLowerCase()}ws${dcId}${suffix}.web.telegram.org/${path}`;
 
