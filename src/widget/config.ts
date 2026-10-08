@@ -1,3 +1,4 @@
+import type {BlahConfig} from '@config/blah';
 import {isManagedAccountToken} from '@lib/blah/managedAccount';
 
 export type WidgetConfig = {
@@ -7,6 +8,9 @@ export type WidgetConfig = {
   apiId: number,
   apiHash: string
 };
+
+/** Workers have no document; the page hands them its validated pins in their URL. */
+export const WIDGET_CONFIG_QUERY_PARAM = 'blahWidget';
 
 export function validateConfig(config: WidgetConfig): WidgetConfig {
   const url = new URL(config.url);
@@ -37,6 +41,24 @@ export function readConfig(doc = document): WidgetConfig {
     apiId: +meta('api-id'),
     apiHash: meta('api-hash')
   });
+}
+
+/** The Blah configuration of the widget build. Invalid pins leave no DC to dial. */
+export function widgetBlahConfig(): BlahConfig {
+  let config: WidgetConfig;
+  try {
+    config = typeof(document) !== 'undefined' ?
+      readConfig() :
+      validateConfig(JSON.parse(new URLSearchParams(self.location.search).get(WIDGET_CONFIG_QUERY_PARAM)));
+  } catch{
+    return {widget: {}, defaultDcId: 1, dcs: []};
+  }
+  return {
+    widget: {param: JSON.stringify(config)},
+    app: {id: config.apiId, hash: config.apiHash},
+    defaultDcId: config.dcId,
+    dcs: [{id: config.dcId, url: config.url, rsaKey: config.rsaKey}]
+  };
 }
 
 export function readToken(hash: string): string | undefined {
