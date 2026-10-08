@@ -170,7 +170,9 @@ allows this setup origin; a `BLAH_DIEM_CDN_HOST` override must allow it as well.
 Cloudflare credentials are used only by the deployment step and never enter the
 widget build or its static assets. The hosting rules keep HTML, the archive and its
 checksum uncached, and hashed assets immutable. HTML path normalization stays disabled
-so setup can fetch `/index.html` without following a redirect.
+so setup can fetch `/index.html` without following a redirect. `/index.html` also allows
+any origin to read it, so a provisioning page hosted elsewhere, such as the Blah server's
+feedback DC setup page, can configure the same release.
 
 Keep future rebase conflicts small: widget behavior belongs in these separate files
 and adapters. Reuse upstream code through imports; keep shared chat, auth, transport
