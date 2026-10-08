@@ -1,59 +1,79 @@
+import {cp, readdir} from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {defineConfig, loadEnv} from 'vite';
-import solid from 'vite-plugin-solid';
+import {defineConfig, mergeConfig} from 'vite';
 import upstream from './vite.config';
-import {blahDiemRuntimeURL} from './scripts/blah-config.mjs';
+// @ts-ignore no type declarations
+import keepAsset from './keepAsset.js';
 
-export default defineConfig({
+const outDir = resolve(__dirname, 'dist/widget');
+// Runtime files the client fetches by path, as scripts/prepare-cloudflare-assets.mjs
+// selects them, minus the changelogs, store pages and manifests a widget never shows.
+const isRuntimePublic = (name: string, directory: boolean) => (directory || keepAsset(name)) &&
+  !/\.(?:xml|webmanifest|html)$|^changelogs$/.test(name);
+// Emoji render natively in the widget (src/widget/emoji.ts).
+const WIDGET_OMITTED = ['assets/img/emoji'];
+
+/**
+ * The support widget is the full client in its widget mode (`--mode widget`, see
+ * scripts/blah-config.mjs): widget/index.html carries the deployment pins and status
+ * element, and the client's own markup is spliced in so upstream index.html stays the source.
+ */
+export default mergeConfig(upstream, defineConfig({
+  mode: 'widget',
   root: resolve(__dirname, 'widget'),
-  base: './',
-  publicDir: false,
   envDir: __dirname,
-  plugins: [solid(), {
-    name: 'widget-setup',
-    config(config, {mode}) {
-      // The server fixture also uses this config for its separate library driver.
-      return {
-        define: {__BLAH_DIEM_RUNTIME_URL__: JSON.stringify(blahDiemRuntimeURL(loadEnv(mode, __dirname, '').BLAH_DIEM_CDN_HOST))},
-        ...config.build?.lib ? {} : {build: {rolldownOptions: {input: {
-          widget: resolve(__dirname, 'widget/index.html'),
-          setup: resolve(__dirname, 'widget/setup.html')
-        }}}}
-      };
+  plugins: [{
+    name: 'widget-entries',
+    // The e2e fixture also builds its support-side driver with this config, as a library.
+    config: (config) => config.build?.lib ? {} : {build: {rolldownOptions: {input: {
+      index: resolve(__dirname, 'widget/index.html'),
+      setup: resolve(__dirname, 'widget/setup.html')
+    }}}}
+  }, {
+    name: 'widget-client-markup',
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html, {filename}) {
+        if(!filename.endsWith('/widget/index.html')) return html;
+        const client = readFileSync(resolve(__dirname, 'index.html'), 'utf8');
+        const body = /<body class="([^"]*)">([\s\S]*)<\/body>/.exec(client);
+        if(!body) throw new Error('index.html changed shape: no <body class> to embed in the widget');
+        return html
+        .replace('<body>', `<body class="${body[1]}">`)
+        .replace('<!-- blah-widget-client -->', body[2].replace('src="src/', 'src="../src/'));
+      }
     }
   }, {
-    name: 'widget-boundary',
-    generateBundle() {
-      for(const id of this.getModuleIds()) {
-        if(/\/src\/(components|pages)\//.test(id) || /\/src\/lib\/(apiManagerProxy|appManagers\/createManagers)\./.test(id)) {
-          this.error('The widget imported the full client: ' + id);
+    name: 'widget-title',
+    // After Blah branding, which renames the document.
+    transformIndexHtml: {order: 'post', handler: (html, {filename}) => filename.endsWith('/widget/index.html') ?
+      html.replace(/<title>[^<]*<\/title>/, '<title>Support</title>') : html}
+  }, {
+    name: 'widget-public-assets',
+    apply: (config) => !config.build?.lib,
+    async closeBundle() {
+      const publicDir = resolve(__dirname, 'public');
+      for(const entry of await readdir(publicDir, {withFileTypes: true})) {
+        if(isRuntimePublic(entry.name, entry.isDirectory())) {
+          await cp(resolve(publicDir, entry.name), resolve(outDir, entry.name), {recursive: true,
+            filter: (source) => !WIDGET_OMITTED.some((path) => source.startsWith(resolve(publicDir, path)))});
         }
       }
     }
   }],
-  resolve: {
-    ...upstream.resolve,
-    alias: {
-      '@config/blah': resolve(__dirname, 'src/widget/transportConfig.ts'),
-      '@config/debug': resolve(__dirname, 'src/widget/debug.ts'),
-      '@config/modes': resolve(__dirname, 'src/widget/modes.ts'),
-      ...upstream.resolve.alias
-    }
+  // An array, so mergeConfig puts these ahead of the upstream @config and @environment prefixes.
+  resolve: {alias: [
+    {find: '@config/modes', replacement: resolve(__dirname, 'src/widget/modes.ts')},
+    {find: '@environment/emojiSupport', replacement: resolve(__dirname, 'src/widget/emojiSupport.ts')},
+    {find: '@environment/emojiVersionsSupport', replacement: resolve(__dirname, 'src/widget/emojiVersionsSupport.ts')}
+  ]},
+  server: {fs: {allow: [__dirname]}},
+  optimizeDeps: {entries: ['index.html', '../src/**/*.worker.{ts,js}']},
+  build: {
+    outDir,
+    emptyOutDir: true,
+    sourcemap: false
   },
-  define: {
-    __BLAH_CONFIG__: 'undefined',
-    ...Object.fromEntries(Object.entries({
-      VITE_MTPROTO_HAS_WS: '1',
-      VITE_MTPROTO_HAS_HTTP: '',
-      VITE_MTPROTO_AUTO: '',
-      VITE_MTPROTO_HTTP: '',
-      VITE_MTPROTO_HTTP_UPLOAD: '',
-      VITE_MTPROTO_SW: '',
-      VITE_SAFARI_PROXY_WEBSOCKET: ''
-    }).map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)]))
-  },
-  server: {host: '127.0.0.1', port: 8080, fs: {allow: [__dirname]}},
-  build: {target: 'es2020', outDir: resolve(__dirname, 'dist/widget'), emptyOutDir: true},
-  worker: {format: 'es'},
-  test: {...upstream.test, root: __dirname, include: ['src/tests/widget*.test.ts']}
-});
+  test: {root: __dirname, include: ['src/tests/widget*.test.ts']}
+}));
