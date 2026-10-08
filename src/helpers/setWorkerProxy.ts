@@ -1,6 +1,8 @@
 import {getLoadedWorkerFlags, isPageOnlyFlag} from '@config/modes';
+import blah from '@config/blah';
 import {CURRENT_ACCOUNT_QUERY_PARAM} from '@lib/accounts/constants';
 import {THREADED_WORKER_PROTOCOL_QUERY_PARAM} from '@lib/threadedWorkerTypes';
+import {WIDGET_CONFIG_QUERY_PARAM} from '@/widget/config';
 
 export function makeWorkerURL(url: string | URL) {
   if(!(url instanceof URL)) {
@@ -22,6 +24,12 @@ export function makeWorkerURL(url: string | URL) {
 
   // exclude useless params
   (url as URL).searchParams.delete('swfix');
+
+  // Only the widget's own document pins its DC; never forward one from the page URL.
+  if(blah?.widget && url.protocol !== 'blob:') {
+    if(blah.widget.param) url.searchParams.set(WIDGET_CONFIG_QUERY_PARAM, blah.widget.param);
+    else url.searchParams.delete(WIDGET_CONFIG_QUERY_PARAM);
+  }
 
   return url;
 }
