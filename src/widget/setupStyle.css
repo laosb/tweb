@@ -39,3 +39,5 @@ dd { margin: 4px 0 0; overflow-wrap: anywhere; font-family: monospace; font-size
   .setup-card { padding: 18px; }
   .setup-domain { flex-direction: column; }
 }
+.setup-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-weight: 500; }
+.setup-toggle input { width: auto; }
