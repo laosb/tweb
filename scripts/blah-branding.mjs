@@ -94,7 +94,8 @@ export default function blahBrandingPlugin(root) {
     name: 'blah-branding',
     enforce: 'pre',
     configResolved(config) {
-      enabled = !!config.define.__BLAH_CONFIG__ && config.define.__BLAH_CONFIG__ !== 'undefined';
+      enabled = (!!config.define.__BLAH_CONFIG__ && config.define.__BLAH_CONFIG__ !== 'undefined') ||
+        config.define.__BLAH_WIDGET__ === 'true';
       isWorker = config.isWorker;
     },
     transform(code, id) {
