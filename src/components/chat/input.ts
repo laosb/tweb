@@ -1485,7 +1485,7 @@ export default class ChatInput {
           this.isWelcomeComposer ||
           this.editMsgId ||
           !canShowAttachMenuAction('attachBot', richMessageEditorExpanded)
-        ) ? [] : await this.managers.appAttachMenuBotsManager.getAttachMenuBots();
+        ) ? [] : await this.managers.appAttachMenuBotsManager.getAttachMenuBots().catch((): never[] => []);
         const buttons = attachMenuButtons.filter((button) => (
           canShowAttachMenuAction(
             button.richMessageAction,
