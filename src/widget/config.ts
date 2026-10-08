@@ -1,3 +1,5 @@
+import {isManagedAccountToken} from '@lib/blah/managedAccount';
+
 export type WidgetConfig = {
   dcId: number,
   url: string,
@@ -42,7 +44,7 @@ export function readToken(hash: string): string | undefined {
   try {
     decodeURIComponent(hash);
     const values = new URLSearchParams(hash.replace(/^#/, '')).getAll('token');
-    if(values.length !== 1 || !/^[1-9]\d*:[A-Za-z0-9_-]{16,512}$/.test(values[0])) return;
+    if(values.length !== 1 || !isManagedAccountToken(values[0])) return;
     return values[0];
   } catch{ return; }
 }
