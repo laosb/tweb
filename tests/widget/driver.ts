@@ -1,12 +1,12 @@
 import type {WidgetConfig} from '@/widget/config';
-import {WidgetTransport} from '@/widget/transport';
+import {WidgetTransport} from './transport';
 
 // Compiled only by test-widget.mjs into a temporary directory. This is a second
 // client for the disposable support account, never part of the widget bundle.
 let transport: WidgetTransport;
 (window as any).widgetTestDriver = {
   async connect(config: WidgetConfig, token: string) {
-    transport = new WidgetTransport(config, '', undefined, () => {});
+    transport = new WidgetTransport(config);
     await transport.call('auth.importBotAuthorization', {flags: 0, api_id: config.apiId, api_hash: config.apiHash, bot_auth_token: token});
   },
   async reply(id: number, text: string) {
