@@ -1,27 +1,31 @@
 import {dcDomain, fetchDCProfile, profileConfig} from '@lib/blah/discovery';
 import {validateConfig, type WidgetConfig} from '@/widget/config';
 
+// `schemes` fields take a light and a dark value; the others apply to both.
 export const themeFields = [
-  {name: 'surface-color', label: 'Header and composer', property: 'color'},
-  {name: 'text-color', label: 'Header text', property: 'color'},
-  {name: 'chat-background-color', label: 'Chat background', property: 'color'},
-  {name: 'accent-color', label: 'Accent', property: 'color'},
-  {name: 'incoming-bubble-color', label: 'Support bubble', property: 'color'},
-  {name: 'incoming-text-color', label: 'Support text', property: 'color'},
-  {name: 'outgoing-bubble-color', label: 'Customer bubble', property: 'color'},
-  {name: 'outgoing-text-color', label: 'Customer text', property: 'color'},
-  {name: 'bubble-radius', label: 'Bubble radius', property: 'border-radius'},
-  {name: 'incoming-bubble-radius', label: 'Support bubble radius', property: 'border-radius'},
-  {name: 'outgoing-bubble-radius', label: 'Customer bubble radius', property: 'border-radius'},
-  {name: 'chat-background-image', label: 'Background image', property: 'background-image'},
-  {name: 'chat-background-size', label: 'Background image size', property: 'background-size'}
+  {name: 'surface-color', label: 'Header and composer', property: 'color', schemes: true},
+  {name: 'text-color', label: 'Header text', property: 'color', schemes: true},
+  {name: 'chat-background-color', label: 'Chat background', property: 'color', schemes: true},
+  {name: 'accent-color', label: 'Accent', property: 'color', schemes: true},
+  {name: 'incoming-bubble-color', label: 'Support bubble', property: 'color', schemes: true},
+  {name: 'incoming-text-color', label: 'Support text', property: 'color', schemes: true},
+  {name: 'outgoing-bubble-color', label: 'Customer bubble', property: 'color', schemes: true},
+  {name: 'outgoing-text-color', label: 'Customer text', property: 'color', schemes: true},
+  {name: 'bubble-radius', label: 'Bubble radius', property: 'border-radius', schemes: false},
+  {name: 'incoming-bubble-radius', label: 'Support bubble radius', property: 'border-radius', schemes: false},
+  {name: 'outgoing-bubble-radius', label: 'Customer bubble radius', property: 'border-radius', schemes: false},
+  {name: 'chat-background-image', label: 'Background image', property: 'background-image', schemes: true},
+  {name: 'chat-background-size', label: 'Background image size', property: 'background-size', schemes: false}
 ] as const;
 
-export type WidgetTheme = Partial<Record<typeof themeFields[number]['name'], string>>;
+type ThemeFieldName = typeof themeFields[number]['name'];
+/** Light (or shared) values by field name; dark values under `<name>:dark`. */
+export type WidgetTheme = Partial<Record<ThemeFieldName | `${ThemeFieldName}:dark`, string>>;
 
-export function themeDeclarations(theme: WidgetTheme) {
-  return themeFields.flatMap(({name, property, label}) => {
-    const value = theme[name]?.trim();
+export function themeDeclarations(theme: WidgetTheme, scheme: 'light' | 'dark' = 'light', shared?: boolean) {
+  return themeFields.flatMap(({name, property, label, schemes}) => {
+    if(shared !== undefined && shared === schemes) return [];
+    const value = theme[(scheme === 'dark' ? `${name}:dark` : name) as keyof WidgetTheme]?.trim();
     if(!value) return [];
     // These values will be serialized inside a raw-text HTML style element.
     if(/[<>{};]/.test(value) || !CSS.supports(property, value)) {
@@ -29,6 +33,15 @@ export function themeDeclarations(theme: WidgetTheme) {
     }
     return [`--widget-${name}: ${value};`];
   }).join('\n');
+}
+
+/** Dark values follow the client's `night` class, i.e. the system scheme. A blank one keeps the dark default. */
+export function themeStylesheet(theme: WidgetTheme) {
+  return [
+    [':root', themeDeclarations(theme, 'light', true)],
+    [':root:not(.night)', themeDeclarations(theme, 'light', false)],
+    [':root.night', themeDeclarations(theme, 'dark', false)]
+  ].filter(([, body]) => body).map(([selector, body]) => `${selector} {\n${body}\n}`).join('\n');
 }
 
 export async function discoverWidgetDC(input: string) {
@@ -58,7 +71,7 @@ export function generateWidgetIndex(template: string, input: WidgetConfig, theme
   doc.querySelectorAll('#blah-widget-theme').forEach((node) => node.remove());
   const style = doc.createElement('style');
   style.id = 'blah-widget-theme';
-  style.textContent = ':root {\n' + themeDeclarations(theme) + '\n}';
+  style.textContent = themeStylesheet(theme);
   doc.head.append(style);
   return '<!doctype html>\n' + doc.documentElement.outerHTML + '\n';
 }
