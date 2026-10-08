@@ -1,8 +1,14 @@
+import {widgetBlahConfig} from '@/widget/config';
+
 export type BlahConfig = {
   discovery?: boolean,
   expiresAt?: string,
   profileDigest?: string,
   home?: {domain: string, identity: string, generation: string},
+  /** The support widget build: pins from its own document, `param` absent when they are invalid. */
+  widget?: {param?: string},
+  /** Application credentials that are not built in, i.e. the widget's. */
+  app?: {id: number, hash: string},
   defaultDcId: number,
   dcs: {
     id: number,
@@ -13,7 +19,8 @@ export type BlahConfig = {
 
 // Replaced at build time. Undefined in ordinary Telegram builds.
 declare const __BLAH_CONFIG__: BlahConfig | undefined;
-const blah = __BLAH_CONFIG__;
+declare const __BLAH_WIDGET__: boolean;
+const blah = __BLAH_WIDGET__ ? widgetBlahConfig() : __BLAH_CONFIG__;
 export default blah;
 
 // Several accounts can share a worker, but never a discovery configuration.
@@ -51,5 +58,11 @@ export function getBlahDc(dcId: number, slot = 1) {
     throw new Error('Connect to your DC to refresh its public profile.');
   }
   if(config?.home && dcId !== 1) throw new Error('Blah homes use DC1; numeric migration is not a home change');
+  // The widget dials only the pinned DC; a missing pin must never fall back to Telegram.
+  if(config?.widget) {
+    const dc = config.dcs.find((dc) => dc.id === dcId);
+    if(!dc) throw new Error('WIDGET_DC_MISMATCH');
+    return dc;
+  }
   return config?.dcs.find((dc) => dc.id === dcId) ?? config?.dcs[0];
 }

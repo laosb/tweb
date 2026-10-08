@@ -79,13 +79,19 @@ try {
 
   await page.getByLabel('App ID', {exact: true}).fill('12345');
   await page.getByLabel('App hash', {exact: true}).fill('ab'.repeat(16));
-  await page.getByLabel('Accent', {exact: true}).fill('#235347');
-  await page.getByLabel('Customer bubble', {exact: true}).fill('#235347');
+  await page.getByLabel('Accent (light)', {exact: true}).fill('#235347');
+  await page.getByLabel('Customer bubble (light)', {exact: true}).fill('#235347');
+  await page.getByLabel('Customer bubble (dark)', {exact: true}).fill('#8fd3c1');
   await page.getByLabel('Bubble radius', {exact: true}).fill('8px');
-  await page.getByLabel('Chat background', {exact: true}).fill('#f6f2ec');
+  await page.getByLabel('Chat background (light)', {exact: true}).fill('#f6f2ec');
   await expect(preview.locator('.widget-outgoing .widget-bubble')).toHaveCSS('background-color', 'rgb(35, 83, 71)');
   await expect(preview.locator('.widget-outgoing .widget-bubble')).toHaveCSS('border-radius', '8px');
   await expect(preview.locator('.widget-history')).toHaveCSS('background-color', 'rgb(246, 242, 236)');
+  // Dark values apply in dark mode only; a blank one keeps the dark default.
+  await page.getByLabel('Dark mode').check();
+  await expect(preview.locator('.widget-outgoing .widget-bubble')).toHaveCSS('background-color', 'rgb(143, 211, 193)');
+  await expect(preview.locator('.widget-history')).toHaveCSS('background-color', 'rgb(15, 15, 15)');
+  await page.getByLabel('Dark mode').uncheck();
 
   const radius = page.getByLabel('Bubble radius', {exact: true});
   await radius.fill('not-a-length');
@@ -115,16 +121,22 @@ try {
   assert.equal(details.meta['blah-widget-api-id'], '12345');
   assert.equal(details.meta['blah-widget-api-hash'], 'ab'.repeat(16));
   for(const path of [...details.scripts, ...details.styles]) assert(originalIndex.includes(path));
+  assert(generatedIndex.includes(':root.night {\n--widget-outgoing-bubble-color: #8fd3c1;\n}'));
 
   // Test the actual downloaded document and the widget runtime together.
   const widget = await context.newPage();
-  await widget.route(browserOrigin + '/**', serveLocal);
+  // Context-level, so the client's shared and service worker scripts are served too.
+  await context.route(browserOrigin + '/**', serveLocal);
   widget.on('pageerror', error => errors.push(error.message));
-  widget.on('websocket', socket => sockets.push(socket.url()));
+  const widgetSockets = [];
+  widget.on('websocket', socket => widgetSockets.push(socket.url()));
   await widget.goto(browserOrigin + '/support/index.html');
-  await expect(widget.getByRole('status')).toContainText('requires a customer token');
+  await expect(widget.getByRole('status')).toContainText('requires a customer token', {timeout: 30_000})
+  .catch((error) => { throw new Error(errors.join('\n') + '\n' + error.message); });
   assert.equal(await widget.locator('html').evaluate(html => getComputedStyle(html).getPropertyValue('--widget-bubble-radius').trim()), '8px');
   await widget.close();
+  // The client may dial its pinned DC before reading the fragment, but nowhere else.
+  for(const url of widgetSockets) assert.equal(url, 'wss://dc.example.org/exact/ws?route=one%2Ftwo&client=widget');
 
   // Regeneration replaces the prior theme and does not duplicate metadata.
   await page.getByRole('button', {name: 'Reset styling'}).click();
@@ -175,7 +187,7 @@ try {
   await expect(dcStatus).toHaveText('DC profile verified.');
   await expect(download).toBeEnabled();
   assert.deepEqual(errors, []);
-  assert.deepEqual(sockets, [], 'Setup and a tokenless widget must never open an MTProto connection.');
+  assert.deepEqual(sockets, [], 'Setup must never open an MTProto connection.');
   console.log('Widget setup: signed discovery, rejection/retry, CSS preview, downloads, relative assets, keyboard, narrow layout and Axe passed.');
 } finally {
   await browser?.close();

@@ -89,13 +89,13 @@ jobs:
           sha256sum -c SHA256SUMS
           cat > "$RUNNER_TEMP/widget-release-notes.md" <<'NOTES'
           Compiled customer feedback widget with the original, unconfigured index.html,
-          setup.html, and widget assets. Setup loads the pinned BlahDiem runtime from CDN.
+          setup.html, and the files they load. Only setup loads the pinned BlahDiem runtime from CDN.
 
           Extract feedback-widget.tar.gz and serve it on an HTTPS origin allowed by
           the BlahDiem CDN's CORS policy (see README.md for the build-time CDN override).
           Open setup.html, verify your DC profile domain, enter your app ID/hash and
           preview CSS styling. Replace index.html with the downloaded configuration,
-          keeping the assets folder beside it. See README.md for embedding and tokens.
+          keeping the other release files beside it. See README.md for embedding and tokens.
           NOTES
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             # Four-character prefixes can collide. Never replace another commit's assets.

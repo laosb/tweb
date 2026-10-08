@@ -1,6 +1,6 @@
 import {ObjectURLScope} from '@helpers/objectUrlScope';
-import {discoverWidgetDC, generateWidgetIndex, themeDeclarations, themeFields, type WidgetTheme} from '@/widget/setup';
-import widgetCSS from '@/widget/style.css?inline';
+import {discoverWidgetDC, generateWidgetIndex, themeDeclarations, themeFields, themeStylesheet, type WidgetTheme} from '@/widget/setup';
+import widgetCSS from '@/widget/preview.css?inline';
 import '@/widget/setupStyle.css';
 
 const domain = document.querySelector<HTMLInputElement>('#dc-domain');
@@ -11,15 +11,16 @@ const downloadStatus = document.querySelector<HTMLElement>('#download-status');
 const details = document.querySelector<HTMLElement>('#dc-details');
 const fields = document.querySelector<HTMLElement>('#theme-fields');
 const preview = document.querySelector<HTMLIFrameElement>('#preview');
+const previewDark = document.querySelector<HTMLInputElement>('#preview-dark');
 const urls = new ObjectURLScope();
 const theme: WidgetTheme = {};
 let verified: Awaited<ReturnType<typeof discoverWidgetDC>>;
 let revision = 0;
 
 function updatePreview() {
-  preview.srcdoc = `<!doctype html><html lang="en"><head><meta charset="UTF-8">
+  preview.srcdoc = `<!doctype html><html lang="en"${previewDark.checked ? ' class="night"' : ''}><head><meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1"><title>Support preview</title>
-    <style>${widgetCSS}\n:root {${themeDeclarations(theme)}}</style></head><body>
+    <style>${widgetCSS}\n${themeStylesheet(theme)}</style></head><body>
     <main class="widget">
       <header class="widget-header"><div class="widget-avatar" aria-hidden="true">B</div>
         <h1>Customer support</h1><span class="widget-subtitle">We're here to help</span></header>
@@ -34,30 +35,33 @@ function updatePreview() {
     </main></body></html>`;
 }
 
-for(const {name, label: text, property} of themeFields) {
-  const label = document.createElement('label');
-  label.textContent = text;
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.name = name;
-  input.placeholder = 'Widget default';
-  input.spellcheck = false;
-  input.setAttribute('aria-describedby', 'theme-help');
-  input.title = `CSS ${property}: --widget-${name}`;
-  input.addEventListener('input', () => {
-    try {
-      themeDeclarations({[name]: input.value});
-      input.setCustomValidity('');
-      input.removeAttribute('aria-invalid');
-      theme[name] = input.value;
-      updatePreview();
-    } catch(error) {
-      input.setCustomValidity((error as Error).message);
-      input.setAttribute('aria-invalid', 'true');
-    }
-  });
-  label.append(input);
-  fields.append(label);
+for(const {name, label: text, property, schemes} of themeFields) {
+  for(const scheme of schemes ? ['light', 'dark'] as const : [undefined]) {
+    const key = (scheme === 'dark' ? `${name}:dark` : name) as keyof WidgetTheme;
+    const label = document.createElement('label');
+    label.textContent = scheme ? `${text} (${scheme})` : text;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.name = key;
+    input.placeholder = scheme === 'dark' ? 'Dark default' : 'Widget default';
+    input.spellcheck = false;
+    input.setAttribute('aria-describedby', 'theme-help');
+    input.title = `CSS ${property}: --widget-${name}` + (scheme ? ` in ${scheme} mode` : '');
+    input.addEventListener('input', () => {
+      try {
+        themeDeclarations({[key]: input.value}, scheme);
+        input.setCustomValidity('');
+        input.removeAttribute('aria-invalid');
+        theme[key] = input.value;
+        updatePreview();
+      } catch(error) {
+        input.setCustomValidity((error as Error).message);
+        input.setAttribute('aria-invalid', 'true');
+      }
+    });
+    label.append(input);
+    fields.append(label);
+  }
 }
 
 document.querySelector('#reset-theme').addEventListener('click', () => {
@@ -66,7 +70,7 @@ document.querySelector('#reset-theme').addEventListener('click', () => {
     input.setCustomValidity('');
     input.removeAttribute('aria-invalid');
   }
-  for(const {name} of themeFields) delete theme[name];
+  for(const key of Object.keys(theme)) delete theme[key as keyof WidgetTheme];
   updatePreview();
 });
 
@@ -144,5 +148,6 @@ document.querySelector('#configuration-form').addEventListener('submit', async(e
   }
 });
 
+previewDark.addEventListener('change', updatePreview);
 window.addEventListener('pagehide', () => urls.dispose());
 updatePreview();

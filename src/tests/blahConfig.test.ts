@@ -63,7 +63,23 @@ describe('Blah release configuration', () => {
     vi.stubGlobal('fetch', fetch);
     expect(await blahBuildDefines('test', process.cwd())).toEqual({
       __BLAH_DIEM_RUNTIME_URL__: '"https://bd-cdn.blahim.com/bd-web/20261004-9c0a/diem.js"',
+      __BLAH_WIDGET__: 'false',
       __BLAH_CONFIG__: 'undefined'
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('builds the support widget without built-in credentials or a Blah config', async() => {
+    enableBlah();
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const defines = await blahBuildDefines('widget', process.cwd());
+    expect(defines).toMatchObject({
+      __BLAH_WIDGET__: 'true',
+      __BLAH_CONFIG__: 'undefined',
+      'import.meta.env.VITE_API_ID': '""',
+      'import.meta.env.VITE_API_HASH': '""',
+      'import.meta.env.VITE_MTPROTO_HAS_HTTP': '""'
     });
     expect(fetch).not.toHaveBeenCalled();
   });

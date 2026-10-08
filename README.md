@@ -1,7 +1,7 @@
 ## Blah feedback widget
 
-This `feedback-widget` branch adds an iframe containing only a conversation with
-the DC's support account. Run `pnpm start:widget` or `pnpm build:widget` (output: `dist/widget/`).
+This `feedback-widget` branch adds a widget mode of the client: an iframe showing only
+the chat with the DC's support account. Run `pnpm start:widget` or `pnpm build:widget` (output: `dist/widget/`).
 Read [the embedding, head-meta and CSS-variable contract](docs/widget.md) before deploying.
 
 ## Telegram Web K

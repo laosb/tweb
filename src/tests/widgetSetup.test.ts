@@ -1,6 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {readConfig} from '@/widget/config';
-import {generateWidgetIndex, themeDeclarations} from '@/widget/setup';
+import {generateWidgetIndex, themeDeclarations, themeStylesheet} from '@/widget/setup';
 
 const config = {
   dcId: 1, url: 'wss://support.example/exact/path?route=widget&other=%22quoted%22',
@@ -8,7 +8,7 @@ const config = {
   apiId: 12345, apiHash: 'cd'.repeat(16)
 };
 const template = readFileSync('widget/index.html', 'utf8')
-  .replace('../src/widget/index.tsx', './assets/widget-hash.js')
+  .replace('<!-- blah-widget-client -->', '<script type="module" crossorigin src="./assets/widget-hash.js"></script>')
   .replace('</head>', '<link rel="stylesheet" href="./assets/widget-hash.css"></head>');
 
 beforeEach(() => vi.stubGlobal('CSS', {supports: () => true}));
@@ -50,4 +50,15 @@ it('rejects CSS that can escape the declaration or style element, even if accept
   vi.stubGlobal('CSS', {supports: () => false});
   expect(() => themeDeclarations({'bubble-radius': 'not-a-length'})).toThrow('radius');
   expect(themeDeclarations({'bubble-radius': '   '})).toBe('');
+});
+
+it('scopes colors to light or dark mode and shares the shape of the bubbles', () => {
+  expect(themeStylesheet({'bubble-radius': '8px', 'accent-color': '#235347', 'accent-color:dark': '#8fd3c1'})).toBe([
+    ':root {\n--widget-bubble-radius: 8px;\n}',
+    ':root:not(.night) {\n--widget-accent-color: #235347;\n}',
+    ':root.night {\n--widget-accent-color: #8fd3c1;\n}'
+  ].join('\n'));
+  // A blank dark value keeps the client's own dark theme rather than the light color.
+  expect(themeStylesheet({'accent-color': '#235347'})).not.toContain(':root.night');
+  expect(themeStylesheet({})).toBe('');
 });

@@ -71,7 +71,14 @@ export function parseBlahServerConfig(value) {
 /** @returns {Promise<Record<string, string>>} */
 export default async function blahBuildDefines(mode, root) {
   const env = loadEnv(mode, root, '');
-  const runtime = {__BLAH_DIEM_RUNTIME_URL__: JSON.stringify(blahDiemRuntimeURL(env.BLAH_DIEM_CDN_HOST))};
+  const runtime = {
+    __BLAH_DIEM_RUNTIME_URL__: JSON.stringify(blahDiemRuntimeURL(env.BLAH_DIEM_CDN_HOST)),
+    __BLAH_WIDGET__: JSON.stringify(mode === 'widget')
+  };
+  if(mode === 'widget') {
+    // The support widget reads its DC and application pins from its own index.html.
+    return {...runtime, __BLAH_CONFIG__: 'undefined', ...blahTransportDefines('', '', '')};
+  }
   if(env.VITE_BLAH !== '1') {
     return {...runtime, __BLAH_CONFIG__: 'undefined'};
   }
@@ -99,18 +106,22 @@ export default async function blahBuildDefines(mode, root) {
   return {
     ...runtime,
     __BLAH_CONFIG__: JSON.stringify(config),
-    ...Object.fromEntries(Object.entries({
-      VITE_API_ID: env.BLAH_API_ID,
-      VITE_API_HASH: env.BLAH_API_HASH,
-      // Never inherit Telegram's push key or its HTTP fallback from .env.
-      VITE_PUSH_SERVER_KEY: env.BLAH_VAPID_PUBLIC_KEY || '',
-      VITE_MTPROTO_HAS_WS: '1',
-      VITE_MTPROTO_HAS_HTTP: '',
-      VITE_MTPROTO_AUTO: '',
-      VITE_MTPROTO_HTTP: '',
-      VITE_MTPROTO_HTTP_UPLOAD: ''
-    }).map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)]))
+    ...blahTransportDefines(env.BLAH_API_ID, env.BLAH_API_HASH, env.BLAH_VAPID_PUBLIC_KEY || '')
   };
+}
+
+function blahTransportDefines(apiId, apiHash, pushServerKey) {
+  return Object.fromEntries(Object.entries({
+    VITE_API_ID: apiId,
+    VITE_API_HASH: apiHash,
+    // Never inherit Telegram's push key or its HTTP fallback from .env.
+    VITE_PUSH_SERVER_KEY: pushServerKey,
+    VITE_MTPROTO_HAS_WS: '1',
+    VITE_MTPROTO_HAS_HTTP: '',
+    VITE_MTPROTO_AUTO: '',
+    VITE_MTPROTO_HTTP: '',
+    VITE_MTPROTO_HTTP_UPLOAD: ''
+  }).map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)]));
 }
 
 /** An operator-provided trust anchor for one independent home, never a directory. */

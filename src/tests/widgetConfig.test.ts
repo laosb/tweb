@@ -1,5 +1,4 @@
-import {readConfig, readToken, validateConfig, type WidgetConfig} from '@/widget/config';
-import {configureTransport, getBlahDc} from '@/widget/transportConfig';
+import {readConfig, readToken, validateConfig, widgetBlahConfig, WIDGET_CONFIG_QUERY_PARAM, type WidgetConfig} from '@/widget/config';
 
 export const config: WidgetConfig = {
   dcId: 1, url: 'wss://support.example/exact/path?route=widget',
@@ -7,18 +6,37 @@ export const config: WidgetConfig = {
   apiId: 12345, apiHash: 'ab'.repeat(16)
 };
 
-it('reads the deployment pins from head meta tags and preserves the exact endpoint', () => {
+function setMeta(value: WidgetConfig) {
   document.head.innerHTML = Object.entries({
-    'dc-id': config.dcId, 'dc-url': config.url, 'rsa-modulus': config.rsaKey.modulus,
-    'rsa-exponent': config.rsaKey.exponent, 'api-id': config.apiId, 'api-hash': config.apiHash
-  }).map(([name, value]) => `<meta name="blah-widget-${name}" content="${value}">`).join('');
+    'dc-id': value.dcId, 'dc-url': value.url, 'rsa-modulus': value.rsaKey.modulus,
+    'rsa-exponent': value.rsaKey.exponent, 'api-id': value.apiId, 'api-hash': value.apiHash
+  }).map(([name, item]) => `<meta name="blah-widget-${name}" content="${item}">`).join('');
+}
+
+it('reads the deployment pins from head meta tags and preserves the exact endpoint', () => {
+  setMeta(config);
   expect(readConfig()).toEqual(config);
-  configureTransport(readConfig());
-  expect(getBlahDc(1).url).toBe(config.url);
-  expect(getBlahDc(1).rsaKey).toEqual(config.rsaKey);
-  expect(() => getBlahDc(2)).toThrow('WIDGET_DC_MISMATCH');
+  expect(widgetBlahConfig()).toEqual({
+    widget: {param: JSON.stringify(config)}, app: {id: config.apiId, hash: config.apiHash},
+    defaultDcId: 1, dcs: [{id: 1, url: config.url, rsaKey: config.rsaKey}]
+  });
   document.head.innerHTML = '';
   expect(() => readConfig()).toThrow();
+  expect(widgetBlahConfig()).toEqual({widget: {}, defaultDcId: 1, dcs: []});
+});
+
+it('dials only the pinned DC and hands workers the same pins', async() => {
+  setMeta(config);
+  vi.resetModules();
+  vi.stubGlobal('__BLAH_WIDGET__', true);
+  const {default: blah, getBlahDc} = await import('@config/blah');
+  const {makeWorkerURL} = await import('@helpers/setWorkerProxy');
+  expect(getBlahDc(1).url).toBe(config.url);
+  expect(() => getBlahDc(2)).toThrow('WIDGET_DC_MISMATCH');
+  const url = makeWorkerURL(new URL('https://support.example/worker.js?' + WIDGET_CONFIG_QUERY_PARAM + '=forged'));
+  expect(url.searchParams.get(WIDGET_CONFIG_QUERY_PARAM)).toBe(blah.widget.param);
+  vi.unstubAllGlobals();
+  document.head.innerHTML = '';
 });
 
 it.each([
