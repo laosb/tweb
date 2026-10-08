@@ -2,7 +2,11 @@ import {describe, expect, it, vi} from 'vitest';
 import App from '@config/app';
 import AppAccountManager from '@appManagers/appAccountManager';
 import type {AuthSentCode, AuthSentCodeType} from '@layer';
+import {isManagedAccountToken} from '@lib/blah/managedAccount';
 import requestLoginCode from '@/pages/requestLoginCode';
+
+const bindManagedAccount = vi.hoisted(() => vi.fn());
+vi.mock('@lib/blah/accountStorage', () => ({bindManagedAccount}));
 
 function makeManager(result: unknown) {
   const manager = new AppAccountManager();
@@ -97,6 +101,37 @@ describe('account login wrappers', () => {
     finishPersistence();
     await promise;
     expect(finished).toHaveBeenCalledOnce();
+  });
+
+  it('binds the slot to a managed account before saving its user', async() => {
+    const user = {_: 'user', id: 42, pFlags: {}};
+    const {manager, apiManager} = makeManager({_: 'auth.authorization', user});
+    const order: string[] = [];
+    bindManagedAccount.mockImplementationOnce(async() => { order.push('bind'); });
+    apiManager.setUser.mockImplementationOnce(async() => { order.push('user'); });
+    await manager.importManagedAccountAuthorization('42:' + 'a'.repeat(32));
+    expect(apiManager.invokeApi).toHaveBeenCalledWith('auth.importBotAuthorization', {
+      api_id: App.id,
+      api_hash: App.hash,
+      bot_auth_token: '42:' + 'a'.repeat(32)
+    }, {ignoreErrors: true});
+    expect(order).toEqual(['bind', 'user']);
+  });
+
+  it('logs a bot out instead of signing it in', async() => {
+    const {manager, apiManager} = makeManager({_: 'auth.authorization', user: {_: 'user', id: 7, pFlags: {bot: true}}});
+    bindManagedAccount.mockClear();
+    await expect(manager.importManagedAccountAuthorization('7:' + 'a'.repeat(32))).rejects.toThrow('MANAGED_ACCOUNT_REQUIRED');
+    expect(apiManager.invokeApi).toHaveBeenLastCalledWith('auth.logOut', {}, {ignoreErrors: true});
+    expect(bindManagedAccount).not.toHaveBeenCalled();
+    expect(apiManager.setUser).not.toHaveBeenCalled();
+  });
+
+  it('accepts only bot-shaped managed account tokens', () => {
+    expect(isManagedAccountToken('42:' + 'a'.repeat(16))).toBe(true);
+    for(const token of ['', '42', '0:' + 'a'.repeat(16), '42:' + 'a'.repeat(15), '42:' + 'a'.repeat(15) + '/', ' 42:' + 'a'.repeat(16)]) {
+      expect(isManagedAccountToken(token)).toBe(false);
+    }
   });
 });
 

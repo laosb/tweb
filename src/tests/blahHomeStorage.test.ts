@@ -176,6 +176,15 @@ it('keeps compatible sessions and signed-out transport keys without reloading', 
   expect(logout).not.toHaveBeenCalled();
 });
 
+it('keeps a managed account session, which has no identity, across reloads', async() => {
+  await homeStorage.bindHomeStorage(first, 1);
+  await accountStorage.bindManagedAccount(1);
+  await accounts.update(1, {userId: 1, dc1_auth_key: 'a'.repeat(512)});
+  await accountStorage.prepareAccountStorage();
+  expect(await accounts.get(1)).toMatchObject({userId: 1});
+  expect(logout).not.toHaveBeenCalled();
+});
+
 it('removes only the incompatible credentials from shared passcode storage after unlocking', async() => {
   const {getDatabaseState} = await import('@config/databases/state');
   const {default: AppStorage} = await import('@lib/storage');
