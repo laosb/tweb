@@ -1,5 +1,6 @@
 import type {InputFileLocation, Message, Update, Updates, UpdatesState, User} from '@layer';
 import {randomLong} from '@helpers/random';
+import {managedAccountUser} from '@lib/blah/managedAccount';
 import type {WidgetConfig} from '@/widget/config';
 import type {WidgetRPC} from '@/widget/transport';
 import type {WidgetSession} from '@/widget/session';
@@ -72,10 +73,8 @@ export class WidgetManager implements WidgetSession {
     const auth = await this.rpc.call('auth.importBotAuthorization', {
       flags: 0, api_id: this.config.apiId, api_hash: this.config.apiHash, bot_auth_token: token
     });
-    if(auth._ !== 'auth.authorization' || auth.user._ !== 'user' || auth.user.pFlags?.bot) {
-      throw new Error('WIDGET_MANAGED_ACCOUNT_REQUIRED');
-    }
-    this.self = auth.user;
+    this.self = managedAccountUser(auth);
+    if(!this.self) throw new Error('WIDGET_MANAGED_ACCOUNT_REQUIRED');
     const support = await this.rpc.call('help.getSupport', {});
     if(support.user._ !== 'user' || support.user.pFlags?.deleted || !support.user.access_hash || support.user.id === this.self.id) {
       throw new Error('SUPPORT_UNAVAILABLE');
