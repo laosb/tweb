@@ -3,6 +3,7 @@ import appImManager from '@lib/appImManager';
 import rootScope from '@lib/rootScope';
 import appNavigationController from '@components/appNavigationController';
 import appSidebarRight from '@components/sidebarRight';
+import AppSharedMediaTab from '@components/sidebarRight/tabs/sharedMediaTab';
 import Chat from '@components/chat/chat';
 import ChatInput from '@components/chat/input';
 import {ChatType} from '@components/chat/chatType';
@@ -23,7 +24,7 @@ export function restrictToSupport(supportPeerId: PeerId) {
   const chatInput = ChatInput.prototype as any;
   const targets = [
     [appImManager, 'setPeer'], [appImManager, 'setInnerPeer'], [appNavigationController, 'overrideHash'],
-    [appSidebarRight, 'toggleSidebar'], [Chat.prototype, 'canSend'], [chatInput, 'constructPeerHelpers'],
+    [appSidebarRight, 'toggleSidebar'], [AppSharedMediaTab.prototype, 'setPeer'], [Chat.prototype, 'canSend'], [chatInput, 'constructPeerHelpers'],
     [ChatRecording.prototype, 'hasVoiceRecorder'], [ChatRecording.prototype, 'hasAnyRecorder']
   ] as const;
   for(const [object, key] of targets) {
@@ -40,6 +41,13 @@ export function restrictToSupport(supportPeerId: PeerId) {
   const setInnerPeer = appImManager.setInnerPeer.bind(appImManager);
   appImManager.setInnerPeer = async(options) => { if(isSupportChat(options)) return setInnerPeer(options); };
   appSidebarRight.toggleSidebar = () => Promise.resolve();
+
+  // Keep shared media's layout without rendering the profile omitted from this build.
+  const setMediaPeer = AppSharedMediaTab.prototype.setPeer;
+  AppSharedMediaTab.prototype.setPeer = function(...args) {
+    this.noProfile = true;
+    return setMediaPeer.apply(this, args);
+  };
 
   // The fragment carries the customer token; opening the chat must not replace it.
   const overrideHash = appNavigationController.overrideHash.bind(appNavigationController);
