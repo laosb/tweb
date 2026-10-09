@@ -5,7 +5,8 @@ account, rendered by the full client's own chat page. Customers get its message
 bubbles, history, replies, editing and media viewer, and can send text, system emoji,
 photos, videos and files. There are no chat lists, profiles, account settings, calls,
 voice or round messages, contact sharing, sticker or GIF pickers, inline bots, custom
-emoji or attach-menu apps; links to other chats and profiles do not navigate.
+emoji or attach-menu apps; links to other chats and profiles do not navigate. Code
+blocks show without syntax highlighting, and a poll shows only its question.
 The widget follows the system's light or dark appearance.
 
 ## Build and configure
@@ -147,7 +148,11 @@ or image replaces the wallpaper. Maintain readable contrast for each pair in bot
 The widget mode lives in [`src/widget/`](../src/widget/). `vite build --mode widget`
 (through [`vite.widget.config.ts`](../vite.widget.config.ts)) reads the pins from the
 document instead of build-time configuration, renders emoji with the system font so
-the release carries no emoji images, and pins the URL modes. The client's startup hands
+the release carries no emoji images, and pins the URL modes. To keep the release small,
+the config also leaves out what a customer cannot use there: the client's screens
+outside the chat, public files for features the widget hides, and the modules it
+replaces with [`src/widget/omitted/`](../src/widget/omitted/). The build fails if one
+of those modules is renamed upstream or an omitted screen becomes an eager import. The client's startup hands
 over to [`src/widget/index.ts`](../src/widget/index.ts) in place of the auth flow; it
 signs in with the token and opens the support chat.
 [`src/widget/restrictions.ts`](../src/widget/restrictions.ts) narrows the client by
