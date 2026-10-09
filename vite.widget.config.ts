@@ -12,13 +12,13 @@ const outDir = resolve(__dirname, 'dist/widget');
 const isRuntimePublic = (name: string, directory: boolean) => (directory || keepAsset(name)) &&
   !/\.(?:xml|webmanifest|html)$|^changelogs$/.test(name);
 // Public files only for what the widget leaves out: emoji images (it renders emoji natively),
-// calls, voice recording, Stars, payments, settings, sign-in, Instant View, the media
-// editor's fallbacks and the installable app's icons.
+// webfonts (it uses the system's), calls, voice recording, Stars, payments, settings,
+// sign-in and the installable app's icons.
 const WIDGET_OMITTED_PUBLIC = [
   /^assets\/img\/emoji(\/|$)/,
   /^assets\/audio\/(?!message_sent|notification)/,
   /^assets\/tgs\/(?!ReactionGeneric)/,
-  /^assets\/fonts\/(tgico\.(svg|woff)|Merriweather-|Roboto-Medium\.)/, // tgico.ttf is listed first
+  /^assets\/fonts\/(?!tgico\.ttf$)/, // the icon font, whose first source is the .ttf
   /^assets\/img\/(android-chrome|mstile|favicon-|favicon_unread|icon_square|safari-pinned|logo_512|screenshot|camomile|password-monkey|premium|stars|anon_paid|amex|card|diners|discover|jcb|mastercard|mir|unionpay|visa|EmptyChats|accounts-limit|add-chats-to-folder|android-device)/,
   /^(encoderWorker\.min\.|recorder\.min\.js)/
 ];
@@ -31,8 +31,44 @@ const WIDGET_REPLACED: Record<string, string> = {
   'src/codeLanguageDetector.ts': omitted('codeLanguageDetector.ts'),
   'src/lib/tinyld/detect.ts': omitted('languageDetector.ts'),
   'src/components/chat/bubbleParts/pollMessageContent/index.ts': omitted('poll.ts'),
-  'src/lib/calls/e2e/encryptWorkerHost.ts': omitted('groupCallEncryption.ts')
+  'src/lib/calls/callsController.ts': omitted('callsController.ts'),
+  'src/lib/calls/groupCallsController.ts': omitted('callsController.ts'),
+  'src/lib/calls/conferenceInvitesController.ts': omitted('callsController.ts'),
+  'src/lib/calls/rtmpCallsController.ts': omitted('callsController.ts'),
+  'src/components/topbarCall.tsx': omitted('topbarCall.ts')
 };
+// Entry points of features a support chat has no use for: stories, calls, mini apps and the
+// in-app browser, payments, Stars, Premium, boosts and the AI editor. Each builds with every
+// export a function that does nothing, which leaves the rest of the feature out.
+const WIDGET_INERT = [
+  'src/components/stories/viewer.tsx',
+  'src/components/stories/list.tsx',
+  'src/components/stories/preview.tsx',
+  'src/components/call/index.tsx',
+  'src/components/call/conferenceJoinPopup.tsx',
+  'src/components/popups/webApp.tsx',
+  'src/components/browser.tsx',
+  'src/components/popups/payment.tsx',
+  'src/components/popups/stars.tsx',
+  'src/components/popups/premium.tsx',
+  'src/components/popups/boost.tsx',
+  'src/components/openBoosts.ts',
+  'src/components/richMessageInput/ai.tsx',
+  'src/components/richMessageInput/aiButton.tsx'
+];
+/** The runtime names a module exports, from its source. */
+function exportNames(program: any) {
+  return program.body.flatMap((node: any): string[] => {
+    if(node.type === 'ExportDefaultDeclaration') return ['default'];
+    if(node.type === 'ExportAllDeclaration') throw new Error('cannot make export * inert');
+    if(node.type !== 'ExportNamedDeclaration' || node.exportKind === 'type') return [];
+    const declaration = node.declaration;
+    if(declaration?.declare || /^TS(Interface|TypeAlias)/.test(declaration?.type)) return [];
+    if(declaration?.type === 'VariableDeclaration') return declaration.declarations.map((item: any) => item.id.name);
+    if(declaration) return [declaration.id.name];
+    return node.specifiers.filter((item: any) => item.exportKind !== 'type').map((item: any) => item.exported.name);
+  });
+}
 // Screens a customer cannot open in the widget: lazy imports of these build as empty modules.
 const WIDGET_UNREACHABLE = [
   /^src\/pages\/cards\//, // sign-in: the URL's token is the only credential
@@ -40,7 +76,7 @@ const WIDGET_UNREACHABLE = [
   /^src\/components\/sidebarRight\/tabs\/(?!sharedMedia\.|boosts\.)/, // the profile column is hidden
   /^src\/components\/communities\//,
   /^src\/components\/popups\/(createPoll|aiEditorPopup)\//,
-  /^src\/components\/call\//,
+  /^src\/components\/call\/(?!index\.|conferenceJoinPopup\.)/,
   /^src\/lib\/tchart\//, // statistics
   /^src\/lib\/settingsSearch\//,
   /^src\/vendor\/recorder\.min\.js$/, // voice messages
@@ -102,11 +138,15 @@ export default mergeConfig(upstream, defineConfig({
       if(id === UNREACHABLE) return 'export default undefined;';
       const path = relative(__dirname, id.split('?')[0]);
       if(WIDGET_REPLACED[path]) return readFileSync(WIDGET_REPLACED[path], 'utf8');
+      if(WIDGET_INERT.includes(path)) {
+        const names = exportNames(this.parse(readFileSync(id, 'utf8'), {lang: path.endsWith('x') ? 'tsx' : 'ts'}));
+        return 'const inert = function() {};\nexport {' + names.map((name: string) => 'inert as ' + name).join(', ') + '};';
+      }
     },
     buildEnd() {
       // A rename upstream must not silently ship a feature again, nor empty a module in use.
       const ids = new Set(this.getModuleIds());
-      const missing = Object.keys(WIDGET_REPLACED).filter((path) => !ids.has(resolve(__dirname, path)));
+      const missing = [...Object.keys(WIDGET_REPLACED), ...WIDGET_INERT].filter((path) => !ids.has(resolve(__dirname, path)));
       if(missing.length) this.error('no longer in the build: ' + missing.join(', '));
       const eager = [...omittedLazily].filter((id) => ids.has(id)).map((id) => relative(__dirname, id));
       if(eager.length) this.error('omitted lazily but also imported eagerly: ' + eager.join(', '));
@@ -130,6 +170,13 @@ export default mergeConfig(upstream, defineConfig({
     {find: '@environment/emojiSupport', replacement: resolve(__dirname, 'src/widget/emojiSupport.ts')},
     {find: '@environment/emojiVersionsSupport', replacement: resolve(__dirname, 'src/widget/emojiVersionsSupport.ts')}
   ]},
+  css: {postcss: {plugins: [{
+    // System fonts only, like emoji; a host adds a webfont in its index.html (docs/widget.md).
+    postcssPlugin: 'widget-system-fonts',
+    AtRule: {'font-face': (rule) => {
+      if(!/font-family:\s*["']?tgico\b/.test(rule.toString())) rule.remove();
+    }}
+  }]}},
   server: {fs: {allow: [__dirname]}},
   optimizeDeps: {entries: ['index.html', '../src/**/*.worker.{ts,js}']},
   build: {
