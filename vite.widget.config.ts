@@ -13,13 +13,14 @@ const isRuntimePublic = (name: string, directory: boolean) => (directory || keep
   !/\.(?:xml|webmanifest|html)$|^changelogs$/.test(name);
 // Public files only for what the widget leaves out: emoji images (it renders emoji natively),
 // webfonts (it uses the system's), wallpapers, calls, voice recording, Stars, payments, settings,
-// sign-in and the installable app's icons.
+// sign-in, notifications, QR codes and the installable app's icons.
 const WIDGET_OMITTED_PUBLIC = [
   /^assets\/img\/emoji(\/|$)/,
   /^assets\/audio\/(?!message_sent|notification)/,
   /^assets\/tgs\/(?!ReactionGeneric)/,
   /^assets\/fonts\/(?!tgico\.ttf$)/, // the icon font, whose first source is the .ttf
-  /^assets\/img\/(pattern|bg\.|android-chrome|mstile|favicon-|favicon_unread|icon_square|safari-pinned|logo_512|screenshot|camomile|password-monkey|premium|stars|anon_paid|amex|card|diners|discover|jcb|mastercard|mir|unionpay|visa|EmptyChats|accounts-limit|add-chats-to-folder|android-device)/,
+  /^assets\/blah(\/|$)/,
+  /^assets\/img\/(blank\.gif|doc-in|icon-verified|logo|masked|monoforum|favicon|apple-touch-icon-precomposed|pattern|bg\.|android-chrome|mstile|favicon-|favicon_unread|icon_square|safari-pinned|logo_512|screenshot|camomile|password-monkey|premium|stars|anon_paid|amex|card|diners|discover|jcb|mastercard|mir|unionpay|visa|EmptyChats|accounts-limit|add-chats-to-folder|android-device)/,
   /^(encoderWorker\.min\.|recorder\.min\.js)/
 ];
 
@@ -36,7 +37,8 @@ const WIDGET_REPLACED: Record<string, string> = {
   'src/lib/calls/conferenceInvitesController.ts': omitted('callsController.ts'),
   'src/lib/calls/rtmpCallsController.ts': omitted('callsController.ts'),
   'src/components/topbarCall.tsx': omitted('topbarCall.ts'),
-  'src/components/chat/bubbles/chatBackground.tsx': omitted('chatBackground.ts')
+  'src/components/chat/bubbles/chatBackground.tsx': omitted('chatBackground.ts'),
+  'src/helpers/math/loadTemml.ts': omitted('loadTemml.ts')
 };
 // Entry points of features a support chat has no use for: stories, calls, mini apps and the
 // in-app browser, payments, Stars, Premium, boosts and the AI editor. Each builds with every
@@ -47,6 +49,8 @@ const WIDGET_INERT = [
   'src/components/stories/preview.tsx',
   'src/components/call/index.tsx',
   'src/components/call/conferenceJoinPopup.tsx',
+  'src/components/mediaViewer/rtmp.ts',
+  'src/components/rtmp/adminPopup.tsx',
   'src/components/popups/webApp.tsx',
   'src/components/browser.tsx',
   'src/components/popups/payment.tsx',
@@ -75,8 +79,15 @@ const WIDGET_UNREACHABLE = [
   /^src\/pages\/cards\//, // sign-in: the URL's token is the only credential
   /^src\/components\/sidebarLeft\/tabs\/(?!background\.)/, // settings and the hidden chat list
   /^src\/components\/sidebarRight\/tabs\/(?!sharedMedia\.|boosts\.)/, // the profile column is hidden
-  /^src\/components\/communities\//,
-  /^src\/components\/popups\/(createPoll|aiEditorPopup)\//,
+  /^src\/components\/(communities|forumTab|addToFolderDropdownMenu|passcodeLock|iconLibrary)\//,
+  /^src\/lib\/blah\/Identity(Details)?Settings\./, // the Blah identity's settings
+  /^src\/components\/popups\/(createPoll|aiEditorPopup|translate)\//,
+  /^src\/components\/popups\/(ageVerification|musicSearch|richButton)\./,
+  /^src\/components\/chat\/(logFiltersPopup|suggestPostPopup)\//,
+  /^src\/components\/chat\/bubbleParts\/(adminLogsResolver\/|suggestedPost)/,
+  /^src\/components\/groupCall\//,
+  /^src\/lib\/debug\//,
+  /^src\/lib\/(mainWorker\/index|crypto\/crypto)\.worker\.ts$/, // in-page workers: src/widget/modes.ts
   /^src\/components\/call\/(?!index\.|conferenceJoinPopup\.)/,
   /^src\/lib\/tchart\//, // statistics
   /^src\/lib\/settingsSearch\//,
@@ -87,6 +98,33 @@ const WIDGET_UNREACHABLE = [
 const UNREACHABLE = '\0widget-unreachable';
 const omittedLazily = new Set<string>();
 const isUnreachable = (id: string) => WIDGET_UNREACHABLE.some((pattern) => pattern.test(relative(__dirname, id)));
+
+// Few files: the client builds as one chunk, apart from the media editor (loaded when a
+// customer edits a photo) and what the setup page shares with it; each worker is one file.
+const MEDIA_EDITOR = /\/src\/components\/mediaEditor\/|\/mediabunny\//;
+const SETUP_ONLY = /\/src\/widget\/(setup|preview)|\.html$/;
+type ChunkingContext = {getModuleInfo(id: string): {importedIds: readonly string[], dynamicallyImportedIds: readonly string[]} | null};
+/** Modules `from` loads, following lazy imports except those into `lazyChunk`. */
+function reachable(from: string, context: ChunkingContext, lazyChunk?: RegExp) {
+  const modules = new Set<string>();
+  const queue = [resolve(__dirname, from)];
+  for(let module; (module = queue.pop());) {
+    if(modules.has(module)) continue;
+    modules.add(module);
+    const info = context.getModuleInfo(module);
+    if(info) queue.push(...info.importedIds, ...info.dynamicallyImportedIds.filter((id) => !lazyChunk?.test(id)));
+  }
+  return modules;
+}
+let setupModules: Set<string>, clientModules: Set<string>, allModules: Set<string>;
+function chunkName(id: string, context: ChunkingContext) {
+  setupModules ??= reachable('widget/setup.html', context);
+  clientModules ??= reachable('widget/index.html', context, MEDIA_EDITOR);
+  allModules ??= reachable('widget/index.html', context);
+  if(setupModules.has(id)) return SETUP_ONLY.test(id) ? null : 'shared';
+  if(clientModules.has(id)) return /\.html$/.test(id) ? null : 'client';
+  return allModules.has(id) ? 'media-editor' : null;
+}
 
 /**
  * The support widget is the full client in its widget mode (`--mode widget`, see
@@ -100,10 +138,10 @@ export default mergeConfig(upstream, defineConfig({
   plugins: [{
     name: 'widget-entries',
     // The e2e fixture also builds its support-side driver with this config, as a library.
-    config: (config) => config.build?.lib ? {} : {build: {rolldownOptions: {input: {
-      index: resolve(__dirname, 'widget/index.html'),
-      setup: resolve(__dirname, 'widget/setup.html')
-    }}}}
+    config: (config) => config.build?.lib ? {} : {build: {rolldownOptions: {
+      input: {index: resolve(__dirname, 'widget/index.html'), setup: resolve(__dirname, 'widget/setup.html')},
+      output: {codeSplitting: {groups: [{name: chunkName, includeDependenciesRecursively: false}]}}
+    }}}
   }, {
     name: 'widget-client-markup',
     transformIndexHtml: {
@@ -122,7 +160,16 @@ export default mergeConfig(upstream, defineConfig({
     name: 'widget-title',
     // After Blah branding, which renames the document.
     transformIndexHtml: {order: 'post', handler: (html, {filename}) => filename.endsWith('/widget/index.html') ?
-      html.replace(/<title>[^<]*<\/title>/, '<title>Support</title>') : html}
+      html.replace(/<title>[^<]*<\/title>/, '<title>Support</title>')
+      .replace(/<link\b[^>]*rel="(?:icon|apple-touch-icon)"[^>]*>\s*/g, '') : html}
+  }, {
+    name: 'widget-no-app-install',
+    // An embedded chat has no tab icon and is not installable: drop Blah branding's icons and manifests.
+    generateBundle: {order: 'post', handler(_, bundle) {
+      for(const fileName of Object.keys(bundle)) {
+        if(/^assets\/blah\/|\.webmanifest$/.test(fileName)) delete bundle[fileName];
+      }
+    }}
   }, {
     name: 'widget-omitted-modules',
     enforce: 'pre',
@@ -185,5 +232,6 @@ export default mergeConfig(upstream, defineConfig({
     emptyOutDir: true,
     sourcemap: false
   },
+  worker: {rolldownOptions: {output: {codeSplitting: false}}},
   test: {root: __dirname, include: ['src/tests/widget*.test.ts']}
 }));
