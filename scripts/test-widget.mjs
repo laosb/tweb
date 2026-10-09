@@ -195,6 +195,15 @@ try {
   await page.screenshot({path: repo + '/tmp/widget/iframe.png'});
   const axe = await new AxeBuilder({page}).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   assert.deepEqual(axe.violations.map(({id, nodes}) => id + ': ' + nodes.map(({target}) => target.join(' ')).join(', ')), []);
+  // After the scan: tweb's code block header buttons have no accessible names.
+  // The release has no syntax highlighting or polls: code shows as plain text, a poll as its question.
+  const code = 'const answer = 42;';
+  await driver.evaluate(async({id, code}) => window.widgetTestDriver.reply(id, code,
+    [{_: 'messageEntityPre', offset: 0, length: code.length, language: 'javascript'}]), {id: alice.id, code});
+  await expect(bubble(code)).toBeVisible();
+  await expect(bubble(code).locator('.prism-token')).toHaveCount(0);
+  await driver.evaluate(async(id) => window.widgetTestDriver.poll(id, 'How did we do?', ['Great', 'Okay']), alice.id);
+  await expect(bubble('📊 How did we do?')).toBeVisible();
   // Dark mode follows the system scheme, with the theme's dark values.
   await frame.locator('head').evaluate((head) => head.insertAdjacentHTML('beforeend',
     '<style>:root.night { --widget-incoming-bubble-color: rgb(20, 40, 60); }</style>'));
