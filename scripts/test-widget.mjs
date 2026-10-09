@@ -90,7 +90,7 @@ try {
   };
   const types = {'.js': 'text/javascript', '.mjs': 'text/javascript', '.ts': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.png': 'image/png',
     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2', '.woff': 'font/woff', '.json': 'application/json'};
-  const paths = new Set(), requests = [];
+  const paths = new Set(), requests = [], missing = [];
   edge = createServer({key: await readFile(dir + '/tls.key'), cert: await readFile(dir + '/tls.crt')}, async(req, res) => {
     const path = decodeURIComponent(new URL(req.url, 'https://localhost').pathname);
     requests.push(path);
@@ -109,9 +109,9 @@ try {
       } else if(/^\/[\w./@-]+$/.test(path) && !path.includes('..')) {
         body = await readFile(path.startsWith('/driver/') ? dir + path : repo + '/dist/widget' + path);
         type = types[path.slice(path.lastIndexOf('.'))] || 'application/octet-stream';
-      } else { res.writeHead(404); res.end(); return; }
+      } else { missing.push(path); res.writeHead(404); res.end(); return; }
       res.writeHead(200, {'Content-Type': type, 'Cache-Control': 'no-store'}); res.end(body);
-    } catch{ res.writeHead(404); res.end(); }
+    } catch{ missing.push(path); res.writeHead(404); res.end(); }
   });
   edge.on('upgrade', (req, socket, head) => {
     paths.add(req.url);
@@ -252,6 +252,8 @@ try {
   assert.deepEqual([...paths], ['/exact/socket?widget=1']);
   // The pins come from index.html: the widget never loads the BlahDiem runtime.
   assert(!urls.some((url) => url.includes('/assets/img/emoji/')));
+  // Everything the client asks for ships in the release.
+  assert.deepEqual(missing, []);
   // The chat sits on a plain color, not the client's wallpaper.
   assert(!urls.some((url) => /\/assets\/img\/pattern\.svg|\/wallpapers?\//.test(url)));
   // Text uses system fonts; only the icon font ships.

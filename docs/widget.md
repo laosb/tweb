@@ -171,9 +171,11 @@ background color, and pins the URL modes. To keep the
 release small, the config also leaves out what a customer cannot use there: the
 client's screens outside the chat; stories, calls, mini apps, payments, Stars, Premium,
 boosts and the AI editor, whose entry modules build as no-ops; public files for hidden
-features; and the modules it replaces with [`src/widget/omitted/`](../src/widget/omitted/).
-The build fails if one of those modules is renamed upstream or an omitted screen
-becomes an eager import. The client's startup hands
+features, app icons and manifests; and the modules it replaces with
+[`src/widget/omitted/`](../src/widget/omitted/). The build fails if one of those modules
+is renamed upstream or an omitted screen becomes an eager import. To keep the file count
+low, the client builds as one script and stylesheet, the media editor as one more loaded
+when a customer edits a photo, and each worker as a single file. The client's startup hands
 over to [`src/widget/index.ts`](../src/widget/index.ts) in place of the auth flow; it
 signs in with the token and opens the support chat.
 [`src/widget/restrictions.ts`](../src/widget/restrictions.ts) narrows the client by
