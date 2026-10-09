@@ -143,16 +143,34 @@ bubble and text colors, and `--widget-incoming-bubble-radius` and
 the client's light or dark theme, including its default wallpaper; a background color
 or image replaces the wallpaper. Maintain readable contrast for each pair in both modes.
 
+Text uses fonts installed on the customer's system: Roboto where present, otherwise
+the system interface font. The release ships no webfonts. To use your own, declare it
+in the widget document and set the client's font variables, doubling `:root` so the
+override wins over the client's stylesheet:
+
+```css
+@font-face {
+  font-family: "Brand Sans";
+  src: url("/fonts/brand-sans.woff2") format("woff2");
+}
+:root:root {
+  --font-regular: "Brand Sans", system-ui, sans-serif;
+  --font-monospace: ui-monospace, monospace;
+}
+```
+
 ## Maintain and verify
 
 The widget mode lives in [`src/widget/`](../src/widget/). `vite build --mode widget`
 (through [`vite.widget.config.ts`](../vite.widget.config.ts)) reads the pins from the
-document instead of build-time configuration, renders emoji with the system font so
-the release carries no emoji images, and pins the URL modes. To keep the release small,
-the config also leaves out what a customer cannot use there: the client's screens
-outside the chat, public files for features the widget hides, and the modules it
-replaces with [`src/widget/omitted/`](../src/widget/omitted/). The build fails if one
-of those modules is renamed upstream or an omitted screen becomes an eager import. The client's startup hands
+document instead of build-time configuration, renders emoji and text with system fonts
+so the release carries no emoji images or webfonts, and pins the URL modes. To keep the
+release small, the config also leaves out what a customer cannot use there: the
+client's screens outside the chat; stories, calls, mini apps, payments, Stars, Premium,
+boosts and the AI editor, whose entry modules build as no-ops; public files for hidden
+features; and the modules it replaces with [`src/widget/omitted/`](../src/widget/omitted/).
+The build fails if one of those modules is renamed upstream or an omitted screen
+becomes an eager import. The client's startup hands
 over to [`src/widget/index.ts`](../src/widget/index.ts) in place of the auth flow; it
 signs in with the token and opens the support chat.
 [`src/widget/restrictions.ts`](../src/widget/restrictions.ts) narrows the client by
