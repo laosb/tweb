@@ -140,8 +140,10 @@ The other variables are `--widget-surface-color` and `--widget-text-color` for t
 header and composer, `--widget-chat-background-image` and `-size`, the incoming
 bubble and text colors, and `--widget-incoming-bubble-radius` and
 `--widget-outgoing-bubble-radius` to override the shared radius. Unset variables keep
-the client's light or dark theme, including its default wallpaper; a background color
-or image replaces the wallpaper. Maintain readable contrast for each pair in both modes.
+the client's light or dark theme. The chat has no wallpaper: it sits on
+`--widget-chat-background-color`, or the theme's plain background color when unset, with
+the optional image drawn over it (`cover` unless a size is set). Service-message pills
+take their tint from that color. Maintain readable contrast for each pair in both modes.
 
 Text uses fonts installed on the customer's system: Roboto where present, otherwise
 the system interface font. The release ships no webfonts. To use your own, declare it
@@ -164,7 +166,8 @@ override wins over the client's stylesheet:
 The widget mode lives in [`src/widget/`](../src/widget/). `vite build --mode widget`
 (through [`vite.widget.config.ts`](../vite.widget.config.ts)) reads the pins from the
 document instead of build-time configuration, renders emoji and text with system fonts
-so the release carries no emoji images or webfonts, and pins the URL modes. To keep the
+so the release carries no emoji images or webfonts, replaces wallpapers with a plain
+background color, and pins the URL modes. To keep the
 release small, the config also leaves out what a customer cannot use there: the
 client's screens outside the chat; stories, calls, mini apps, payments, Stars, Premium,
 boosts and the AI editor, whose entry modules build as no-ops; public files for hidden
