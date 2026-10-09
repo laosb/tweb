@@ -16,6 +16,17 @@ body.blah-widget {
   }
 }
 
+// The chat's backdrop, in place of the client's wallpapers (src/widget/omitted/chatBackground.ts).
+.blah-widget-background {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: var(--widget-chat-background-color, var(--background-color));
+  background-image: var(--widget-chat-background-image, none);
+  background-position: center;
+  background-size: var(--widget-chat-background-size, cover);
+}
+
 #widget {
   position: fixed;
   inset: 0;

@@ -252,6 +252,8 @@ try {
   assert.deepEqual([...paths], ['/exact/socket?widget=1']);
   // The pins come from index.html: the widget never loads the BlahDiem runtime.
   assert(!urls.some((url) => url.includes('/assets/img/emoji/')));
+  // The chat sits on a plain color, not the client's wallpaper.
+  assert(!urls.some((url) => /\/assets\/img\/pattern\.svg|\/wallpapers?\//.test(url)));
   // Text uses system fonts; only the icon font ships.
   assert.deepEqual(urls.filter((url) => /\.(woff2?|ttf|otf)\b/.test(url) && !url.includes('/assets/fonts/tgico.ttf')), []);
   const local = [origin, origin.replace('127.0.0.1', 'localhost'), 'blob:', 'data:'];
