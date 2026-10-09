@@ -12,14 +12,14 @@ const outDir = resolve(__dirname, 'dist/widget');
 const isRuntimePublic = (name: string, directory: boolean) => (directory || keepAsset(name)) &&
   !/\.(?:xml|webmanifest|html)$|^changelogs$/.test(name);
 // Public files only for what the widget leaves out: emoji images (it renders emoji natively),
-// webfonts (it uses the system's), calls, voice recording, Stars, payments, settings,
+// webfonts (it uses the system's), wallpapers, calls, voice recording, Stars, payments, settings,
 // sign-in and the installable app's icons.
 const WIDGET_OMITTED_PUBLIC = [
   /^assets\/img\/emoji(\/|$)/,
   /^assets\/audio\/(?!message_sent|notification)/,
   /^assets\/tgs\/(?!ReactionGeneric)/,
   /^assets\/fonts\/(?!tgico\.ttf$)/, // the icon font, whose first source is the .ttf
-  /^assets\/img\/(android-chrome|mstile|favicon-|favicon_unread|icon_square|safari-pinned|logo_512|screenshot|camomile|password-monkey|premium|stars|anon_paid|amex|card|diners|discover|jcb|mastercard|mir|unionpay|visa|EmptyChats|accounts-limit|add-chats-to-folder|android-device)/,
+  /^assets\/img\/(pattern|bg\.|android-chrome|mstile|favicon-|favicon_unread|icon_square|safari-pinned|logo_512|screenshot|camomile|password-monkey|premium|stars|anon_paid|amex|card|diners|discover|jcb|mastercard|mir|unionpay|visa|EmptyChats|accounts-limit|add-chats-to-folder|android-device)/,
   /^(encoderWorker\.min\.|recorder\.min\.js)/
 ];
 
@@ -35,7 +35,8 @@ const WIDGET_REPLACED: Record<string, string> = {
   'src/lib/calls/groupCallsController.ts': omitted('callsController.ts'),
   'src/lib/calls/conferenceInvitesController.ts': omitted('callsController.ts'),
   'src/lib/calls/rtmpCallsController.ts': omitted('callsController.ts'),
-  'src/components/topbarCall.tsx': omitted('topbarCall.ts')
+  'src/components/topbarCall.tsx': omitted('topbarCall.ts'),
+  'src/components/chat/bubbles/chatBackground.tsx': omitted('chatBackground.ts')
 };
 // Entry points of features a support chat has no use for: stories, calls, mini apps and the
 // in-app browser, payments, Stars, Premium, boosts and the AI editor. Each builds with every
