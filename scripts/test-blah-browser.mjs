@@ -238,8 +238,8 @@ try {
         new Uint8Array(signature), new Uint8Array(data))
     };
     const domain = 'operator.example.org', now = Math.floor(Date.now() / 1000);
-    const dc = await sdk.dcSetup({data: cbor({0: 13, 1: 1, 2: 5, 3: [domain],
-      4: [{0: domain, 1: 443, 2: true, 3: 1, 4: '/apiws'}], 5: [], 6: 'transport-key', 7: 1}),
+    const dc = await sdk.dcSetup({data: cbor({9: [domain], 16: 5,
+      18: [{0: domain, 1: 443, 2: true, 3: 1, 4: '/apiws'}], 19: [], 20: 'transport-key', 21: 1}),
       profile: null, now}, backend);
     const session = await sdk.keyFiles.create('x');
     const backup = await session.seal({domain, profile: encode(dc.profile), device,
