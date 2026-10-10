@@ -39,7 +39,7 @@ export default function IdentitySettings() {
     });
   }
 
-  function setup(mode: 'create' | 'import') {
+  function setup(mode: 'create' | 'import' | 'paper') {
     showIdentitySetup({mode, action, onIdentity: (identity) => {
       if(disposed) { void action({action: 'lock', id: identity.id}); return; }
       void refresh();
@@ -58,6 +58,7 @@ export default function IdentitySettings() {
     <Section caption="BlahIdentityCustody">
       <Row clickable={() => setup('create')}><Row.Icon icon="adduser" /><Row.Title>{i18n('BlahCreateIdentity')}</Row.Title></Row>
       <Row clickable={() => setup('import')}><Row.Icon icon="document" /><Row.Title>{i18n('BlahImportIdentity')}</Row.Title></Row>
+      <Row clickable={() => setup('paper')}><Row.Icon icon="key" /><Row.Title>{i18n('BlahUsePaperKey')}</Row.Title></Row>
     </Section>
     <p role="status">{message()}</p>
   </>;
