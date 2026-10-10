@@ -8,7 +8,7 @@ import PopupElement, {createPopup, usePopupContext} from '@components/popups/ind
 import {i18n} from '@lib/langPack';
 import IdentityInput from '@lib/blah/IdentityInput';
 import type {IdentityActions} from '@lib/blah/IdentityPanel';
-import type {IdentityRequest, IdentitySummary, IdentityView} from '@lib/blah/identity';
+import type {IdentityRequest, IdentitySummary, IdentityView, PaperKeyView} from '@lib/blah/identity';
 import {detailsSession} from '@lib/blah/detailsSession';
 import {renewalPolicy} from '@lib/blah/renewal';
 import {encode} from '@lib/blah/vault';
@@ -111,11 +111,12 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
       if(result.identity) accept(result.identity, request.action !== 'renewal');
       if(request.action === 'unlock') focusWhenSettled(exportButton, () => !props.session.isClosed());
       if(result.backup) exportFile(`${identity().domain}-identity.cbor`, new Uint8Array(result.backup), 'application/cbor');
+      if(result.paperKey) showPaperKey(result.paperKey);
       if(result.identity && request.action !== 'renewal') void checkPublication();
       return true;
     } catch(cause) {
       const error = cause as {type?: string, message?: string};
-      if(!props.session.isClosed() && ['renew', 'addDevice', 'removeDevice', 'removeOtherDevices', 'domains'].includes(request.action)) {
+      if(!props.session.isClosed() && ['renew', 'addDevice', 'addPaperKey', 'removeDevice', 'removeOtherDevices', 'domains'].includes(request.action)) {
         try {
           // Publication can fail after a new revision has already been saved.
           const result = await props.session.action({action: 'inspect'});
@@ -151,6 +152,33 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
       });
     } catch{ return; }
     if(!props.session.isClosed()) return run({action: device ? 'removeDevice' : 'removeOtherDevices', device});
+  }
+
+  async function addPaperKey() {
+    try {
+      await confirmationPopup({
+        titleLangKey: 'BlahAddPaperKey',
+        descriptionLangKey: 'BlahAddPaperKeyHelp',
+        button: {langKey: 'BlahAddPaperKey'}
+      });
+    } catch{ return; }
+    if(!props.session.isClosed()) await run({action: 'addPaperKey'});
+  }
+
+  function showPaperKey(paper: PaperKeyView) {
+    const domain = identity().domain;
+    function PaperKey() {
+      const popup = usePopupContext();
+      return <div class={styles.panel}>
+        <ol class={styles.paperWords}><For each={paper.phrase.split(' ')}>{(word) => <li>{word}</li>}</For></ol>
+        <p>{i18n('BlahPaperKeyWrite', [<b>{domain}</b> as HTMLElement, <code>{paper.device.slice(0, 8)}</code> as HTMLElement])}</p>
+        <Button primaryFilled text="BlahPaperKeyDone" onClick={() => popup.hide()} />
+      </div>;
+    }
+    createPopup(() => <PopupElement class={styles.setupPopup} closable>
+      <PopupElement.Header><PopupElement.CloseButton /><PopupElement.Title title="BlahPaperKey" /></PopupElement.Header>
+      <PopupElement.Body class={styles.setupBody}><PaperKey /></PopupElement.Body>
+    </PopupElement>);
   }
 
   function AuthorizeForm() {
@@ -258,6 +286,7 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
       </Show>
       <Section name="Devices">
         <Row clickable={authorizeDevice} disabled={busy()}><Row.Icon icon="add" /><Row.Title>{i18n('BlahAuthorizeDevice')}</Row.Title></Row>
+        <Row clickable={addPaperKey} disabled={busy()}><Row.Icon icon="key" /><Row.Title>{i18n('BlahAddPaperKey')}</Row.Title></Row>
       </Section>
       <Section caption="BlahIdentityCustody">
         <Row clickable={props.onExit}><Row.Icon icon="lock" /><Row.Title>{i18n('BlahLockIdentity')}</Row.Title></Row>
