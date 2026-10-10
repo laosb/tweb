@@ -123,6 +123,56 @@ try {
   assert.equal(second.added, 2);
   assert.equal(second.removed, 1);
   assert(second.reset && second.empty);
+  // A paper key is a listed device: it signs in from its words alone, never manages devices
+  // and stops working once terminated.
+  const paperKey = await page.evaluate(async() => {
+    const {identity, paperKey} = await fixture.identityAction(1, {action: 'addPaperKey'});
+    return {...paperKey, devices: identity.devices.length, profile: identity.profile};
+  });
+  assert.equal(paperKey.phrase.split(' ').length, 24);
+  assert.equal(paperKey.devices, 2);
+  const paperSignIn = async(profile, phrase) => {
+    const paperContext = await browser.newContext();
+    try {
+      const paperPage = await paperContext.newPage();
+      await paperPage.route(`${browserOrigin}/**`, serveLocal);
+      await paperPage.route('https://alice.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
+        status: 200, contentType: 'application/cbor', body: Buffer.from(profile)
+      }));
+      await paperPage.goto(browserOrigin);
+      return await paperPage.evaluate(async(phrase) => {
+        const failure = async(request) => {
+          try { await fixture.identityAction(1, request); } catch(error) { return error.message; }
+        };
+        const mistyped = await failure({action: 'paper', domain: 'alice.example.org', password: 'p', phrase: phrase.replace(/\S+$/, 'zzzz')});
+        let identity;
+        try {
+          ({identity} = await fixture.identityAction(1, {action: 'paper', domain: ' Alice.example.org', password: 'p', phrase: phrase.toUpperCase()}));
+        } catch(error) { return {mistyped, notListed: error.message}; }
+        const {cbor} = await import('/cbor.mjs');
+        const expiresAt = Math.floor(Date.now() / 1000) + 60;
+        const challenge = cbor({0: 4, 1: 1, 2: 'alice.example.org', 3: new Uint8Array(32).fill(7), 4: expiresAt,
+          5: new Uint8Array(32).fill(0xab), 6: 10n, 7: 11n});
+        const proof = await fixture.withIdentity(1, (secret) => {
+          if(secret.identity) throw new Error('A paper key acquired recovery authority');
+          return fixture.diem('prove', secret, {challengeKind: 'invocation', challenge, approvedChallenge: challenge,
+            expiresAt, keyID: '10', sessionID: '11', query: [1, 2, 3]});
+        });
+        return {mistyped, current: identity.devices.find((device) => device.current).id, proof: proof.proof.length,
+          manage: await failure({action: 'addPaperKey'}),
+          again: await failure({action: 'paper', domain: 'alice.example.org', password: 'p', phrase})};
+      }, phrase);
+    } finally { await paperContext.close(); }
+  };
+  const paperSession = await paperSignIn(paperKey.profile, paperKey.phrase);
+  assert.equal(paperSession.mistyped, 'Check the paper key words.');
+  assert.equal(paperSession.current, paperKey.device);
+  assert(paperSession.proof > 64);
+  assert.equal(paperSession.manage, 'Only a device that holds the identity key can add a paper key.');
+  assert.match(paperSession.again, /already exists here/);
+  const terminated = await page.evaluate((device) => fixture.identityAction(1, {action: 'removeDevice', device}), paperKey.device);
+  assert.equal((await paperSignIn(terminated.identity.profile, paperKey.phrase)).notListed,
+    'This paper key is not a current device of the identity at that domain.');
   const context = await browser.newContext();
   const restoredPage = await context.newPage();
   await restoredPage.route(`${browserOrigin}/**`, serveLocal);
@@ -259,7 +309,7 @@ try {
   });
   assert.equal(dcImport.account, '777000');
   assert(dcImport.proof > 64);
-  console.log('PASS: real BlahDiem WASM creation, encrypted custody, proof/session binding, numbering, renewal, devices, reload, home/slot isolation and recovery.');
+  console.log('PASS: real BlahDiem WASM creation, encrypted custody, proof/session binding, numbering, renewal, devices, paper keys, reload, home/slot isolation and recovery.');
 } finally {
   await browser?.close();
   await new Promise((resolve) => server.close(resolve));
