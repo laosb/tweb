@@ -91,6 +91,15 @@ The DC refetches the numbered profile through a proof-wrapped account read befor
 login completes. Failed publication leaves the new profile durably available for
 retry. There is no email-only, phone-number or QR identity login.
 
+### Sign in with a paper key
+
+A paper key is one of the identity's devices, written down as 24 words. Choose
+**Sign in with paper key** in the **Saved identity** picker, enter the profile domain,
+the words and a new identity password, then sign in as usual. The browser fetches the
+hosted profile and keeps the paper's device key as device-only custody, like a device
+identity file. It can sign in only while the hosted profile lists that device, and it
+cannot add devices, publish device changes or recover the identity.
+
 ### Sign in to a managed account
 
 An account an application manages has no browser identity. After connecting to its home
@@ -113,8 +122,10 @@ Details reload the saved profile automatically on opening and after unlocking.
 The device list separates the current device from other devices, using the standard
 session rows. Open a device for its public key or to terminate it; **Terminate other
 devices** keeps the current device authorized. **Authorize new device** opens a separate
-dialog for the new device's public key. Publish changed profiles to apply authorization
-or termination at the DC.
+dialog for the new device's public key. **Add paper key** certifies a new paper device
+and shows its 24 words once; it appears in the list as another device and is terminated the
+same way. Renewal from a browser that holds the identity key keeps it certified. Publish
+changed profiles to apply authorization or termination at the DC.
 
 Profiles and device certificates default to 180 days. **Validity and renewal** lets you
 choose whole-day periods (device validity must cover profile validity) and disable automatic
