@@ -82,6 +82,15 @@ export interface KeyFilePayload {
     publicationPending: boolean;
 }
 /**
+ * A paper device key's canonical words, the Ed25519 seed WebCrypto signs with and the
+ * encoded Diem device public key to certify.
+ */
+export interface PaperKeyResult {
+    phrase: string;
+    seed: number[];
+    device: number[];
+}
+/**
  * Decimal strings preserve 64-bit identifiers across the JavaScript boundary.
  */
 export interface IdentityRequest {
@@ -140,6 +149,14 @@ export type Exports = {
     keyFileInfo(encoding: number[]): KeyFileInfo;
     sealKeyFile(input: KeyFilePayload, salt: number[], crypto: any): Promise<number[]>;
     openKeyFile(encoding: number[], crypto: any): Promise<KeyFilePayload>;
+    /**
+     * The paper key that 32 bytes of random `entropy` encode.
+     */
+    newPaperKey(entropy: number[], crypto: any): Promise<PaperKeyResult>;
+    /**
+     * The paper key that written words encode; checks the word list, count and checksum.
+     */
+    paperKey(phrase: string, crypto: any): Promise<PaperKeyResult>;
     identityOperation(input: IdentityRequest, crypto: any): Promise<IdentityResult>;
 }
 export type Imports = {
