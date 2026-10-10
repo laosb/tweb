@@ -14,7 +14,7 @@ const directory = await mkdtemp(join(tmpdir(), 'blah-browser-test-'));
 await build({entryPoints: ['tests/blah/browser-entry.ts'], bundle: true, format: 'iife', globalName: 'fixture',
   target: 'es2022', outfile: join(directory, 'fixture.js'),
   define: {'import.meta.env': '{}', __BLAH_CONFIG__: JSON.stringify({discovery: true, home, defaultDcId: 1, dcs: [], expiresAt: '9999999999'}),
-    __BLAH_DIEM_RUNTIME_URL__: JSON.stringify(diemRuntimeURL), 'import.meta.env.BASE_URL': '"/"'}});
+    __BLAH_DIEM_RUNTIME_URL__: JSON.stringify(diemRuntimeURL), __BLAH_WIDGET__: 'false', 'import.meta.env.BASE_URL': '"/"'}});
 const server = createServer(async(req, res) => {
   try {
     const path = req.url === '/fixture.js' ? join(directory, 'fixture.js') :
