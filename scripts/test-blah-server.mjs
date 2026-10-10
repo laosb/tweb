@@ -190,11 +190,11 @@ try {
     const next = await diem.dcSetup({data: rotatedData, profile: rotated.profile, now: Math.floor(Date.now() / 1000)}, backend);
     return {...current, rotatedProfile: rotated.profile, nextProfile: next.profile};
   };
-  const signedDC = await page.evaluate(makeDCProfile, {data: cbor({0: 13, 1: 1, 2: 5, 3: ['dc.example.org'], 4: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/discovered/ws?route=home'}], 5: [], 6: rsa.pkcs1Pem, 7: 1}),
-    rotatedData: cbor({0: 13, 1: 1, 2: 5, 3: ['dc.example.org'], 4: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/rotated/ws?route=home'}], 5: [], 6: rsa.pkcs1Pem, 7: 1}),
+  const signedDC = await page.evaluate(makeDCProfile, {data: cbor({9: ['dc.example.org'], 16: 5, 18: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/discovered/ws?route=home'}], 19: [], 20: rsa.pkcs1Pem, 21: 1}),
+    rotatedData: cbor({9: ['dc.example.org'], 16: 5, 18: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/rotated/ws?route=home'}], 19: [], 20: rsa.pkcs1Pem, 21: 1}),
     identityKey: privateKey.export({format: 'jwk'}), runtimeURL: diemRuntimeURL});
   assert.equal(signedDC.id, id);
-  const otherData = cbor({0: 13, 1: 1, 2: 5, 3: ['other.example.org'], 4: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/other/ws?route=home'}], 5: [], 6: rsa.pkcs1Pem, 7: 1});
+  const otherData = cbor({9: ['other.example.org'], 16: 5, 18: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/other/ws?route=home'}], 19: [], 20: rsa.pkcs1Pem, 21: 1});
   const otherDC = await page.evaluate(makeDCProfile, {data: otherData, rotatedData: otherData, identityKey: otherKey, runtimeURL: diemRuntimeURL});
   await signupContext.route('https://other.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
     contentType: 'application/cbor', body: Buffer.from(otherDC.profile)
