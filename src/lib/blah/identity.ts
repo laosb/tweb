@@ -10,7 +10,7 @@ import {diem, IdentityInfo, IdentitySecret, SigningKey} from '@lib/blah/wasm';
 
 export type IdentityView = Omit<IdentityInfo, 'proof'> & {domain: string, publisher: string, renewal: RenewalPolicy, publicationPending: boolean};
 export type IdentityRequest = {
-  action: 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'publisher' | 'addDevice' | 'removeDevice' | 'renewal' | 'publication' | 'removeOtherDevices' | 'domains',
+  action: 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'paper' | 'publisher' | 'addDevice' | 'addPaperKey' | 'removeDevice' | 'renewal' | 'publication' | 'removeOtherDevices' | 'domains',
   id?: string,
   password?: string,
   domain?: string,
@@ -19,10 +19,13 @@ export type IdentityRequest = {
   publisher?: string,
   token?: string,
   device?: string,
+  phrase?: string,
   renewal?: RenewalPolicy
 };
 export type IdentitySummary = {id: string, domain?: string};
-export type IdentityResponse = {ids?: string[], identities?: IdentitySummary[], identity?: IdentityView, backup?: number[], publication?: {profile: number[], pending: boolean}};
+/** A new paper key's words, shown once, and the device it certifies. */
+export type PaperKeyView = {phrase: string, device: string};
+export type IdentityResponse = {ids?: string[], identities?: IdentitySummary[], identity?: IdentityView, backup?: number[], publication?: {profile: number[], pending: boolean}, paperKey?: PaperKeyView};
 type Unlocked = {id: string, key: KeyFileSession, until: number, timer?: ReturnType<typeof setTimeout>, renewalTimer?: ReturnType<typeof setTimeout>};
 const unlocked = new Map<number, Unlocked>();
 
@@ -35,6 +38,25 @@ export async function requireHomeStorage() {
 
 async function signingKey(): Promise<SigningKey> {
   return (await diemClient()).generateSigningKey();
+}
+
+function profileDomain(value?: string) {
+  const domain = value?.trim().toLowerCase();
+  if(!domain || domain.length > 253 || !domain.includes('.') || !/^[a-z0-9.-]+$/.test(domain)) {
+    throw new Error('Enter the domain that will serve your public profile.');
+  }
+  return domain;
+}
+
+/** BlahDiem reports codes; a paper key's failures name what the person can check. */
+async function paperFailure<T>(operation: () => Promise<T>): Promise<T> {
+  try { return await operation(); } catch(error) {
+    const code = (error as Error).message;
+    if(code === 'invalidEncoding') throw new Error('Check the paper key words.');
+    if(code === 'deviceNotListed') throw new Error('This paper key is not a current device of the identity at that domain.');
+    if(code === 'identityKeyRequired') throw new Error('Only a device that holds the identity key can add a paper key.');
+    throw error;
+  }
 }
 
 function view(secret: IdentitySecret, info: IdentityInfo): IdentityView {
@@ -168,7 +190,11 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
     }
     return {publication: {profile, pending}};
   }
-  if(request.action === 'create' || request.action === 'restore' || request.action === 'unlock') {
+  if(request.action === 'create' || request.action === 'restore' || request.action === 'paper' || request.action === 'unlock') {
+    // Fetch outside the custody lock: a slow host must not delay locking keys.
+    const paperDomain = request.action === 'paper' ? profileDomain(request.domain) : undefined;
+    const hosted = paperDomain && await fetchProfile(paperDomain);
+    if(paperDomain && !hosted) throw new Error('No profile is published at this domain.');
     return exclusively(async() => {
       const files = (await diemClient()).keyFiles;
       let backup: SealedIdentity;
@@ -177,14 +203,21 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
       try {
         let info: IdentityInfo;
         if(request.action === 'create') {
-          const domain = request.domain?.trim().toLowerCase();
-          if(!domain || domain.length > 253 || !domain.includes('.') || !/^[a-z0-9.-]+$/.test(domain)) {
-            throw new Error('Enter the domain that will serve your public profile.');
-          }
+          const domain = profileDomain(request.domain);
           key = await files.create(request.password || '');
           secret = {domain, profile: '', renewal: renewalPolicy(request.renewal), publicationPending: true, identity: await signingKey(), device: await signingKey()};
           info = await diem('create', secret, {}, slot);
           secret.profile = encode(new Uint8Array(info.profile));
+          backup = await key.seal(secret);
+        } else if(request.action === 'paper') {
+          // A paper key is a listed device: keep it as device-only custody of the hosted profile.
+          const paper = await paperFailure(async() => (await diemClient()).paperKeys.restore(request.phrase || ''));
+          key = await files.create(request.password || '');
+          secret = {domain: paperDomain, profile: encode(hosted), renewal: renewalPolicy(request.renewal), device: paper.key};
+          info = await paperFailure(() => diem('inspect', secret, {}, slot));
+          if(await stored('identity:' + info.id)) {
+            throw new Error('This identity already exists here. Unlock its current copy instead.');
+          }
           backup = await key.seal(secret);
         } else {
           if(request.backup && request.backup.length > 262_144) throw new Error('Identity file is too large.');
@@ -218,7 +251,18 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
     if(request.action === 'inspect') return {identity: view(secret, current)};
     if(request.action === 'backup') return {backup: Array.from(await stored<SealedIdentity>('identity:' + current.id))};
     let info = current;
-    if(request.action === 'renewal') {
+    if(request.action === 'addPaperKey') {
+      const paper = await paperFailure(async() => (await diemClient()).paperKeys.generate());
+      info = await paperFailure(() => diem('addDevice', secret, {device: paper.device}, slot));
+      await save(info);
+      // The words exist only in this response; a publication failure must not lose them.
+      let published = !!secret.publisher;
+      try { await publish(secret); } catch{ published = false; }
+      if(published) await save(info, false);
+      const device = info.devices.find((entry) => entry.key.length === paper.device.length &&
+        entry.key.every((byte, index) => byte === paper.device[index]));
+      return {identity: view(secret, info), paperKey: {phrase: paper.phrase, device: device.id}};
+    } else if(request.action === 'renewal') {
       secret.renewal = renewalPolicy(request.renewal);
       await save(info, !!secret.publicationPending);
       return {identity: view(secret, info)};

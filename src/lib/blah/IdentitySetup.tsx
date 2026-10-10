@@ -9,7 +9,7 @@ import type {IdentityView} from '@lib/blah/identity';
 import styles from '@lib/blah/identity.module.scss';
 
 type IdentitySetupProps = {
-  mode: 'create' | 'import',
+  mode: 'create' | 'import' | 'paper',
   action: IdentityActions,
   onIdentity: (identity: IdentityView) => void
 };
@@ -21,6 +21,7 @@ function SetupForm(props: IdentitySetupProps) {
   const [file, setFile] = createSignal<File>();
   const [hasPassword, setHasPassword] = createSignal(false);
   const [profileDomain, setProfileDomain] = createSignal('');
+  const [phrase, setPhrase] = createSignal('');
   let password: HTMLInputElement;
   let domain: HTMLInputElement;
   let cancelled = false;
@@ -38,6 +39,7 @@ function SetupForm(props: IdentitySetupProps) {
     try {
       const result = await props.action(importing ?
         {action: 'restore', password: password.value, backup: Array.from(new Uint8Array(await file().arrayBuffer()))} :
+        props.mode === 'paper' ? {action: 'paper', password: password.value, domain: domain.value, phrase: phrase()} :
         {action: 'create', password: password.value, domain: domain.value});
       if(cancelled) return;
       props.onIdentity(result.identity);
@@ -51,7 +53,7 @@ function SetupForm(props: IdentitySetupProps) {
   }
   return <form class={styles.panel} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <fieldset disabled={busy()}>
-      <Show when={props.mode === 'create'} fallback={<>
+      <Show when={props.mode !== 'import'} fallback={<>
         <BackupDropzone disabled={busy()} onFile={(value) => {
           setFile(value); setError('');
         }} />
@@ -59,11 +61,16 @@ function SetupForm(props: IdentitySetupProps) {
       </>}>
         <IdentityInput label="BlahProfileDomain" onInput={setProfileDomain} ref={(value) => domain = value} />
       </Show>
+      <Show when={props.mode === 'paper'}>
+        <IdentityInput label="BlahPaperKeyWords" onInput={(value) => { setPhrase(value); setError(''); }} />
+        <p class={styles.footnote}>{i18n('BlahUsePaperKeyHelp')}</p>
+      </Show>
       <IdentityInput label="BlahIdentityPassword" type="password"
-        autocomplete={props.mode === 'create' ? 'new-password' : 'current-password'}
+        autocomplete={props.mode === 'import' ? 'current-password' : 'new-password'}
         onInput={(value) => { setHasPassword(!!value); setError(''); }} ref={(value) => password = value} />
-      <Button primaryFilled disabled={busy() || (props.mode === 'import' && (!file() || !hasPassword()))}
-        onClick={() => submit()} text={props.mode === 'create' ? 'BlahCreateIdentity' : 'BlahImportIdentity'} />
+      <Button primaryFilled disabled={busy() || (props.mode === 'import' && (!file() || !hasPassword())) ||
+        (props.mode === 'paper' && (!phrase().trim() || !profileDomain().trim() || !hasPassword()))}
+        onClick={() => submit()} text={title(props.mode)} />
       <p class={styles.footnote}>{i18n('BlahIdentityCustody')}</p>
       <Show when={props.mode === 'create'}>
         <p class={styles.footnote}>{i18n('BlahProfileHosting', [
@@ -75,11 +82,15 @@ function SetupForm(props: IdentitySetupProps) {
   </form>;
 }
 
+function title(mode: IdentitySetupProps['mode']) {
+  return mode === 'create' ? 'BlahCreateIdentity' : mode === 'paper' ? 'BlahUsePaperKey' : 'BlahImportIdentity';
+}
+
 export default function showIdentitySetup(props: IdentitySetupProps) {
   let created: IdentityView;
   createPopup(() => <PopupElement class={styles.setupPopup} closable
     onCloseAfterTimeout={() => { if(created) props.onIdentity(created); }}>
-    <PopupElement.Header><PopupElement.CloseButton /><PopupElement.Title title={props.mode === 'create' ? 'BlahCreateIdentity' : 'BlahImportIdentity'} /></PopupElement.Header>
+    <PopupElement.Header><PopupElement.CloseButton /><PopupElement.Title title={title(props.mode)} /></PopupElement.Header>
     <PopupElement.Scrollable><PopupElement.Body class={styles.setupBody}><SetupForm {...props} onIdentity={(identity) => created = identity} /></PopupElement.Body></PopupElement.Scrollable>
   </PopupElement>);
 }

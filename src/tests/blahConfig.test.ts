@@ -62,7 +62,7 @@ describe('Blah release configuration', () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     expect(await blahBuildDefines('test', process.cwd())).toEqual({
-      __BLAH_DIEM_RUNTIME_URL__: '"https://bd-cdn.blahim.com/bd-web/20261009-5c70/diem.js"',
+      __BLAH_DIEM_RUNTIME_URL__: '"https://bd-cdn.blahim.com/bd-web/20261010-5cb5/diem.js"',
       __BLAH_WIDGET__: 'false',
       __BLAH_CONFIG__: 'undefined'
     });
@@ -90,8 +90,8 @@ describe('Blah release configuration', () => {
     vi.stubEnv('BLAH_BOOTSTRAP_FILE', '');
     vi.stubEnv('BLAH_DIEM_CDN_HOST', 'CDN.Example.org');
     const defines = await blahBuildDefines('test', process.cwd());
-    expect(JSON.parse(defines.__BLAH_DIEM_RUNTIME_URL__)).toBe('https://cdn.example.org/bd-web/20261009-5c70/diem.js');
-    expect(blahDiemRuntimeURL()).toBe('https://bd-cdn.blahim.com/bd-web/20261009-5c70/diem.js');
+    expect(JSON.parse(defines.__BLAH_DIEM_RUNTIME_URL__)).toBe('https://cdn.example.org/bd-web/20261010-5cb5/diem.js');
+    expect(blahDiemRuntimeURL()).toBe('https://bd-cdn.blahim.com/bd-web/20261010-5cb5/diem.js');
     expect(blahDiemRuntimeURL('')).toBe(blahDiemRuntimeURL());
   });
 

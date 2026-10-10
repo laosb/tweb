@@ -37,6 +37,28 @@
 
 .renewalSettings :global(.row-title) { white-space: normal; }
 
+.paperWords {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12ch, 1fr));
+  gap: .25rem 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: word;
+  font-family: var(--font-monospace);
+  user-select: text;
+
+  li::before {
+    counter-increment: word;
+    content: counter(word) ".";
+    display: inline-block;
+    min-width: 3ch;
+    margin-inline-end: .5ch;
+    text-align: end;
+    color: var(--secondary-text-color);
+  }
+}
+
 .sectionNote { font-size: 12px; color: var(--secondary-text-color); text-align: left; }
 
 .detailsSettings {

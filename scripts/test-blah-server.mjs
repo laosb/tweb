@@ -98,6 +98,13 @@ try {
         res.end('ok');
         return;
       }
+      // Profile hosting for fetches from the shared worker, which page routes do not intercept.
+      if(req.method === 'GET' && path === '/.well-known/blah/profile.cbor' && req.headers.host?.startsWith('alice.example.org')) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Content-Type', 'application/cbor');
+        res.end(await readFile(dir + '/profiles/alice.example.org.cbor'));
+        return;
+      }
       const relative = path === '/' ? 'index.html' : path.slice(1);
       if(relative.includes('..')) {
         res.writeHead(400);
@@ -156,7 +163,7 @@ try {
     // SharedWorker requests do not inherit a Playwright context's ignoreHTTPSErrors.
     args: ['--no-sandbox', '--ignore-certificate-errors',
       // Keep the page and worker on an allowed CDN origin while serving everything locally.
-      `--host-resolver-rules=MAP blah-server-test.blahim.com 127.0.0.1:${tlsPort}`]
+      `--host-resolver-rules=MAP blah-server-test.blahim.com 127.0.0.1:${tlsPort},MAP alice.example.org 127.0.0.1:${tlsPort}`]
   });
   const signupContext = await browser.newContext({
     ignoreHTTPSErrors: true
@@ -412,6 +419,18 @@ try {
     await expect(deviceRows).toHaveCount(1);
     assert.equal(await deviceRows.first().locator('.row-title').innerText(), 'This browser');
     assert.deepEqual((await new AxeBuilder({page}).include('.tabs-tab.active').disableRules(['color-contrast']).analyze()).violations, []);
+    // A paper key is a device written down as words: shown once and listed with the others.
+    await identityDetails.getByRole('button', {name: 'Add paper key', exact: true}).click();
+    await page.locator('.popup-confirmation').getByRole('button', {name: 'Add paper key', exact: true}).click();
+    const paperDialog = page.getByRole('dialog', {name: 'Paper key', exact: true});
+    await paperDialog.locator('ol li').first().waitFor();
+    const paperWords = await paperDialog.locator('ol li').allInnerTexts();
+    assert.equal(paperWords.length, 24);
+    assert.deepEqual((await new AxeBuilder({page}).include('[role="dialog"]').disableRules(['color-contrast']).analyze()).violations, []);
+    if(process.env.BLAH_IDENTITY_SCREENSHOT) await paperDialog.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-paper.png', animations: 'disabled'});
+    await paperDialog.getByRole('button', {name: 'I wrote it down', exact: true}).click();
+    await paperDialog.waitFor({state: 'detached'});
+    await expect(deviceRows).toHaveCount(2);
     const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', {
       name: 'Export identity file',
@@ -489,6 +508,37 @@ try {
     const restoredId = await restored.evaluate(() => JSON.parse(localStorage.getItem('account1')).userId);
     if(userId !== restoredId) throw new Error('Recovery changed the account');
     await context.close();
+    // A fresh browser signs in to the same account from the paper key's words alone.
+    const paperContext = await browser.newContext({ignoreHTTPSErrors: true});
+    const paperPage = await paperContext.newPage();
+    activePage = paperPage;
+    paperPage.setDefaultTimeout(30000);
+    await paperContext.route('https://dc.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
+      contentType: 'application/cbor', body: Buffer.from(signedDC.profile)
+    }));
+    await paperPage.goto(origin + '/?noServiceWorker=1&a11y=1');
+    await paperPage.getByRole('textbox', {name: 'DC domain'}).fill('dc.example.org');
+    await paperPage.getByRole('button', {name: 'Connect to Blah'}).click();
+    await paperPage.getByRole('combobox', {name: 'Saved identity', exact: true}).fill('paper');
+    await paperPage.getByRole('option', {name: 'Sign in with paper key', exact: true}).click();
+    const paperSignIn = paperPage.getByRole('dialog', {name: 'Sign in with paper key', exact: true});
+    await paperSignIn.getByLabel('Profile domain', {exact: true}).fill('alice.example.org');
+    await paperSignIn.getByLabel('Paper key words', {exact: true}).fill(paperWords.join(' ').toUpperCase());
+    await paperSignIn.getByLabel('Identity password', {exact: true}).fill('paper identity password');
+    assert.deepEqual((await new AxeBuilder({page: paperPage}).include('[role="dialog"]').disableRules(['color-contrast']).analyze()).violations, []);
+    if(process.env.BLAH_IDENTITY_SCREENSHOT) await paperSignIn.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-paper-sign-in.png', animations: 'disabled'});
+    await paperSignIn.getByRole('button', {name: 'Sign in with paper key', exact: true}).click();
+    await paperSignIn.waitFor({state: 'detached'});
+    // Focus returns to the picker, which opens its list over the sign-in button.
+    const paperOptions = paperPage.getByRole('listbox', {name: 'Saved identity'});
+    if(await paperOptions.isVisible()) {
+      await paperPage.keyboard.press('Escape');
+      await paperOptions.waitFor({state: 'hidden'});
+    }
+    await paperPage.getByRole('button', {name: 'Sign in to Blah', exact: true}).click();
+    await paperPage.waitForFunction(() => JSON.parse(localStorage.getItem('account1') || '{}').userId);
+    assert.equal(await paperPage.evaluate(() => JSON.parse(localStorage.getItem('account1')).userId), userId, 'A paper key signs in to the same account');
+    await paperContext.close();
     // Logging out the first account shifts the second account's caches and home together.
     activePage = page;
     await page.bringToFront();
@@ -513,7 +563,7 @@ try {
     await page.goto(origin + '/?account=2&debug=1&noServiceWorker=1&a11y=1');
     await page.getByRole('textbox', {name: 'DC domain'}).waitFor();
     assert.equal(await page.getByRole('textbox', {name: 'DC domain'}).inputValue(), '');
-    console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, profile publication, reload, recovered identity login over PFS, dialog keyboard/focus and Axe checks.');
+    console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, profile publication, reload, recovered identity and paper-key login, dialog keyboard/focus and Axe checks.');
   } catch(error) {
     if(process.env.BLAH_IDENTITY_SCREENSHOT) await activePage.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-failure.png', timeout: 3000}).catch(() => {});
     console.error(error);

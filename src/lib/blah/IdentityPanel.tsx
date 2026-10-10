@@ -31,7 +31,7 @@ export default function IdentityPanel(props: {
       setSelected(''); setIdentity(undefined); props.onIdentity?.(undefined);
     }
   }, (id) => {
-    if(id === 'create' || id === 'import') {
+    if(id === 'create' || id === 'import' || id === 'paper') {
       picker.setValueSilently(selectedLabel());
       showIdentitySetup({mode: id, action: props.action, onIdentity: (current) => {
         if(cancelled) return;
@@ -47,10 +47,11 @@ export default function IdentityPanel(props: {
   });
   createEffect(() => picker.setOptions([...identities().map((entry) => ({
     value: entry.id, label: identityLabel(entry), matches: (query: string) => `${entry.domain || ''} ${entry.id}`.toLowerCase().includes(query.toLowerCase())
-  })), ...(['create', 'import'] as const).map((mode) => ({
+  })), ...([['create', 'adduser', 'BlahCreateIdentity'], ['import', 'document', 'BlahImportIdentity'],
+    ['paper', 'key', 'BlahUsePaperKey']] as const).map(([mode, icon, label]) => ({
     value: mode,
-    icon: mode === 'create' ? 'adduser' as const : 'document' as const,
-    label: I18n.format(mode === 'create' ? 'BlahCreateIdentity' : 'BlahImportIdentity', true),
+    icon,
+    label: I18n.format(label, true),
     matches: () => true
   }))]));
   createEffect(() => picker.setDisabled(busy()));
