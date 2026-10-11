@@ -1,4 +1,5 @@
 const lang = {
+  'BlahHomeOnly': 'Only people on %1$s can join',
   'BlahRenewalSettings': 'Validity and renewal',
   'BlahProfileValidityDays': 'Profile validity (days)',
   'BlahDeviceValidityDays': 'Device key validity (days)',

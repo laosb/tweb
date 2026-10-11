@@ -89,6 +89,9 @@ import {useCurrentRtmpCall} from '@components/rtmp/hooks';
 import addContact from '@components/addContact';
 import showMutePopup from '@components/popups/mute';
 import IS_CALL_SUPPORTED from '@environment/callSupport';
+import blah from '@config/blah';
+import {getCurrentAccount} from '@lib/accounts/getCurrentAccount';
+import {getPeerResourceProfiles} from '@lib/blah/resourceProfiles';
 
 keepMe(ripple);
 
@@ -2008,6 +2011,56 @@ PeerProfile.LinkedCommunity = () => {
   );
 };
 
+PeerProfile.BlahIdentity = () => {
+  const context = useContext(PeerProfileContext);
+  const {i18n, I18n, toast} = useHotReloadGuard();
+  const resourcePeerId = createMemo(() => {
+    const peer = context.peer as User | Chat;
+    return context.canBeDetailed() && !context.isTopic &&
+      (peer?._ === 'user' || (peer?._ === 'channel' && !peer.pFlags.monoforum)) && context.peerId;
+  });
+  const [profile] = createResource(resourcePeerId, async(peerId) => {
+    try {
+      return {peerId, result: (await getPeerResourceProfiles(getCurrentAccount(), [peerId]))[0]};
+    } catch{
+      // An unavailable RPC says nothing about whether this chat has an identity.
+      return undefined;
+    }
+  });
+  // Solid retains the previous resource while the next peer is loading.
+  const result = () => profile()?.peerId === resourcePeerId() ? profile()?.result : undefined;
+  const home = () => {
+    const value = result();
+    return (context.peer as User | Chat)?._ === 'channel' && value?.status === 'missing' && value.homeDomain;
+  };
+  const domain = () => {
+    const value = result();
+    return !getPeerActiveUsernames(context.peer as User | Chat).length &&
+      value?.status === 'present' && value.identity.domains[0];
+  };
+  const onCopy = () => {
+    copyTextToClipboard(domain());
+    toast(I18n.format('TextCopied', true));
+  };
+  return (
+    <>
+      <Show when={domain()}>
+        <Row clickable={onCopy} contextMenu={{buttons: [{icon: 'copy', text: 'Copy', onClick: onCopy}]}}>
+          <Row.Icon icon="mention_filled" />
+          <Row.Title>{domain()}</Row.Title>
+          <Row.Subtitle>{i18n('BlahIdentityID')}</Row.Subtitle>
+        </Row>
+      </Show>
+      <Show when={home()}>
+        <Row>
+          <Row.Icon icon="info_filled" />
+          <Row.Title class="pre-wrap">{i18n('BlahHomeOnly', [home()])}</Row.Title>
+        </Row>
+      </Show>
+    </>
+  );
+};
+
 PeerProfile.MainSection = () => {
   const context = useContext(PeerProfileContext);
 
@@ -2016,6 +2069,7 @@ PeerProfile.MainSection = () => {
     <Show when={!(context.isBotforum && context.threadId)}>
       <PeerProfile.Phone />
       <PeerProfile.Username />
+      <Show when={blah}><PeerProfile.BlahIdentity /></Show>
       <PeerProfile.Location />
       <PeerProfile.Bio />
       <PeerProfile.Link />
