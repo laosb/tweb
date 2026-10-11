@@ -7,8 +7,10 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import assert from 'node:assert/strict';
 import {blahDiemRuntimeURL} from './blah-config.mjs';
+import {localDiemRuntime, routeDiemRuntime} from '../tests/blah/localRuntime.mjs';
 
 const diemRuntimeURL = blahDiemRuntimeURL(process.env.BLAH_DIEM_CDN_HOST);
+const localRuntime = await localDiemRuntime(diemRuntimeURL);
 const home = {domain: 'dc.example.org', identity: 'ab'.repeat(32), generation: '1'};
 const directory = await mkdtemp(join(tmpdir(), 'blah-browser-test-'));
 await build({entryPoints: ['tests/blah/browser-entry.ts'], bundle: true, format: 'iife', globalName: 'fixture',
@@ -35,6 +37,7 @@ let browser;
 try {
   browser = await chromium.launch({headless: true, executablePath: process.env.BLAH_BROWSER_EXECUTABLE, args: ['--no-sandbox']});
   const page = await browser.newPage();
+  await routeDiemRuntime(page.context(), localRuntime);
   await page.route(`${browserOrigin}/**`, serveLocal);
   const runtimeRequests = new Set();
   page.on('request', (request) => {
@@ -92,6 +95,29 @@ try {
   assert(checked.proof > 64);
   assert.equal(checked.refused, 3);
   assert.equal(checked.numbered, '12345');
+  const verifiedResource = await page.evaluate(async() => {
+    const {identity} = await fixture.identityAction(1, {action: 'inspect'});
+    const bytes = new Uint8Array(identity.profile);
+    const accepted = await fixture.verifyResourceProfile(1, 'user', '12345', bytes);
+    const mismatch = await fixture.verifyResourceProfile(1, 'user', '999', bytes);
+    const wrongKind = await fixture.verifyResourceProfile(1, 'channel', '12345', bytes);
+    const foreign = await fixture.verifyResourceProfile(2, 'user', '999', bytes);
+    const realNow = Date.now;
+    let lapsed;
+    try {
+      Date.now = () => identity.expiresAt * 1000;
+      lapsed = await fixture.verifyResourceProfile(1, 'user', '12345', bytes);
+    } finally { Date.now = realNow; }
+    bytes[bytes.length - 1] ^= 1;
+    const corrupt = await fixture.verifyResourceProfile(1, 'user', '12345', bytes);
+    return {accepted, mismatch, wrongKind, foreign, lapsed, corrupt};
+  });
+  assert.deepEqual(verifiedResource.accepted, {identityId: created.identity.id, kind: 'user', lapsed: false, domains: ['alice.example.org']});
+  assert.equal(verifiedResource.mismatch, undefined);
+  assert.equal(verifiedResource.wrongKind, undefined);
+  assert.deepEqual(verifiedResource.foreign, verifiedResource.accepted);
+  assert.deepEqual(verifiedResource.lapsed, {...verifiedResource.accepted, lapsed: true});
+  assert.equal(verifiedResource.corrupt, undefined);
   await page.reload();
   const reopened = await page.evaluate(async(id) => {
     let locked = false, badPassword = false;
@@ -133,6 +159,7 @@ try {
   assert.equal(paperKey.devices, 2);
   const paperSignIn = async(profile, phrase) => {
     const paperContext = await browser.newContext();
+    await routeDiemRuntime(paperContext, localRuntime);
     try {
       const paperPage = await paperContext.newPage();
       await paperPage.route(`${browserOrigin}/**`, serveLocal);
@@ -174,6 +201,7 @@ try {
   assert.equal((await paperSignIn(terminated.identity.profile, paperKey.phrase)).notListed,
     'This paper key is not a current device of the identity at that domain.');
   const context = await browser.newContext();
+  await routeDiemRuntime(context, localRuntime);
   const restoredPage = await context.newPage();
   await restoredPage.route(`${browserOrigin}/**`, serveLocal);
   await restoredPage.goto(browserOrigin);
@@ -309,7 +337,7 @@ try {
   });
   assert.equal(dcImport.account, '777000');
   assert(dcImport.proof > 64);
-  console.log('PASS: real BlahDiem WASM creation, encrypted custody, proof/session binding, numbering, renewal, devices, paper keys, reload, home/slot isolation and recovery.');
+  console.log('PASS: real BlahDiem WASM creation, encrypted custody, proof/session binding, numbering, verified resource profiles, renewal, devices, paper keys, reload, home/slot isolation and recovery.');
 } finally {
   await browser?.close();
   await new Promise((resolve) => server.close(resolve));
