@@ -14,8 +14,10 @@ import {cbor} from '../tests/blah/cbor.mjs';
 import {checkIdentityLayout} from '../tests/blah/identityLayout.mjs';
 import {loadEnv} from 'vite';
 import {blahDiemRuntimeURL} from './blah-config.mjs';
+import {localDiemRuntime} from '../tests/blah/localRuntime.mjs';
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const diemRuntimeURL = blahDiemRuntimeURL(loadEnv('blah', repo, '').BLAH_DIEM_CDN_HOST);
+const localRuntime = await localDiemRuntime(diemRuntimeURL);
 const tele = process.env.BLAH_SERVER_REPO;
 if(!tele) throw new Error('Set BLAH_SERVER_REPO to a Teleblah checkout with a built debug server.');
 const require = createRequire(repo + '/package.json');
@@ -89,6 +91,13 @@ try {
     cert: await readFile(dir + '/tls.crt')
   }, async(req, res) => {
     try {
+      // Host routing also reaches the SharedWorker, unlike Playwright page routes.
+      const runtime = localRuntime.get(`https://${req.headers.host}${req.url}`);
+      if(runtime) {
+        res.writeHead(200, {...runtime.headers, 'Content-Type': runtime.contentType});
+        res.end(runtime.body);
+        return;
+      }
       const path = new URL(req.url, 'https://localhost').pathname;
       if(req.method === 'PUT' && (path === '/publish' || path === '/publish/bob')) {
         const chunks = [];
@@ -162,7 +171,8 @@ try {
     // SharedWorker requests do not inherit a Playwright context's ignoreHTTPSErrors.
     args: ['--no-sandbox', '--ignore-certificate-errors',
       // Keep the page and worker on an allowed CDN origin while serving everything locally.
-      `--host-resolver-rules=MAP blah-server-test.blahim.com 127.0.0.1:${tlsPort},MAP alice.example.org 127.0.0.1:${tlsPort}`]
+      `--host-resolver-rules=MAP blah-server-test.blahim.com 127.0.0.1:${tlsPort},MAP alice.example.org 127.0.0.1:${tlsPort}` +
+        (localRuntime.size ? `,MAP ${new URL(diemRuntimeURL).hostname} 127.0.0.1:${tlsPort}` : '')]
   });
   const signupContext = await browser.newContext({
     ignoreHTTPSErrors: true
@@ -311,6 +321,65 @@ try {
     }
     const aliceIdentity = await signUp(page, 1, 'alice.example.org', 'Alice', origin + '/publish');
     const userId = await page.evaluate(() => JSON.parse(localStorage.getItem('account1')).userId);
+    // These go through the application schema and manager, never a raw UI RPC.
+    await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+    await page.locator('#auth-pages').waitFor({state: 'hidden'});
+    const resourceProfiles = await page.evaluate(async(userId) => {
+      const managers = window.rootScope.managers;
+      const channelId = await managers.appChatsManager.createChannel({title: 'Home-only fixture', about: '', megagroup: true});
+      const profiles = await managers.appProfileManager.getBlahResourceProfiles([userId, -channelId]);
+      return {channelId, profiles};
+    }, userId);
+    assert.equal(resourceProfiles.profiles[0].status, 'present');
+    assert.equal(String(resourceProfiles.profiles[0].profile.id), String(userId));
+    assert.deepEqual(resourceProfiles.profiles[1], {status: 'missing', homeDomain: 'dc.example.org'});
+    await page.evaluate(async(channelId) => {
+      await window.appImManager.setPeer({peerId: -channelId});
+    }, resourceProfiles.channelId);
+    await page.locator('#column-center .chat-info').filter({hasText: 'Home-only fixture'}).click();
+    const homeNotice = page.getByText('Only people on dc.example.org can join', {exact: true});
+    await homeNotice.waitFor();
+    assert.equal(await homeNotice.locator('..').getByRole('button').count(), 0, 'The notice is informational');
+    await page.evaluate(() => window.appSidebarRight.toggleSidebar(false));
+
+    // Settings renders the same peer info panel with self details enabled.
+    await page.locator('#column-center .chat-info-container').getByRole('button', {name: 'Close', exact: true}).click();
+    await page.locator('.sidebar-tools-button').click();
+    await page.getByRole('menuitem', {name: 'Settings', exact: true}).click();
+    const identityRow = page.getByRole('button', {name: 'alice.example.org Identity', exact: true});
+    await identityRow.waitFor();
+    await signupContext.grantPermissions(['clipboard-read', 'clipboard-write']);
+    for(const action of ['Enter', 'Space', 'click']) {
+      if(action === 'click') await identityRow.click();
+      else await identityRow.press(action);
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'alice.example.org');
+    }
+    await identityRow.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(identityRow).toBeFocused();
+    await identityRow.evaluate(element => {
+      element.id = 'blah-peer-identity-test';
+      element.scrollIntoView({block: 'center'});
+    });
+    const previousTheme = await page.evaluate(() => window.useAppSettings()[0].theme);
+    for(const theme of ['day', 'night', 'light', 'tinted']) {
+      await page.evaluate(async(theme) => {
+        await window.useAppSettings()[1]('increaseContrast', true);
+        await window.themeController.switchTheme(theme);
+      }, theme);
+      await identityRow.evaluate(element => element.scrollIntoView({block: 'center'}));
+      await identityRow.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT && process.env.BLAH_IDENTITY_SCREENSHOT + '-peer-' + theme + '.png', animations: 'disabled'});
+      assert.deepEqual((await new AxeBuilder({page}).include('#blah-peer-identity-test').analyze()).violations, []);
+    }
+    await page.evaluate(async(theme) => {
+      await window.useAppSettings()[1]('increaseContrast', false);
+      await window.themeController.switchTheme(theme);
+    }, previousTheme);
+    assert(await identityRow.evaluate(element => element.getBoundingClientRect().right <= innerWidth), 'Identity row fits a narrow viewport');
+    if(process.env.BLAH_IDENTITY_SCREENSHOT) await identityRow.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-peer.png'});
+    await page.keyboard.press('Escape');
+
     discoveryProfile = signedDC.rotatedProfile;
     const refreshed = await signupContext.newPage();
     await refreshed.goto(origin + '/?debug=1&noServiceWorker=1&a11y=1');
@@ -581,7 +650,7 @@ try {
     await page.goto(origin + '/?account=2&debug=1&noServiceWorker=1&a11y=1');
     await page.getByRole('textbox', {name: 'DC domain'}).waitFor();
     assert.equal(await page.getByRole('textbox', {name: 'DC domain'}).inputValue(), '');
-    console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, profile publication, reload, recovered identity and paper-key login, dialog keyboard/focus and Axe checks.');
+    console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, verified peer identity row and home-only notice, profile publication, reload, recovered identity and paper-key login, dialog keyboard/focus and Axe checks.');
   } catch(error) {
     if(process.env.BLAH_IDENTITY_SCREENSHOT) await activePage.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-failure.png', timeout: 3000}).catch(() => {});
     console.error(error);

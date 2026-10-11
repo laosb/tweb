@@ -190,6 +190,10 @@ It exercises real WebCrypto/WASM creation, encryption, proof binding, numbering,
 renewal, recovery and account-slot isolation without contacting Telegram.
 Both browser fixtures serve local content under test `blahim.com` origins and need
 network access to load the real CDN module and WASM under its CORS policy.
+For an unreleased runtime, set `BLAH_DIEM_LOCAL_DIST=/path/to/BlahDiem/Web/dist`
+on either test command to serve its `diem.js` and `diem.wasm` at the pinned URLs,
+including in shared workers. Production builds do not read this switch; use it
+for resource-profile checks until the pinned release includes `verifyProfile`.
 The server fixture additionally builds the Blah client, starts two disposable debug
 Teleblah DCs, and checks domain discovery with a signed profile, its exact WebSocket path/query,
 endpoint rotation with another tab open, accounts on two independent homes, sign-in
@@ -242,3 +246,16 @@ by default; its administrator can change that limit.
 In **Edit Profile**, enable the verified domains you want to display and drag active
 usernames to set their order. New verified names start hidden. These use Telegram's
 collectible-username controls; Blah does not offer an editable regular username.
+
+## Resource identities
+
+A channel or supergroup without an identity known to your home DC shows
+**Only people on <home DC domain> can join** in its info panel. This notice comes
+from the DC's profile lookup; a failed lookup does not show it. Lookups are cached
+for five minutes, and switching accounts clears the cache. Monoforums follow their broadcast
+and do not show a separate notice.
+
+In the Blah build, a user/bot or channel/supergroup without an active public username
+shows its identity's first domain as a copyable **Identity** row after signature and
+peer-binding verification (including valid lapsed profiles). These are signed profile
+claims, not proof of current domain control; the row requires a BlahDiem runtime with `verifyProfile`.

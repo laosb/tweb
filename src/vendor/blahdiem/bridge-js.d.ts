@@ -91,6 +91,25 @@ export interface PaperKeyResult {
     device: number[];
 }
 /**
+ * Public profile facts. Decimal strings preserve all wire integers exactly.
+ */
+export interface ProfileInfo {
+    id: string;
+    kind: string;
+    generation: string;
+    revision: string;
+    notBefore: string;
+    expiresAt: string;
+    lapsed: boolean;
+    domains: string[];
+    home: ProfileHomeInfo | null;
+}
+export interface ProfileHomeInfo {
+    dc: string;
+    account: string | null;
+    epoch: string;
+}
+/**
  * Decimal strings preserve 64-bit identifiers across the JavaScript boundary.
  */
 export interface IdentityRequest {
@@ -157,6 +176,10 @@ export type Exports = {
      * The paper key that written words encode; checks the word list, count and checksum.
      */
     paperKey(phrase: string, crypto: any): Promise<PaperKeyResult>;
+    /**
+     * Verifies public profiles without a discovery domain or any private keys.
+     */
+    verifyProfile(encoding: number[], now: number, crypto: any): Promise<ProfileInfo>;
     identityOperation(input: IdentityRequest, crypto: any): Promise<IdentityResult>;
 }
 export type Imports = {

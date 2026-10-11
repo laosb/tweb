@@ -1,6 +1,7 @@
 import {describe, expect, it, vi} from 'vitest';
 import type MTPNetworker from '@lib/mtproto/networker';
-import {TLSerialization} from '@lib/mtproto/tl_utils';
+import {TLDeserialization, TLSerialization} from '@lib/mtproto/tl_utils';
+import Schema from '@lib/mtproto/schema';
 const mocks = vi.hoisted(() => ({diem: vi.fn(), bind: vi.fn(), number: vi.fn()}));
 vi.mock('@config/blah', () => ({getBlahConfig: () => ({home: {identity: 'ab'.repeat(32)}})}));
 vi.mock('@lib/blah/identity', () => ({
@@ -33,6 +34,38 @@ beforeEach(() => {
 });
 
 describe('Blah invocation boundary', () => {
+  it('registers the layer-1 constructor and method IDs from Schemas/blah.tl', () => {
+    const constructors = {
+      'blah.identityChallenge': 0x2b2e0aab,
+      'blah.resourceProfile': 0xc0d31b67
+    };
+    const methods = {
+      'blah.requestIdentityChallenge': 0xdceefd53,
+      'blah.invokeWithIdentityProof': 0x61b4c668,
+      'blah.getUserProfile': 0x517800c0,
+      'blah.getChannelProfile': 0x8344006d,
+      'blah.getStickerSetProfile': 0xff5c6967
+    };
+    for(const [name, id] of Object.entries(constructors)) {
+      expect(Schema.API.constructors.filter((entry) => entry.predicate === name).map((entry) => entry.id >>> 0)).toEqual([id]);
+    }
+    for(const [name, id] of Object.entries(methods)) {
+      expect(Schema.API.methods.filter((entry) => entry.method === name).map((entry) => entry.id >>> 0)).toEqual([id]);
+    }
+  });
+
+  it('writes the new proof ID and decodes resource vectors including 64-bit IDs', () => {
+    const proof = new TLSerialization();
+    proof.storeMethod('blah.invokeWithIdentityProof', {proof: new Uint8Array([1]), query: (serializer: TLSerialization) => {
+      return serializer.storeMethod('blah.getUserProfile', {id: [{_: 'inputUserSelf'}]});
+    }});
+    expect(new DataView(proof.getBuffer()).getUint32(0, true)).toBe(0x61b4c668);
+    const profiles = [{_: 'blah.resourceProfile', id: '9007199254740993', profile: new Uint8Array([1, 2, 3])}];
+    const wire = new TLSerialization();
+    wire.storeObject(profiles, 'Vector<blah.ResourceProfile>');
+    expect(new TLDeserialization(wire.getBuffer()).fetchObject('Vector<blah.ResourceProfile>')).toEqual(profiles);
+  });
+
   it('signs and transmits the identical boxed query with the live transport binding', async() => {
     const {networker, wrapApiCall} = connection();
     const result = await provenCall(1, networker, 'account.getAuthorizations', {});
