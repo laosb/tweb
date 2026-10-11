@@ -193,7 +193,7 @@ network access to load the real CDN module and WASM under its CORS policy.
 For an unreleased runtime, set `BLAH_DIEM_LOCAL_DIST=/path/to/BlahDiem/Web/dist`
 on either test command to serve its `diem.js` and `diem.wasm` at the pinned URLs,
 including in shared workers. Production builds do not read this switch. The pinned
-release `20261011-67ab` includes `verifyProfile` for resource-profile checks.
+release includes `verifyProfile` for resource-profile checks.
 The server fixture additionally builds the Blah client, starts two disposable debug
 Teleblah DCs, and checks domain discovery with a signed profile, its exact WebSocket path/query,
 endpoint rotation with another tab open, accounts on two independent homes, sign-in
@@ -259,4 +259,4 @@ In the Blah build, a user/bot or channel/supergroup without an active public use
 shows its identity's first domain as a copyable **Identity** row after signature and
 peer-binding verification (including valid lapsed profiles). These are signed profile
 claims, not proof of current domain control; the row uses `verifyProfile` from the
-pinned BlahDiem release `20261011-67ab`.
+pinned BlahDiem release.
