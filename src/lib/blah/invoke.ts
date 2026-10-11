@@ -7,12 +7,19 @@ import {bindIdentity, numberIdentity, withIdentity} from '@lib/blah/identity';
 import {diem} from '@lib/blah/wasm';
 
 // Application schema extension: upstream generated Telegram schemas remain untouched.
-Schema.API.constructors.push({id: 0xa5bf10f6 | 0, predicate: 'blah.identityChallenge', type: 'blah.IdentityChallenge',
-  params: [{name: 'data', type: 'bytes'}, {name: 'expires_at', type: 'int'}]});
+Schema.API.constructors.push(
+  {id: 0x2b2e0aab, predicate: 'blah.identityChallenge', type: 'blah.IdentityChallenge',
+    params: [{name: 'data', type: 'bytes'}, {name: 'expires_at', type: 'int'}]},
+  {id: 0xc0d31b67 | 0, predicate: 'blah.resourceProfile', type: 'blah.ResourceProfile',
+    params: [{name: 'id', type: 'long'}, {name: 'profile', type: 'bytes'}]}
+);
 delete Schema.API.constructorsIndex;
 Schema.API.methods.push(
   {id: 0xdceefd53 | 0, method: 'blah.requestIdentityChallenge', params: [{name: 'domain', type: 'string'}], type: 'blah.IdentityChallenge'},
-  {id: 0x525b7c28, method: 'blah.invokeWithIdentityProof', params: [{name: 'proof', type: 'bytes'}, {name: 'query', type: '!X'}], type: 'X'}
+  {id: 0x61b4c668, method: 'blah.invokeWithIdentityProof', params: [{name: 'proof', type: 'bytes'}, {name: 'query', type: '!X'}], type: 'X'},
+  {id: 0x517800c0, method: 'blah.getUserProfile', params: [{name: 'id', type: 'Vector<InputUser>'}], type: 'Vector<blah.ResourceProfile>'},
+  {id: 0x8344006d | 0, method: 'blah.getChannelProfile', params: [{name: 'id', type: 'Vector<InputChannel>'}], type: 'Vector<blah.ResourceProfile>'},
+  {id: 0xff5c6967 | 0, method: 'blah.getStickerSetProfile', params: [{name: 'id', type: 'Vector<InputStickerSet>'}], type: 'Vector<blah.ResourceProfile>'}
 );
 
 export async function provenCall(slot: number, networker: MTPNetworker, method: string, params: unknown, options: InvokeApiOptions = {}) {

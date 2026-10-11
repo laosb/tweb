@@ -31,6 +31,8 @@ import {isParticipantAdmin} from '@lib/appManagers/utils/chats/isParticipantAdmi
 import type {State} from '@config/state';
 import safeReplaceObject from '@helpers/object/safeReplaceObject';
 import MTProtoMessagePort from '@lib/mainWorker/mainMessagePort';
+import blah, {getBlahConfig} from '@config/blah';
+import type {PeerResourceProfile, ResourceProfile} from '@lib/blah/resourceProfileTypes';
 
 export type UserTyping = Partial<{userId: UserId, action: SendMessageAction, timeout: number}>;
 export type AppChatFull = ChatFull.chatFull | ChatFull.channelFull;
@@ -50,6 +52,29 @@ const defaultGetChannelParticipantsOptions: Partial<GetChannelParticipantsOption
 };
 
 export class AppProfileManager extends AppManager {
+  public async getBlahResourceProfiles(peerIds: PeerId[]): Promise<PeerResourceProfile[]> {
+    if(!blah) return peerIds.map((): PeerResourceProfile => undefined);
+    const homeDomain = getBlahConfig(this.getAccountNumber())?.home?.domain;
+    const results = new Map<PeerId, PeerResourceProfile>();
+    const users = peerIds.filter((peer) => peer.isUser());
+    const channels = peerIds.filter((peer) => peer.isAnyChat() &&
+      this.appChatsManager.isChannel(peer.toChatId()) && !this.appChatsManager.isMonoforum(peer.toChatId()));
+    for(const peers of [users, channels]) {
+      for(let offset = 0; offset < peers.length; offset += 100) {
+        const chunk = peers.slice(offset, offset + 100);
+        const profiles: ResourceProfile[] = peers === users ?
+          await this.apiManager.invokeApi('blah.getUserProfile', {id: chunk.map((peer) => this.appUsersManager.getUserInput(peer.toUserId()))}) :
+          await this.apiManager.invokeApi('blah.getChannelProfile', {id: chunk.map((peer) => this.appChatsManager.getChannelInput(peer.toChatId()))});
+        const byId = new Map(profiles.map((profile) => [String(profile.id), profile]));
+        chunk.forEach((peer) => {
+          const profile = byId.get(String(peer.isUser() ? peer.toUserId() : peer.toChatId()));
+          results.set(peer, profile ? {status: 'present', profile} : {status: 'missing', homeDomain});
+        });
+      }
+    }
+    return peerIds.map((peer) => results.get(peer));
+  }
+
   // private botInfos: any = {};
   private usersFull: {[id: UserId]: UserFull.userFull} = {};
   private chatsFull: {[id: ChatId]: ChatFull} = {};
