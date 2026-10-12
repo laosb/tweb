@@ -9,7 +9,7 @@ import {decode, encode, exclusively, identityIDs, SealedIdentity, stored, storeE
 import {diem, IdentityInfo, IdentitySecret, SigningKey} from '@lib/blah/wasm';
 
 export type IdentityKind = 'user' | 'channel';
-export type IdentityMetadata = {kind: IdentityKind, chatId?: ChatId, title?: string, namespace?: string};
+export type IdentityMetadata = {kind: IdentityKind, chatId?: ChatId, title?: string, namespace?: string, home?: string};
 export type IdentityView = Omit<IdentityInfo, 'proof'> & Partial<IdentityMetadata> & {domain: string, publisher: string, renewal: RenewalPolicy, publicationPending: boolean};
 export type IdentityRequest = {
   action: 'suggestDomain' | 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'paper' | 'publisher' | 'addDevice' | 'addPaperKey' | 'removeDevice' | 'renewal' | 'publication' | 'removeOtherDevices' | 'domains',
@@ -50,6 +50,12 @@ export async function requireHomeStorage() {
 
 async function signingKey(): Promise<SigningKey> {
   return (await diemClient()).generateSigningKey();
+}
+
+async function profileKind(encoding: Uint8Array): Promise<IdentityKind> {
+  const profile = await (await diemClient()).verifyProfile(encoding, Math.floor(Date.now() / 1000), {verify: verifySignature});
+  // DC operator profiles, like user profiles, retain the account custody path.
+  return profile.kind === 'channel' ? 'channel' : 'user';
 }
 
 /** BlahDiem reports codes; a paper key's failures name what the person can check. */
@@ -125,7 +131,7 @@ async function useIdentity<T>(slot: number, action: IdentityOperation<T>, touch 
     secret.publicationPending = pending;
     await storeEntries([['identity:' + current.id, await current.key.seal(secret)], ['domain:' + current.id, secret.domain]]);
   };
-  if(maintain && renewalPolicy(secret.renewal).autoRenew) {
+  if(maintain && secret.identity && renewalPolicy(secret.renewal).autoRenew) {
     if(renewalDue(info)) {
       info = await diem('renew', secret, {}, slot, kind);
       await save(info);
@@ -184,6 +190,25 @@ export async function publish(secret: IdentitySecret) {
   if(!response.ok) throw new Error('Profile publication failed: HTTP ' + response.status);
 }
 
+async function listIdentities() {
+  return Promise.all((await identityIDs()).map(async(id) => ({id, domain: await stored<string>('domain:' + id),
+    ...await stored<IdentityMetadata>('metadata:' + id)})));
+}
+
+/** A saved attachment is a binding even while its private key is locked. */
+export async function chatIdentityForId(slot: number, chatId: ChatId) {
+  const identity = (await listIdentities()).find((entry) => entry.kind === 'channel' && entry.chatId === chatId &&
+    (!entry.home || entry.home === identityHome(slot)));
+  if(!identity) return;
+  const current = sessions(slot, identity.id).get();
+  return {...identity, locked: !current || current.until <= Date.now()};
+}
+
+function identityHome(slot: number) {
+  const home = getBlahConfig(slot).home;
+  return `${home.identity}:${home.generation}`;
+}
+
 export async function identityAction(slot: number, request: IdentityRequest): Promise<IdentityResponse> {
   if(request.action === 'lock') {
     return exclusively(async() => {
@@ -206,9 +231,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
     return {};
   }
   if(request.action === 'list') {
-    const ids = await identityIDs();
-    const entries = await Promise.all(ids.map(async(id) => ({id, domain: await stored<string>('domain:' + id),
-      ...await stored<IdentityMetadata>('metadata:' + id)})));
+    const entries = await listIdentities();
     const identities = entries.filter((entry) => (entry.kind || 'user') === (request.kind || 'user'));
     return {ids: identities.map((entry) => entry.id), identities};
   }
@@ -251,10 +274,11 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
           backup = await key.seal(secret);
         } else if(request.action === 'paper') {
           // A paper key is a listed device: keep it as device-only custody of the hosted profile.
+          kind = await profileKind(hosted);
           const paper = await paperFailure(async() => (await diemClient()).paperKeys.restore(request.phrase || ''));
           key = await files.create(request.password || '');
           secret = {domain: paperDomain, profile: encode(hosted), renewal: renewalPolicy(request.renewal), device: paper.key};
-          info = await paperFailure(() => diem('inspect', secret, {}, slot));
+          info = await paperFailure(() => diem('inspect', secret, {}, slot, kind));
           if(await stored('identity:' + info.id)) {
             throw new Error('This identity already exists here. Unlock its current copy instead.');
           }
@@ -263,10 +287,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
           if(request.backup && request.backup.length > 262_144) throw new Error('Identity file is too large.');
           backup = request.action === 'restore' ? new Uint8Array(request.backup) : await stored('identity:' + request.id);
           ({session: key, contents: secret} = await files.unlock(backup, request.password || ''));
-          const profile = await (await diemClient()).verifyProfile(decode(secret.profile), Math.floor(Date.now() / 1000), {verify: verifySignature});
-          // Only channels use resource custody; BlahDiem validates account files,
-          // including DC operator profiles, through the existing user path.
-          kind = profile.kind === 'channel' ? 'channel' : 'user';
+          kind = await profileKind(decode(secret.profile));
           info = await diem('inspect', secret, {}, slot, kind);
           if(info.id !== files.inspect(backup).id) throw new Error('Identity file mismatch.');
           // Never roll an existing vault back to an older device generation/revision.
@@ -284,7 +305,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         // Kind comes from the verified profile on import, never from the file picker.
         const metadata = await stored<IdentityMetadata>('metadata:' + info.id);
         await storeEntries([['identity:' + info.id, backup], ['domain:' + info.id, info.domains[0]],
-          ['metadata:' + info.id, {...metadata, kind, namespace: info.namespace, ...(kind === 'channel' && info.account ? {chatId: Number(info.account)} : {})}],
+          ['metadata:' + info.id, {...metadata, kind, namespace: info.namespace, home: identityHome(slot), ...(kind === 'channel' && info.account ? {chatId: Number(info.account)} : {})}],
           ...(attemptKey ? [[attemptKey, info.id] as [string, unknown]] : [])]);
         const resourceId = kind === 'channel' ? info.id : undefined;
         lock(slot, resourceId);
@@ -301,6 +322,9 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
     if(request.id && current.id !== request.id) throw new Error('Unlock your browser identity to continue.');
     if(request.action === 'inspect') return {identity: view(secret, current, kind)};
     if(request.action === 'backup') return {backup: Array.from(await stored<SealedIdentity>('identity:' + current.id))};
+    if(!secret.identity && ['renew', 'addDevice', 'removeDevice', 'removeOtherDevices', 'domains'].includes(request.action)) {
+      throw new Error('Only a device that holds the identity key can add devices or renew the identity.');
+    }
     let info = current;
     if(request.action === 'addPaperKey') {
       const certified = await certifyPaperKey(secret, slot, kind);
