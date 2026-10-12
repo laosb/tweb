@@ -29,7 +29,7 @@ const proxy = require('http-proxy').createProxyServer({
 });
 const dir = await mkdtemp(process.env.TMPDIR ? process.env.TMPDIR + '/tweb-e2e-' : '/tmp/tweb-e2e-');
 const chatDomains = ['news.alice.example.org', 'updates.alice.example.org'];
-const profileDomains = ['alice.example.org', 'bob.example.org', ...chatDomains];
+const profileDomains = ['alice.example.org', 'bob.example.org', 'carol.example.org', ...chatDomains];
 async function publishProfile(domain, bytes) {
   assert(profileDomains.includes(domain));
   // Teleblah's test transport reads <domain>.cbor; replace atomically like its e2e publisher.
@@ -108,10 +108,10 @@ try {
         return;
       }
       const path = new URL(req.url, 'https://localhost').pathname;
-      if(req.method === 'PUT' && (path === '/publish' || path === '/publish/bob')) {
+      if(req.method === 'PUT' && ['/publish', '/publish/bob', '/publish/carol'].includes(path)) {
         const chunks = [];
         for await (const chunk of req) chunks.push(chunk);
-        await publishProfile((path.endsWith('/bob') ? 'bob' : 'alice') + '.example.org', Buffer.concat(chunks));
+        await publishProfile((path.split('/')[2] || 'alice') + '.example.org', Buffer.concat(chunks));
         res.end('ok');
         return;
       }
@@ -400,7 +400,8 @@ try {
       await password.fill('test chat identity password');
       await password.press('Enter');
       await expect(dialog.locator('ol li')).toHaveCount(24, {timeout: 30000});
-      assert((await dialog.locator('ol li').allInnerTexts()).every(word => /^[a-z]+$/.test(word)), 'Paper key contains 24 words');
+      const paperPhrase = (await dialog.locator('ol li').allInnerTexts()).join(' ');
+      assert(paperPhrase.split(' ').every(word => /^[a-z]+$/.test(word)), 'Paper key contains 24 words');
       const saveFile = dialog.getByRole('button', {name: 'Save identity file', exact: true});
       await expect(saveFile).toBeFocused();
       await downloadFile(saveFile, dir + '/' + domain + '-identity.cbor', domain + '-identity.cbor');
@@ -447,7 +448,7 @@ try {
       const storedProfile = await readChatProfile(entry.chatId);
       assert.deepEqual(Buffer.from(storedProfile), numbered, 'The DC returns the published numbered profile');
       assert.equal((await verifyChatProfile(storedProfile, domain, entry.chatId)).id, entry.id);
-      return entry;
+      return {...entry, paperPhrase};
     }
     async function openNewChannel(title) {
       // At desktop width the sidebar is already visible and the chat's Close button is hidden.
@@ -520,6 +521,96 @@ try {
     const signInIDs = await page.evaluate(async() => (await window.rootScope.managers.appAccountManager.blahIdentity({action: 'list'})).ids);
     assert.deepEqual(signInIDs, signInIDsBeforeChats, 'Creating chat custody leaves the sign-in candidates unchanged');
     for(const entry of chatIdentities) assert(!signInIDs.includes(entry.id), 'Chat custody never becomes a sign-in candidate');
+    // Deletion uses the real dialog and a locked chat key; the worker must retry with its proof.
+    const deletionInput = await page.evaluate(async(entry) => {
+      await window.rootScope.managers.appAccountManager.blahIdentity({action: 'lock', id: entry.id});
+      await window.appImManager.setPeer({peerId: -entry.chatId});
+      return window.rootScope.managers.appChatsManager.getChannelInput(entry.chatId);
+    }, createdChatIdentity);
+    await page.locator('#column-center .chat-info').filter({hasText: createdTitle}).click();
+    await page.locator('#column-right .tabs-tab.active').getByRole('button', {name: 'Edit', exact: true}).click();
+    await page.locator('#column-right .edit-group-container.active').getByRole('button', {name: 'Delete Channel', exact: true}).click();
+    const deletion = page.locator('.popup-delete-chat');
+    await deletion.getByRole('checkbox').check();
+    await deletion.getByRole('button', {name: /^delete channel$/i}).click();
+    const unlock = page.getByRole('dialog', {name: 'Unlock chat identity', exact: true});
+    await expect(unlock.getByLabel('Identity password', {exact: true})).toBeFocused();
+    await unlock.getByLabel('Identity password', {exact: true}).fill('test chat identity password');
+    await unlock.getByRole('button', {name: 'Unlock identity', exact: true}).press('Enter');
+    await unlock.waitFor({state: 'detached'});
+    await page.locator('#column-right .edit-group-container.active').waitFor({state: 'detached'});
+    // An independent fresh RPC observes deletion on the DC (never the local dialogs cache).
+    assert.equal(deletionInput._, 'inputChannel');
+    const deleted = await page.evaluate(channel =>
+      window.rootScope.managers.apiManager.invokeApi('channels.getChannels', {id: [channel]}), deletionInput);
+    assert.deepEqual(deleted.chats, [], 'A fresh DC read confirms the cross-server channel is gone');
+
+    // A separate account on the same home imports only the chat's paper device and claims it.
+    const claimContext = await browser.newContext({ignoreHTTPSErrors: true});
+    const claimant = await claimContext.newPage();
+    claimant.setDefaultTimeout(30000);
+    activePage = claimant;
+    try {
+      await claimContext.route('https://dc.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
+        contentType: 'application/cbor', body: Buffer.from(signedDC.profile)
+      }));
+      await claimant.goto(origin + '/?noServiceWorker=1&a11y=1');
+      await claimant.getByRole('textbox', {name: 'DC domain'}).fill('dc.example.org');
+      await claimant.getByRole('button', {name: 'Connect to Blah'}).click();
+      const carolIdentity = await signUp(claimant, 1, 'carol.example.org', 'Carol', origin + '/publish/carol');
+      await claimant.locator('#page-chats').waitFor({state: 'visible'});
+      await claimant.locator('#auth-pages').waitFor({state: 'hidden'});
+      const claimantID = await claimant.evaluate(() => window.rootScope.myId);
+      assert.notEqual(claimantID, userId, 'Claim uses another account');
+      await claimant.setViewportSize({width: 390, height: 844});
+      await claimant.locator('.sidebar-tools-button').click();
+      await claimant.getByRole('menuitem', {name: 'Identity Manager', exact: true}).click();
+      const chatSection = claimant.locator('.tabs-tab.active .sidebar-left-section').filter({has: claimant.getByText('Chat identities', {exact: true})});
+      await chatSection.getByRole('button', {name: 'Use paper key', exact: true}).click();
+      const paper = claimant.getByRole('dialog', {name: 'Use paper key', exact: true});
+      await paper.getByLabel('Profile domain', {exact: true}).fill(upgradedChatIdentity.domain);
+      await paper.getByLabel('Paper key words', {exact: true}).fill(upgradedChatIdentity.paperPhrase);
+      await paper.getByLabel('Identity password', {exact: true}).fill('claim paper password');
+      await paper.getByRole('button', {name: 'Use paper key', exact: true}).press('Enter');
+      await paper.waitFor({state: 'detached'});
+      const details = claimant.locator('.tabs-tab.active').filter({has: claimant.getByRole('button', {name: 'Export public profile', exact: true})});
+      await expect(details).toContainText('Join this chat with your current account before claiming ownership.');
+      await expect(details.getByRole('button', {name: 'Claim ownership', exact: true})).toHaveCount(0);
+      await claimant.evaluate(chatId => window.rootScope.managers.appChatsManager.joinChannel(chatId), upgradedChatIdentity.chatId);
+      await claimant.keyboard.press('Escape');
+      await details.waitFor({state: 'detached'});
+      await chatSection.getByRole('button').filter({hasText: upgradedChatIdentity.domain}).press('Enter');
+      const locked = claimant.locator('.tabs-tab.active').filter({has: claimant.getByRole('button', {name: 'Unlock identity', exact: true})});
+      await locked.getByLabel('Identity password', {exact: true}).fill('claim paper password');
+      await locked.getByRole('button', {name: 'Unlock identity', exact: true}).press('Enter');
+      await details.getByRole('button', {name: 'Claim ownership', exact: true}).press('Enter');
+      await claimant.getByRole('status').filter({hasText: 'Your account now owns this chat.'}).waitFor();
+      await expect(details.getByRole('button', {name: 'Export public profile', exact: true})).toBeFocused();
+      assert(await details.evaluate(element => element.getBoundingClientRect().right <= innerWidth + 1), 'Chat identity details fit narrow screens');
+      assert.deepEqual((await new AxeBuilder({page: claimant}).include('.tabs-tab.active').disableRules(['color-contrast']).analyze()).violations, []);
+      const ownership = await claimant.evaluate(async(entry) => {
+        const managers = window.rootScope.managers;
+        await managers.appChatsManager.getChannels([entry.chatId]);
+        const chat = await managers.appChatsManager.getChat(entry.chatId);
+        const identities = await managers.appAccountManager.blahIdentity({action: 'list'});
+        const failure = async(action) => {
+          try { await managers.appAccountManager.blahIdentity({action, id: entry.id, device: 'AAAA'}); }
+          catch(error) { return error.message; }
+        };
+        return {creator: chat.pFlags.creator, ids: identities.ids,
+          addPaper: await failure('addPaperKey'), addDevice: await failure('addDevice'), renew: await failure('renew')};
+      }, upgradedChatIdentity);
+      assert.equal(ownership.creator, true, 'Fresh channels.getChannels confirms the paper holder became creator');
+      assert.deepEqual(ownership.ids, [carolIdentity], 'An imported chat paper key never appears for sign-in');
+      assert.match(ownership.addPaper, /identity key/);
+      assert(ownership.addDevice && ownership.renew, 'Device-only custody cannot enroll or renew');
+    } finally {
+      await claimContext.close();
+      activePage = page;
+      await page.bringToFront();
+    }
+    // Leave the original account viewing the surviving chat for the following settings checks.
+    await page.evaluate(chatId => window.appImManager.setPeer({peerId: -chatId}), upgradedChatIdentity.chatId);
     await page.setViewportSize({width: 375, height: 720});
 
     // Settings renders the same peer info panel with self details enabled.
@@ -621,13 +712,13 @@ try {
     await panel.waitFor();
     assert.equal(await panel.getByRole('combobox').count(), 0);
     const chatSection = panel.locator('.sidebar-left-section').filter({has: page.getByText('Chat identities', {exact: true})});
-    await expect(chatSection.getByRole('button')).toHaveCount(2);
+    await expect(chatSection.getByRole('button')).toHaveCount(4);
     const userSection = panel.locator('.sidebar-left-section').filter({has: page.getByText('Saved identities', {exact: true})});
     for(const entry of chatIdentities) {
       await expect(chatSection.getByRole('button', {name: entry.title + ' ' + entry.domain, exact: true})).toBeVisible();
       await expect(userSection.getByText(entry.domain, {exact: true})).toHaveCount(0);
     }
-    const opener = panel.getByRole('button', {name: 'Import identity from file', exact: true});
+    const opener = panel.getByRole('button', {name: 'Import identity from file', exact: true}).last();
     await opener.press('Enter');
     const dialog = page.getByRole('dialog', {name: 'Import identity from file'});
     await dialog.waitFor();
@@ -848,7 +939,7 @@ try {
     await page.goto(origin + '/?account=2&debug=1&noServiceWorker=1&a11y=1');
     await page.getByRole('textbox', {name: 'DC domain'}).waitFor();
     assert.equal(await page.getByRole('textbox', {name: 'DC domain'}).inputValue(), '');
-    console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, Cross-server creation and toggle-only upgrade, numbered channel profiles, chat custody/sign-in separation, verified peer identity row and home-only notice, profile publication, reload, recovered identity and paper-key login, dialog keyboard/focus and Axe checks.');
+    console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, Cross-server creation and toggle-only upgrade, locked-identity UI deletion, paper-key ownership claim by a second account, numbered channel profiles, chat custody/sign-in separation, verified peer identity row and home-only notice, profile publication, reload, recovered identity and paper-key login, dialog keyboard/focus and Axe checks.');
   } catch(error) {
     if(process.env.BLAH_IDENTITY_SCREENSHOT) await activePage.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-failure.png', timeout: 3000}).catch(() => {});
     console.error(error);
@@ -863,9 +954,10 @@ try {
   edge?.closeAllConnections();
   if(edge) edge.close();
   await Promise.all([child, otherChild].filter(Boolean).map(async(server) => {
+    if(server.exitCode !== null || server.signalCode !== null) return;
     server.kill('SIGTERM');
     const stopTimer = setTimeout(() => server.kill('SIGKILL'), 5000);
-    if(server.exitCode === null) await once(server, 'exit');
+    if(server.exitCode === null && server.signalCode === null) await once(server, 'exit');
     clearTimeout(stopTimer);
   }));
   await rm(dir, {

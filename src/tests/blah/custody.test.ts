@@ -36,7 +36,7 @@ vi.mock('@lib/blah/runtime', () => {
   });
   return {verifySignature: vi.fn(), diemClient: async() => ({
     generateSigningKey: async() => ({privateKey: 'secret', publicKey: 'public'}),
-    paperKeys: {generate: mock.paper},
+    paperKeys: {generate: mock.paper, restore: async() => ({key: {privateKey: 'paper-secret', publicKey: 'paper-public'}})},
     verifyProfile: async(profile: Uint8Array) => ({kind: mock.profiles.get(profile[0]).kind}),
     keyFiles: {
       create: async(password: string) => {
@@ -53,7 +53,7 @@ vi.mock('@lib/blah/runtime', () => {
   })};
 });
 vi.mock('@lib/blah/wasm', () => ({diem: mock.diem}));
-import {bindIdentity, identityAction, withIdentity, withResourceIdentity} from '@lib/blah/identity';
+import {bindIdentity, chatIdentityForId, identityAction, withIdentity, withResourceIdentity} from '@lib/blah/identity';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -86,6 +86,51 @@ const create = (kind: 'user' | 'channel', extra = {}) => identityAction(1, {acti
   domain: kind === 'user' ? 'alice.example.org' : 'news.alice.example.org', password: 'x', ...extra});
 
 describe('channel custody', () => {
+  it('finds only held, bound chat identities and reports slot-local locks and expiry', async() => {
+    const {identity: user} = await create('user');
+    mock.store.set('metadata:' + user.id, {kind: 'user', chatId: 25});
+    expect(await chatIdentityForId(1, 25)).toBeUndefined();
+    const {identity} = await create('channel');
+    expect(await chatIdentityForId(1, 25)).toBeUndefined();
+    mock.store.set('metadata:' + identity.id, {kind: 'channel', chatId: 25});
+    expect(await chatIdentityForId(1, 25)).toMatchObject({id: identity.id, domain: identity.domain, locked: false});
+    expect(await chatIdentityForId(2, 25)).toMatchObject({id: identity.id, locked: true});
+    await vi.advanceTimersByTimeAsync(15 * 60_000);
+    expect(await chatIdentityForId(1, 25)).toMatchObject({id: identity.id, locked: true});
+    expect(await chatIdentityForId(1, 99)).toBeUndefined();
+    mock.store.set('metadata:' + identity.id, {kind: 'channel', chatId: 25, home: 'other:1'});
+    expect(await chatIdentityForId(1, 25)).toBeUndefined();
+  });
+
+  it.each(['user', 'channel'] as const)('detects a paper %s from its verified hosted profile and stores device-only custody', async(kind) => {
+    const {identity} = await create(kind);
+    mock.profiles.get(identity.profile[0]).account = '25';
+    await identityAction(1, {action: 'lock'});
+    mock.store.clear();
+    mock.published.mockResolvedValue(new Uint8Array(identity.profile));
+    const imported = await identityAction(1, {action: 'paper', domain: identity.domain, password: 'new password', phrase: 'words',
+      kind: kind === 'user' ? 'channel' : 'user'});
+    expect(imported.identity.kind).toBe(kind);
+    const use = kind === 'channel' ? (action: any) => withResourceIdentity(1, identity.id, action) : (action: any) => withIdentity(1, action);
+    await use(async(secret: IdentitySecret) => {
+      expect(secret.identity).toBeUndefined();
+      expect(secret.device.privateKey).toBe('paper-secret');
+    });
+    expect(mock.store.get('metadata:' + identity.id)).toMatchObject({kind, ...(kind === 'channel' ? {chatId: 25} : {})});
+    expect((await identityAction(1, {action: 'list'})).ids).toEqual(kind === 'channel' ? [] : [identity.id]);
+    if(kind === 'channel') expect(await chatIdentityForId(1, 25)).toMatchObject({id: identity.id, locked: false});
+    expect(mock.store.has('slot:1')).toBe(false);
+    for(const action of ['renew', 'addDevice'] as const) {
+      await expect(identityAction(1, {action, id: identity.id, device: 'AAAA'})).rejects.toThrow('Only a device that holds the identity key');
+    }
+    const profile = mock.profiles.get(identity.profile[0]);
+    profile.notBefore = Date.now() / 1000 - 9000;
+    profile.expiresAt = Date.now() / 1000 + 1000;
+    mock.diem.mockClear();
+    await identityAction(1, {action: 'inspect', id: identity.id});
+    expect(mock.diem.mock.calls.some(([operation]) => operation === 'renew')).toBe(false);
+  });
+
   it('reuses a cancelled attempt and returns its default paper words only once', async() => {
     const first = await create('channel', {attempt: 'form'});
     expect(first.paperKey.phrase.split(' ')).toHaveLength(24);
