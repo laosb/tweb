@@ -17,6 +17,7 @@ export type ChatIdentityChange = {action: 'createChannel', options: ChannelsCrea
   {action: 'createChat', title: string, userIds: UserId[]} |
   {action: 'edit', chatId: ChatId, title: string, changedTitle?: string, about?: string, photo?: InputFile};
 export type ChatIdentityRequest = {action: 'prepare', domain: string, password: string, attempt: string} |
+  {action: 'claim', id: string} |
   {action: 'bind', id: string, change: ChatIdentityChange};
 export type ChatIdentityResult = {chatId: ChatId, missingInvitees: MissingInvitee[]};
 export type ChatIdentityResponse = IdentityResponse & {result?: ChatIdentityResult};
@@ -39,12 +40,24 @@ export function chatIdentityAction(slot: number, managers: Managers, request: Ch
   if(request.action === 'prepare') {
     return identityAction(slot, {...request, action: 'create', kind: 'channel'});
   }
-  const key = `${slot}:${request.id}`;
+  const key = `${slot}:${request.id}:${request.action}`;
   const existing = pending.get(key);
   if(existing) return existing;
-  const operation = bindChat(slot, managers, request.id, request.change).finally(() => pending.delete(key));
+  const operation = (request.action === 'claim' ? claimChat(slot, managers, request.id) :
+    bindChat(slot, managers, request.id, request.change)).finally(() => pending.delete(key));
   pending.set(key, operation);
   return operation;
+}
+
+async function claimChat(slot: number, managers: Managers, id: string): Promise<ChatIdentityResponse> {
+  const attachment = await stored<IdentityMetadata>('metadata:' + id);
+  if(attachment?.kind !== 'channel' || !attachment.chatId) throw new Error('Select a bound chat identity.');
+  const updates = await managers.apiManager.invokeApi('messages.editChatCreator', {
+    peer: managers.appChatsManager.getChannelInputPeer(attachment.chatId),
+    user_id: {_: 'inputUserSelf'}, password: {_: 'inputCheckPasswordEmpty'}
+  }, {blahResourceIdentity: id, ignoreErrors: true, rawError: true} as BlahInvokeOptions);
+  managers.apiUpdatesManager.processUpdateMessage(updates);
+  return {};
 }
 
 async function bindChat(slot: number, managers: Managers, id: string, change: ChatIdentityChange): Promise<ChatIdentityResponse> {
