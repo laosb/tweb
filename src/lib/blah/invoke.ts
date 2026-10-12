@@ -3,7 +3,7 @@ import type MTPNetworker from '@lib/mtproto/networker';
 import Schema from '@lib/mtproto/schema';
 import {TLSerialization} from '@lib/mtproto/tl_utils';
 import type {InvokeApiOptions} from '@types';
-import {bindIdentity, numberIdentity, withIdentity, withResourceIdentity} from '@lib/blah/identity';
+import {bindIdentity, chatIdentityForId, numberIdentity, withIdentity, withResourceIdentity} from '@lib/blah/identity';
 import {diem} from '@lib/blah/wasm';
 
 // Keep chat dispatch in the same static worker graph as its signer/custody. A lazy
@@ -28,6 +28,14 @@ Schema.API.methods.push(
 );
 
 export type BlahInvokeOptions = InvokeApiOptions & {blahResourceIdentity?: string};
+
+async function chatIdentityCall(slot: number, networker: MTPNetworker, method: string, params: any, options: BlahInvokeOptions) {
+  const target = method === 'channels.deleteChannel' ? params.channel : params.peer;
+  const identity = target?.channel_id && await chatIdentityForId(slot, Number(target.channel_id));
+  if(identity?.locked) throw {type: 'BLAH_CHAT_IDENTITY_LOCKED', id: identity.id, domain: identity.domain};
+  return identity ? provenCall(slot, networker, method, params, {...options, blahResourceIdentity: identity.id}) :
+    options.blahResourceIdentity ? provenCall(slot, networker, method, params, options) : networker.wrapApiCall(method, params, options);
+}
 
 export async function provenCall(slot: number, networker: MTPNetworker, method: string, params: unknown, options: BlahInvokeOptions = {}) {
   const resourceId = options.blahResourceIdentity;
@@ -63,7 +71,9 @@ export function invokeBlah(slot: number, networker: MTPNetworker, method: string
   if(method === 'auth.exportLoginToken' || method === 'auth.importLoginToken' || method.includes('PasskeyLogin')) {
     throw new Error('Blah requires browser identity sign-in.');
   }
-  const promise = proofRequired ? provenCall(slot, networker, method, params, options) : networker.wrapApiCall(method, params, options);
+  const promise = method === 'channels.deleteChannel' || method === 'messages.editChatCreator' ?
+    chatIdentityCall(slot, networker, method, params, options) :
+    proofRequired ? provenCall(slot, networker, method, params, options) : networker.wrapApiCall(method, params, options);
   return promise.then(async(result) => {
     const authorization = result?._ === 'auth.sentCodeSuccess' ? result.authorization : result;
     if(authorization?._ === 'auth.authorization' && getBlahConfig(slot)?.home &&

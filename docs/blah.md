@@ -307,5 +307,27 @@ the slot's user signer or namespace binding. Public kind/domain and attachment m
 sit alongside encrypted custody. Losing the default paper words does not reveal them
 again; unlock the saved identity to authorize a new paper key.
 
-Deletion and ownership transfer for a bound chat require its channel identity's proof
-on the server. Those operations are not adapted by this creation/upgrade flow.
+### Deletion, ownership and handover
+
+Deleting a bound channel, group or community requires its chat identity's proof and
+an account that is still its creator. The worker uses held chat custody automatically;
+locked custody prompts for its password and retries once. Cancellation aborts deletion.
+If custody is elsewhere, import the identity in **Identity Manager → Chat identities**.
+Unbound chats keep their ordinary deletion path.
+
+Ownership follows the chat identity. An unlocked, bound identity offers **Claim ownership**
+when the current account is a member but not the creator. This proves
+`messages.editChatCreator` for `inputUserSelf` with `inputCheckPasswordEmpty`, processes
+the returned updates and makes that account the creator. Join the chat first. A bound
+chat cannot be transferred directly to a different user through this RPC.
+
+To hand over a chat, give its recipient a **new paper key** (preferred: the identity-key
+holder can remove it later), or the identity file and its password. Publish the updated
+profile after adding or removing a paper key. The recipient imports it and claims
+ownership for their own account. Sharing custody does not revoke the sender's custody.
+
+The chat section offers file import and **Use paper key** (profile domain, 24 words and a
+new browser password). Import verifies the profile kind and takes the chat number from
+its signed home account. A paper key is stored as device-only channel custody: it can
+prove deletion or claim, but cannot add devices or renew the identity. Imported chat
+identities stay in the chat section and never become sign-in candidates.

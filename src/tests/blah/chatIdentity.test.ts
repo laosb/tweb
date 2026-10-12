@@ -24,6 +24,7 @@ function managers() {
     apiManager: {invokeApi: vi.fn().mockResolvedValue(updates)},
     apiUpdatesManager: {processUpdateMessage: vi.fn()},
     appChatsManager: {getChat: () => chat, getChannelInput: (id: number) => ({_: 'inputChannel', channel_id: id, access_hash: '1'}),
+      getChannelInputPeer: (id: number) => ({_: 'inputPeerChannel', channel_id: id, access_hash: '1'}),
       onChatUpdated: vi.fn(), editTitle: vi.fn(), editAbout: vi.fn(), editPhoto: vi.fn()},
     appUsersManager: {getUserInput: (id: number) => ({_: 'inputUser', user_id: id})},
     appPeersManager: {getInputPeerById: (id: number) => ({_: 'inputPeerChannel', channel_id: -id})},
@@ -39,6 +40,24 @@ beforeEach(() => {
   mock.save.mockReset().mockImplementation(async(info) => { mock.account = info.account; });
   mock.diem.mockReset().mockImplementation(async(_op, _secret, extra) => extra);
   mock.verify.mockReset().mockResolvedValue({kind: 'channel', id: 'resource', home: {dc: 'home'}});
+});
+
+it('claims a bound chat for self with an empty password, its own proof and processed updates', async() => {
+  const manager = managers();
+  mock.store.set('metadata:resource', {kind: 'channel', chatId: 25});
+  await chatIdentityAction(1, manager as any, {action: 'claim', id: 'resource'});
+  expect(manager.apiManager.invokeApi).toHaveBeenCalledWith('messages.editChatCreator', {
+    peer: {_: 'inputPeerChannel', channel_id: 25, access_hash: '1'},
+    user_id: {_: 'inputUserSelf'}, password: {_: 'inputCheckPasswordEmpty'}
+  }, {blahResourceIdentity: 'resource', ignoreErrors: true, rawError: true});
+  expect(manager.apiUpdatesManager.processUpdateMessage).toHaveBeenCalledWith(updates);
+  expect(mock.diem).not.toHaveBeenCalled();
+});
+
+it('rejects an unattached identity before attempting a claim', async() => {
+  const manager = managers();
+  await expect(chatIdentityAction(1, manager as any, {action: 'claim', id: 'resource'})).rejects.toThrow('bound chat');
+  expect(manager.apiManager.invokeApi).not.toHaveBeenCalled();
 });
 
 it('routes all channel creation flags through resource proof and processes updates', async() => {

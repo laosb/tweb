@@ -66,6 +66,17 @@
 "BlahCrossServer" = "Cross-server";
 "BlahCrossServerHelp" = "Give this chat its own identity so people on other servers can join. This binding is permanent.";
 "BlahChatIdentities" = "Chat identities";
+"BlahUnlockChatIdentity" = "Unlock chat identity";
+"BlahUnlockChatIdentityHelp" = "Unlock the chat identity at %1$s to delete this chat.";
+"BlahDeleteChatIdentityRequired" = "Deleting this cross-server chat needs its identity. Import its identity file or use its paper key in Identity Manager → Chat identities.";
+"BlahChatOwnership" = "Chat ownership";
+"BlahClaimChatOwnership" = "Claim ownership";
+"BlahChatClaimJoinFirst" = "Join this chat with your current account before claiming ownership. Open the chat using its profile domain or an invite link, then return here.";
+"BlahChatClaimDenied" = "This account is not eligible to claim this chat. Join the chat and check that you imported its current identity.";
+"BlahChatClaimed" = "Your account now owns this chat.";
+"BlahChatHandover" = "To pass this chat to someone else, give them a new paper key (preferred: you can remove it later), or its identity file and password. They import the identity, join the chat and claim ownership for their own account.";
+"BlahUseChatPaperKey" = "Use paper key";
+"BlahUseChatPaperKeyHelp" = "Enter the chat’s profile domain and 24 paper-key words, separated by spaces. Choose a new password to protect this key in the browser. It can claim ownership or delete the chat, but cannot add devices or renew the identity. Chat identities are never used for sign-in.";
 "BlahIdentityNotAttachedSubtitle" = "Not attached";
 "BlahChatIdentityIntro" = "Choose a password for the chat identity at %1$s. Save its encrypted file and paper key before continuing.";
 "BlahSaveIdentityFile" = "Save identity file";
