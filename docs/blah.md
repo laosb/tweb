@@ -118,6 +118,10 @@ create/import actions. Select an identity to open a centered password form one l
 unlocking reveals its details on the same page. Going back locks it. On the sign-in page, the
 trailing **Identity details** icon opens a dialog; closing it by any route also locks it.
 Details reload the saved profile automatically on opening and after unlocking.
+Chat identities have a separate list, labelled by the attached chat title or by their
+domain and **Not attached**. They share exports, devices, paper keys and renewal with
+user identities, but have no domain-username editor and never enter the sign-in picker.
+Import detects the signed profile kind, including in encrypted identity files.
 
 The device list separates the current device from other devices, using the standard
 session rows. Open a device for its public key or to terminate it; **Terminate other
@@ -181,6 +185,7 @@ Verify the library and client integration:
 pnpm exec vitest run src/tests/blah src/tests/webPushApiManager.test.ts
 pnpm run typecheck
 node scripts/test-blah-browser.mjs
+pnpm exec playwright test e2e/blahDomains.spec.ts e2e/blahChatIdentity.spec.ts
 BLAH_SERVER_REPO=/path/to/Teleblah node scripts/test-blah-server.mjs
 ```
 
@@ -188,7 +193,10 @@ The browser fixture needs Playwright Chromium (`pnpm exec playwright install
 --with-deps chromium`); `BLAH_BROWSER_EXECUTABLE` can select an installed browser.
 It exercises real WebCrypto/WASM creation, encryption, proof binding, numbering,
 renewal, recovery and account-slot isolation without contacting Telegram.
-Both browser fixtures serve local content under test `blahim.com` origins and need
+The chat-identity Playwright suite uses only the popup sandbox and checks cancellation,
+backups, publication steps, keyboard focus and narrow layouts. It needs no network or
+authenticated account.
+Both WASM browser fixtures serve local content under test `blahim.com` origins and need
 network access to load the real CDN module and WASM under its CORS policy.
 For an unreleased runtime, set `BLAH_DIEM_LOCAL_DIST=/path/to/BlahDiem/Web/dist`
 on either test command to serve its `diem.js` and `diem.wasm` at the pinned URLs,
@@ -200,6 +208,10 @@ endpoint rotation with another tab open, accounts on two independent homes, sign
 keyboard/error handling and Axe (with `?a11y=1`, contrast in increased-contrast mode), signup, public profile publication, reload and restored-device
 login over PFS through the normal shared worker, plus dialog keyboard containment, focus restoration, narrow-screen
 layout and Axe checks. Screen-reader and touch-device testing remain manual.
+It also creates a Cross-server channel and upgrades an unchanged home-only channel,
+saves encrypted backups, checks the default paper words, publishes both profile revisions, and checks
+chat custody stays out of the sign-in picker. A proof-wrapped read refreshes the DC's
+stored numbered profile; an info-panel check after reload clears the five-minute lookup cache.
 It uses Teleblah's test-only profile-directory transport; production
 still requires public HTTPS profile hosting. It needs `openssl` and the server binary
 already built. This validates identity/login support, not every post-login Telegram RPC.
@@ -208,7 +220,7 @@ already built. This validates identity/login support, not every post-login Teleg
 
 `src/lib/blah/` owns custody, the identity UI and application proof adapters;
 BlahDiem owns the Swift bridge, minimization and release workflow.
-User identity requests explicitly select `kind: 'user'`;
+Identity requests select `kind: 'user'` or `kind: 'channel'` through the same WASM adapter;
 invocation proofs carry the reviewed challenge bytes and the current transport binding.
 There is no separate Swift package or copy of protocol rules in tweb.
 Do not duplicate Diem's CBOR, certificate or proof implementation in TypeScript.
@@ -260,3 +272,40 @@ shows its identity's first domain as a copyable **Identity** row after signature
 peer-binding verification (including valid lapsed profiles). These are signed profile
 claims, not proof of current domain control; the row uses `verifyProfile` from the
 pinned BlahDiem release.
+
+### Cross-server creation and upgrade
+
+**Cross-server** on the channel/group creation form reveals a profile-domain field.
+Existing channels and supergroups offer it to their creator in the edit form; monoforums
+follow their broadcast. A known binding is shown permanently enabled with its domain.
+Failed profile lookups hide the control rather than treating the identity as absent.
+These lookups belong to the edit form, never the chat-open path.
+
+The dialog generates an unnumbered channel identity on the account's home DC, seals it
+with a nonempty password, and certifies a default paper device. Save the encrypted
+`<domain>-identity.cbor` file and write down its 24 words, which are shown once.
+Export and serve the public profile at the displayed HTTPS well-known URL, with
+`application/cbor`, CORS access and no redirects. The browser checks for an exact match
+before binding; an unavailable host is reported separately from an unpublished profile.
+
+Creation wraps the existing create RPC with the channel device's invocation proof.
+For a basic-group request, custody follows the returned migrated supergroup. Upgrade
+wraps the first changed title, description or photo; with only the toggle changed it
+resends the title. A no-op title error counts as success only after the DC confirms the
+same channel identity. Remaining edits use the ordinary managers.
+
+After binding, the saved identity is numbered with the channel ID. Export and publish
+this updated profile so receiving homes can verify the binding; the final step offers
+export and recheck and can be closed to finish later in Identity Manager. Binding is
+permanent. Cancellation before the RPC keeps custody as unattached and leaves the form
+open; retrying that form reuses its identity. A recorded successful RPC is resumed after
+a numbering/save failure rather than creating another chat.
+
+Channel custody has separate unlocked sessions per account slot and identity, with the
+same 15-minute auto-lock and renewal/publication policy as user custody. It never changes
+the slot's user signer or namespace binding. Public kind/domain and attachment metadata
+sit alongside encrypted custody. Losing the default paper words does not reveal them
+again; unlock the saved identity to authorize a new paper key.
+
+Deletion and ownership transfer for a bound chat require its channel identity's proof
+on the server. Those operations are not adapted by this creation/upgrade flow.
