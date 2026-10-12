@@ -77,6 +77,7 @@ const generated: GeneratedSettingsSearchData = {
     {id: 'AppActiveWebSessionsTab:Disconnect', sectionId: 'AppActiveWebSessionsTab', kind: 'row', titleLangKey: 'Disconnect'},
     {id: 'AppActiveWebSessionsTab:OtherWebSessions', sectionId: 'AppActiveWebSessionsTab', kind: 'subsection', titleLangKey: 'OtherWebSessions'},
     {id: 'AppActiveWebSessionsTab:TerminateAllWebSessions', sectionId: 'AppActiveWebSessionsTab', kind: 'row', titleLangKey: 'TerminateAllWebSessions'},
+    {id: 'AppBlahIdentityTab:BlahChatIdentities', sectionId: 'AppBlahIdentityTab', kind: 'subsection', titleLangKey: 'BlahChatIdentities'},
     {id: 'AppBlahIdentityTab:BlahCreateIdentity', sectionId: 'AppBlahIdentityTab', kind: 'row', titleLangKey: 'BlahCreateIdentity'},
     {id: 'AppBlahIdentityTab:BlahImportIdentity', sectionId: 'AppBlahIdentityTab', kind: 'row', titleLangKey: 'BlahImportIdentity'},
     {id: 'AppBlahIdentityTab:BlahSavedIdentities', sectionId: 'AppBlahIdentityTab', kind: 'subsection', titleLangKey: 'BlahSavedIdentities'},
