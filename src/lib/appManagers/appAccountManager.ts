@@ -340,6 +340,12 @@ export default class AppAccountManager extends AppManager {
     return identityAction(this.getAccountNumber(), request);
   }
 
+  public async blahChatIdentity(request: import('@lib/blah/chatIdentity').ChatIdentityRequest) {
+    const {chatIdentityAction} = await import('@lib/blah/invoke');
+    return chatIdentityAction(this.getAccountNumber(), {apiManager: this.apiManager, apiUpdatesManager: this.apiUpdatesManager,
+      appChatsManager: this.appChatsManager, appUsersManager: this.appUsersManager, appPeersManager: this.appPeersManager, appProfileManager: this.appProfileManager}, request);
+  }
+
   /** Blah managed accounts sign in with their token, like a bot, but are ordinary users. */
   public async importManagedAccountAuthorization(token: string) {
     const authorization = await this.apiManager.invokeApi('auth.importBotAuthorization', {

@@ -3,8 +3,13 @@ import type MTPNetworker from '@lib/mtproto/networker';
 import Schema from '@lib/mtproto/schema';
 import {TLSerialization} from '@lib/mtproto/tl_utils';
 import type {InvokeApiOptions} from '@types';
-import {bindIdentity, numberIdentity, withIdentity} from '@lib/blah/identity';
+import {bindIdentity, numberIdentity, withIdentity, withResourceIdentity} from '@lib/blah/identity';
 import {diem} from '@lib/blah/wasm';
+
+// Keep chat dispatch in the same static worker graph as its signer/custody. A lazy
+// chunk importing the worker entry again loses the entry URL's query parameters
+// and creates a second instance of its unlocked-identity maps.
+export {chatIdentityAction} from '@lib/blah/chatIdentity';
 
 // Application schema extension: upstream generated Telegram schemas remain untouched.
 Schema.API.constructors.push(
@@ -22,18 +27,23 @@ Schema.API.methods.push(
   {id: 0xff5c6967 | 0, method: 'blah.getStickerSetProfile', params: [{name: 'id', type: 'Vector<InputStickerSet>'}], type: 'Vector<blah.ResourceProfile>'}
 );
 
-export async function provenCall(slot: number, networker: MTPNetworker, method: string, params: unknown, options: InvokeApiOptions = {}) {
-  const domain = await bindIdentity(slot);
+export type BlahInvokeOptions = InvokeApiOptions & {blahResourceIdentity?: string};
+
+export async function provenCall(slot: number, networker: MTPNetworker, method: string, params: unknown, options: BlahInvokeOptions = {}) {
+  const resourceId = options.blahResourceIdentity;
+  const use = resourceId ? <T>(action: Parameters<typeof withIdentity<T>>[1]) => withResourceIdentity(slot, resourceId, action, true, false) :
+    <T>(action: Parameters<typeof withIdentity<T>>[1]) => withIdentity(slot, action);
+  const domain = resourceId ? await use(async(secret) => secret.domain) : await bindIdentity(slot);
   const challenge = await networker.wrapApiCall('blah.requestIdentityChallenge', {domain}, {ignoreErrors: true});
   // Sending the challenge first establishes/binds a PFS key on a cold networker.
   const binding = networker.getIdentityBinding();
   const query = new TLSerialization();
   const resultType = query.storeMethod(method, params);
   const queryBytes = query.getBytes(true);
-  const proof = await withIdentity(slot, async(secret) => {
+  const proof = await use(async(secret) => {
     const result = await diem('prove', secret, {challengeKind: 'invocation',
       challenge: challenge.data, approvedChallenge: challenge.data, expiresAt: challenge.expires_at,
-      query: queryBytes, ...binding}, slot);
+      query: queryBytes, ...binding}, slot, resourceId ? 'channel' : 'user');
     return new Uint8Array(result.proof);
   });
   const current = networker.getIdentityBinding();
@@ -47,9 +57,9 @@ export async function provenCall(slot: number, networker: MTPNetworker, method: 
 }
 
 /** Keep single-use proof retries outside generic API migration/retry handling. */
-export function invokeBlah(slot: number, networker: MTPNetworker, method: string, params: any, options: InvokeApiOptions) {
+export function invokeBlah(slot: number, networker: MTPNetworker, method: string, params: any, options: BlahInvokeOptions) {
   if(networker.dcId !== 1) throw new Error('Wrong Blah home DC.');
-  const proofRequired = method === 'auth.sendCode' || method === 'auth.signUp';
+  const proofRequired = !!options.blahResourceIdentity || method === 'auth.sendCode' || method === 'auth.signUp';
   if(method === 'auth.exportLoginToken' || method === 'auth.importLoginToken' || method.includes('PasskeyLogin')) {
     throw new Error('Blah requires browser identity sign-in.');
   }

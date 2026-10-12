@@ -33,3 +33,12 @@ export async function fetchProfile(domain: string): Promise<Uint8Array> {
   }
 }
 
+
+export function profileDomain(value?: string) {
+  const domain = value?.trim().toLowerCase();
+  if(!domain || domain.length > 253 || !domain.includes('.') || !/^[a-z0-9.-]+$/.test(domain)) {
+    throw new Error('Enter the domain that will serve your public profile.');
+  }
+  return domain;
+}
+
