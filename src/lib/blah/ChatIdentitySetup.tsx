@@ -2,27 +2,17 @@ import {createSignal, Show} from 'solid-js';
 import Modes from '@config/modes';
 import Button from '@components/buttonTsx';
 import PopupElement, {createPopup, usePopupContext} from '@components/popups/indexTsx';
-import I18n, {i18n, LangPackKey} from '@lib/langPack';
+import {i18n, LangPackKey} from '@lib/langPack';
 import IdentityInput from '@lib/blah/IdentityInput';
 import {PaperKeyWords} from '@lib/blah/IdentityDetails';
 import {exportIdentityFile} from '@lib/blah/identityFiles';
 import type {IdentityActions} from '@lib/blah/IdentityPanel';
 import type {ChatIdentityChange, ChatIdentityRequest, ChatIdentityResponse, ChatIdentityResult} from '@lib/blah/chatIdentity';
 import focusWhenSettled from '@helpers/dom/focusWhenSettled';
+import {chatIdentityError} from '@lib/blah/chatIdentityError';
 import styles from '@lib/blah/identity.module.scss';
 
-export function chatIdentityError(cause: unknown) {
-  const error = cause as {type?: string, message?: string};
-  const code = error.type || error.message;
-  const keys: Record<string, LangPackKey> = {
-    IDENTITY_PROOF_INVALID: 'BlahChatProofInvalid', IDENTITY_PROOF_REQUIRED: 'BlahChatProofRequired',
-    IDENTITY_CHALLENGE_INVALID: 'BlahChatChallengeInvalid', CHAT_IDENTITY_REQUIRED: 'BlahChatProofRequired',
-    CHAT_ADMIN_REQUIRED: 'BlahChatCreatorRequired', FEDERATION_NOT_CONFIGURED: 'BlahChatFederationUnavailable',
-    BLAH_PROFILE_NOT_PUBLISHED: 'BlahProfileNeedsPublication', BLAH_PUBLICATION_CHECK_FAILED: 'BlahPublicationCheckFailed'
-  };
-  if(/^FLOOD_WAIT_\d+$/.test(code)) return I18n.format('BlahChatFloodWait', true, [code.slice(11)]);
-  return keys[code] ? I18n.format(keys[code], true) : code || I18n.format('Error.AnError', true);
-}
+export {chatIdentityError} from '@lib/blah/chatIdentityError';
 
 type Props = {
   domain: string,

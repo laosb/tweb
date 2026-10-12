@@ -5,11 +5,12 @@ import {i18n} from '@lib/langPack';
 import IdentityInput from '@lib/blah/IdentityInput';
 import BackupDropzone from '@lib/blah/BackupDropzone';
 import type {IdentityActions} from '@lib/blah/IdentityPanel';
-import type {IdentityView} from '@lib/blah/identity';
+import type {IdentityKind, IdentityView} from '@lib/blah/identity';
 import styles from '@lib/blah/identity.module.scss';
 
 type IdentitySetupProps = {
   mode: 'create' | 'import' | 'paper',
+  kind?: IdentityKind,
   action: IdentityActions,
   onIdentity: (identity: IdentityView) => void
 };
@@ -63,14 +64,14 @@ function SetupForm(props: IdentitySetupProps) {
       </Show>
       <Show when={props.mode === 'paper'}>
         <IdentityInput label="BlahPaperKeyWords" onInput={(value) => { setPhrase(value); setError(''); }} />
-        <p class={styles.footnote}>{i18n('BlahUsePaperKeyHelp')}</p>
+        <p class={styles.footnote}>{i18n(props.kind === 'channel' ? 'BlahUseChatPaperKeyHelp' : 'BlahUsePaperKeyHelp')}</p>
       </Show>
       <IdentityInput label="BlahIdentityPassword" type="password"
         autocomplete={props.mode === 'import' ? 'current-password' : 'new-password'}
         onInput={(value) => { setHasPassword(!!value); setError(''); }} ref={(value) => password = value} />
       <Button primaryFilled disabled={busy() || (props.mode === 'import' && (!file() || !hasPassword())) ||
         (props.mode === 'paper' && (!phrase().trim() || !profileDomain().trim() || !hasPassword()))}
-        onClick={() => submit()} text={title(props.mode)} />
+        onClick={() => submit()} text={title(props)} />
       <p class={styles.footnote}>{i18n('BlahIdentityCustody')}</p>
       <Show when={props.mode === 'create'}>
         <p class={styles.footnote}>{i18n('BlahProfileHosting', [
@@ -82,15 +83,15 @@ function SetupForm(props: IdentitySetupProps) {
   </form>;
 }
 
-function title(mode: IdentitySetupProps['mode']) {
-  return mode === 'create' ? 'BlahCreateIdentity' : mode === 'paper' ? 'BlahUsePaperKey' : 'BlahImportIdentity';
+function title({mode, kind}: IdentitySetupProps) {
+  return mode === 'create' ? 'BlahCreateIdentity' : mode === 'paper' ? kind === 'channel' ? 'BlahUseChatPaperKey' : 'BlahUsePaperKey' : 'BlahImportIdentity';
 }
 
 export default function showIdentitySetup(props: IdentitySetupProps) {
   let created: IdentityView;
   createPopup(() => <PopupElement class={styles.setupPopup} closable
     onCloseAfterTimeout={() => { if(created) props.onIdentity(created); }}>
-    <PopupElement.Header><PopupElement.CloseButton /><PopupElement.Title title={title(props.mode)} /></PopupElement.Header>
+    <PopupElement.Header><PopupElement.CloseButton /><PopupElement.Title title={title(props)} /></PopupElement.Header>
     <PopupElement.Scrollable><PopupElement.Body class={styles.setupBody}><SetupForm {...props} onIdentity={(identity) => created = identity} /></PopupElement.Body></PopupElement.Scrollable>
   </PopupElement>);
 }

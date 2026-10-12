@@ -2,6 +2,7 @@ import {createMemo, createSignal, createUniqueId, onCleanup, Show} from 'solid-j
 import {Portal} from 'solid-js/web';
 import {Chat, ChatFull, CommunityPeer} from '@layer';
 import {i18n} from '@lib/langPack';
+import blah from '@config/blah';
 import getPeerId from '@appManagers/utils/peers/getPeerId';
 import AvatarEdit, {AvatarEditPayload} from '@components/avatarEdit';
 import Button from '@components/buttonTsx';
@@ -207,7 +208,9 @@ function EditCommunityForm(props: {
 
     setDeleting(true);
     try {
-      await tab.managers.appChatsManager.delete(communityId);
+      if(blah) {
+        if(!await (await import('@lib/blah/chatDeletion')).tryDeleteChatWithIdentity(tab.managers, communityId)) return;
+      } else await tab.managers.appChatsManager.delete(communityId);
       toastNew({langPackKey: 'Community.Deleted'});
       tab.close();
     } catch(error) {
