@@ -1,3 +1,5 @@
+import blah from '@config/blah';
+import useCrossServer from '@lib/blah/CrossServer';
 import {onCleanup, onMount} from 'solid-js';
 import InputField from '@components/inputField';
 import {InputFieldTsx} from '@components/inputFieldTsx';
@@ -15,6 +17,7 @@ import type {AppNewChannelTab} from '@components/solidJsTabs/tabs';
 
 const NewChannel = () => {
   const [tab] = useSuperTab<typeof AppNewChannelTab>();
+  const crossServer = blah && useCrossServer();
   const {appImManager, appSidebarLeft} = useHotReloadGuard();
   const {onCreate, openAfter = true} = tab.payload;
 
@@ -49,7 +52,7 @@ const NewChannel = () => {
         about,
         broadcast: true
       };
-      handleChannelsTooMuch(() => tab.managers.appChatsManager.createChannel(options))
+      handleChannelsTooMuch(() => crossServer?.enabled() ? crossServer.createChannel(options) : tab.managers.appChatsManager.createChannel(options))
       .then(async(channelId) => {
         if(uploadAvatar) {
           uploadAvatar.file().then((inputFile) => {
@@ -101,6 +104,7 @@ const NewChannel = () => {
           instanceRef={(ref) => descField = ref}
         />
       </div>
+      {crossServer?.row}
     </Section>
   );
 };

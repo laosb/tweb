@@ -10,14 +10,15 @@ export async function verifyResourceProfile(
   slot: number,
   kind: 'user' | 'channel' | 'stickerSet',
   id: string,
-  encoding: Uint8Array
+  encoding: Uint8Array,
+  allowUnnumbered = false
 ): Promise<ResourceIdentity | undefined> {
   const home = getBlahConfig(slot)?.home?.identity;
   if(!home) return;
   try {
     const profile = await (await diemClient()).verifyProfile(encoding, Math.floor(Date.now() / 1000), {verify: verifySignature});
     if(kind === 'user' ? profile.kind !== 'user' && profile.kind !== 'bot' : profile.kind !== kind) return;
-    if(!profile.home || (profile.home.dc === home && profile.home.account !== id)) return;
+    if(!profile.home || (profile.home.dc === home && profile.home.account !== id && !(allowUnnumbered && !profile.home.account))) return;
     // Foreign home account numbers belong to another namespace. The DC maps the peer ID.
     return {identityId: profile.id, domains: profile.domains, lapsed: profile.lapsed, kind: profile.kind};
   } catch{

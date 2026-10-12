@@ -137,3 +137,12 @@ it('treats verifier errors as unknown, preserving other results and omissions', 
   ]);
   expect(await get(1, ids(2, -2, -3))).toEqual([undefined, {status: 'present', identity: {...identity, kind: 'channel'}}, missing]);
 });
+
+
+it('allows a proposed channel profile only when explicitly requested by its edit form', async() => {
+  mocks.verify.mockResolvedValue({...verified, kind: 'channel', home: {...verified.home, account: null}});
+  expect(await verifyResourceProfile(1, 'channel', '2', new Uint8Array([1]))).toBeUndefined();
+  expect(await verifyResourceProfile(1, 'channel', '2', new Uint8Array([1]), true)).toMatchObject({kind: 'channel', identityId: verified.id});
+  mocks.verify.mockResolvedValue({...verified, kind: 'channel', home: {...verified.home, account: '3'}});
+  expect(await verifyResourceProfile(1, 'channel', '2', new Uint8Array([1]), true)).toBeUndefined();
+});
