@@ -35,6 +35,10 @@ export default function IdentityPanel(props: {
       picker.setValueSilently(selectedLabel());
       showIdentitySetup({mode: id, action: props.action, onIdentity: (current) => {
         if(cancelled) return;
+        if(current.kind === 'channel') {
+          showIdentityDetails({summary: current, identity: current, action: props.action, onIdentity: () => {}});
+          return;
+        }
         acceptIdentity(current);
         if(id === 'create') queueMicrotask(() => { if(!cancelled) openDetails(); });
       }});

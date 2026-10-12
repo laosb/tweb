@@ -1,4 +1,6 @@
 import getChatReactionsSummary from '@appManagers/utils/reactions/getChatReactionsSummary';
+import blah from '@config/blah';
+import useCrossServer from '@lib/blah/CrossServer';
 import {
   Component,
   createEffect,
@@ -142,6 +144,7 @@ function EditChatForm(props: {
   } = useHotReloadGuard();
   const [chat, setChat] = createSignal<EditChat>(props.data.chat);
   const [chatFull, setChatFull] = createSignal<EditChatFull>(props.data.chatFull);
+  const crossServer = blah && useCrossServer(props.data.chat);
   const [title, setTitle] = createSignal(props.data.chat.title);
   const [about, setAbout] = createSignal(props.data.chatFull.about || '');
   const [saving, setSaving] = createSignal(false);
@@ -183,6 +186,7 @@ function EditChatForm(props: {
   }, {isForum: isForum()});
 
   const isDirty = createMemo(() => {
+    if(crossServer?.enabled()) return true;
     return title() !== props.data.chat.title ||
       about() !== (props.data.chatFull.about || '') ||
       hasAvatarPreview();
@@ -401,6 +405,9 @@ function EditChatForm(props: {
       return;
     }
 
+    if(crossServer?.enabled()) return crossServer.save({chatId: chatId(), title: title(),
+      changedTitle: title() !== props.data.chat.title ? title() : undefined,
+      about: about() !== (props.data.chatFull.about || '') ? about() : undefined, uploadAvatar}, setSaving, () => tab.close());
     const promises: Promise<unknown>[] = [];
     if(title() !== props.data.chat.title) {
       promises.push(tab.managers.appChatsManager.editTitle(chatId(), title()));
@@ -653,6 +660,7 @@ function EditChatForm(props: {
         </div>
       </Section>
 
+      {crossServer?.row}
       <Show when={hasMainSettings()}>
         <Section caption={mainCaption()}>
           <Show when={canChangeType()}>
