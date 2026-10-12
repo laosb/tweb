@@ -1,4 +1,4 @@
-import {createSignal, For, onCleanup, onMount} from 'solid-js';
+import {createSignal, For, Show, onCleanup, onMount} from 'solid-js';
 import Section from '@components/section';
 import Row from '@components/rowTsx';
 import {useSuperTab} from '@components/solidJsTabs/superTabProvider';
@@ -14,13 +14,15 @@ import focusWhenSettled from '@helpers/dom/focusWhenSettled';
 export default function IdentitySettings() {
   const [tab] = useSuperTab();
   const [identities, setIdentities] = createSignal<IdentitySummary[]>([]);
+  const [chats, setChats] = createSignal<IdentitySummary[]>([]);
   const [message, setMessage] = createSignal('');
   let disposed = false;
   onCleanup(() => { disposed = true; });
   const action: IdentityActions = (request) => tab.managers.appAccountManager.blahIdentity(request);
   const refresh = async() => {
     try {
-      const result = await action({action: 'list'});
+      const [result, resources] = await Promise.all([action({action: 'list'}), action({action: 'list', kind: 'channel'})]);
+      if(!disposed) setChats(resources.identities || []);
       const entries: IdentitySummary[] = result.identities || result.ids.map((id) => ({id}));
       if(!disposed) setIdentities((previous) => entries
         .map((entry) => previous.find((saved) => saved.id === entry.id && saved.domain === entry.domain) || entry));
@@ -54,6 +56,12 @@ export default function IdentitySettings() {
         <Row.Subtitle><code class={styles.identifier} title={entry.id}>{entry.id}</code></Row.Subtitle>
       </Row>}</For>
     </Section>
+    <Show when={chats().length}><Section name="BlahChatIdentities">
+      <For each={chats()}>{(entry) => <Row clickable={(event) => openDetails(entry, undefined, event.currentTarget)}>
+        <Row.Icon icon="key" /><Row.Title>{entry.title || entry.domain}</Row.Title>
+        <Row.Subtitle>{entry.chatId ? entry.domain : i18n('BlahIdentityNotAttachedSubtitle')}</Row.Subtitle>
+      </Row>}</For>
+    </Section></Show>
     <Section caption="BlahIdentityCustody">
       <Row clickable={() => setup('create')}><Row.Icon icon="adduser" /><Row.Title>{i18n('BlahCreateIdentity')}</Row.Title></Row>
       <Row clickable={() => setup('import')}><Row.Icon icon="document" /><Row.Title>{i18n('BlahImportIdentity')}</Row.Title></Row>

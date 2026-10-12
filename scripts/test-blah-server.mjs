@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {openSync} from 'node:fs';
 import {createServer} from 'node:https';
 import {createServer as tcpServer} from 'node:net';
-import {mkdtemp, readFile, writeFile, mkdir, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, writeFile, mkdir, rename, rm} from 'node:fs/promises';
 import {spawn, execFileSync} from 'node:child_process';
 import {generateKeyPairSync, createHash} from 'node:crypto';
 import {once} from 'node:events';
@@ -28,6 +28,15 @@ const proxy = require('http-proxy').createProxyServer({
   ws: true
 });
 const dir = await mkdtemp(process.env.TMPDIR ? process.env.TMPDIR + '/tweb-e2e-' : '/tmp/tweb-e2e-');
+const chatDomains = ['news.alice.example.org', 'updates.alice.example.org'];
+const profileDomains = ['alice.example.org', 'bob.example.org', ...chatDomains];
+async function publishProfile(domain, bytes) {
+  assert(profileDomains.includes(domain));
+  // Teleblah's test transport reads <domain>.cbor; replace atomically like its e2e publisher.
+  const file = dir + '/profiles/' + domain + '.cbor';
+  await writeFile(file + '.tmp', bytes);
+  await rename(file + '.tmp', file);
+}
 let child,
   otherChild,
   browser,
@@ -102,15 +111,17 @@ try {
       if(req.method === 'PUT' && (path === '/publish' || path === '/publish/bob')) {
         const chunks = [];
         for await (const chunk of req) chunks.push(chunk);
-        await writeFile(dir + '/profiles/' + (path.endsWith('/bob') ? 'bob' : 'alice') + '.example.org.cbor', Buffer.concat(chunks));
+        await publishProfile((path.endsWith('/bob') ? 'bob' : 'alice') + '.example.org', Buffer.concat(chunks));
         res.end('ok');
         return;
       }
       // Profile hosting for fetches from the shared worker, which page routes do not intercept.
-      if(req.method === 'GET' && path === '/.well-known/blah/profile.cbor' && req.headers.host?.startsWith('alice.example.org')) {
+      const host = new URL('https://' + req.headers.host).hostname;
+      if(req.method === 'GET' && path === '/.well-known/blah/profile.cbor' && profileDomains.includes(host)) {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Content-Type', 'application/cbor');
-        res.end(await readFile(dir + '/profiles/alice.example.org.cbor'));
+        res.setHeader('Cache-Control', 'no-store');
+        res.end(await readFile(dir + '/profiles/' + host + '.cbor'));
         return;
       }
       const relative = path === '/' ? 'index.html' : path.slice(1);
@@ -171,7 +182,7 @@ try {
     // SharedWorker requests do not inherit a Playwright context's ignoreHTTPSErrors.
     args: ['--no-sandbox', '--ignore-certificate-errors',
       // Keep the page and worker on an allowed CDN origin while serving everything locally.
-      `--host-resolver-rules=MAP blah-server-test.blahim.com 127.0.0.1:${tlsPort},MAP alice.example.org 127.0.0.1:${tlsPort}` +
+      '--host-resolver-rules=' + ['blah-server-test.blahim.com', ...profileDomains].map(host => `MAP ${host} 127.0.0.1:${tlsPort}`).join(',') +
         (localRuntime.size ? `,MAP ${new URL(diemRuntimeURL).hostname} 127.0.0.1:${tlsPort}` : '')]
   });
   const signupContext = await browser.newContext({
@@ -320,6 +331,9 @@ try {
       return identityID;
     }
     const aliceIdentity = await signUp(page, 1, 'alice.example.org', 'Alice', origin + '/publish');
+    // The long-domain layout check also left a user identity in the vault.
+    const signInIDsBeforeChats = await page.evaluate(async() => (await window.rootScope.managers.appAccountManager.blahIdentity({action: 'list'})).ids);
+    assert(signInIDsBeforeChats.includes(aliceIdentity));
     const userId = await page.evaluate(() => JSON.parse(localStorage.getItem('account1')).userId);
     // These go through the application schema and manager, never a raw UI RPC.
     await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
@@ -341,6 +355,172 @@ try {
     await homeNotice.waitFor();
     assert.equal(await homeNotice.locator('..').getByRole('button').count(), 0, 'The notice is informational');
     await page.evaluate(() => window.appSidebarRight.toggleSidebar(false));
+
+    async function downloadFile(button, filename, suggestedFilename) {
+      await expect(button).toBeEnabled();
+      const pending = page.waitForEvent('download');
+      await button.press('Enter');
+      const download = await pending;
+      if(suggestedFilename) assert.equal(download.suggestedFilename(), suggestedFilename);
+      await download.saveAs(filename);
+      const bytes = await readFile(filename);
+      assert(bytes.length > 0, 'Downloaded file is not empty');
+      return bytes;
+    }
+    async function verifyChatProfile(bytes, domain, account) {
+      const profile = await page.evaluate(async({bytes, runtimeURL}) => {
+        const {createDiem} = await import(runtimeURL);
+        const diem = await (window.blahTestProfileVerifier ||= createDiem());
+        return diem.verifyProfile(new Uint8Array(bytes), Math.floor(Date.now() / 1000), {
+          verify: async(key, data, signature) => crypto.subtle.verify('Ed25519',
+            await crypto.subtle.importKey('raw', new Uint8Array(key), 'Ed25519', false, ['verify']),
+            new Uint8Array(signature), new Uint8Array(data))
+        });
+      }, {bytes: Array.from(bytes), runtimeURL: diemRuntimeURL});
+      assert.equal(profile.kind, 'channel');
+      assert.deepEqual(profile.domains, [domain]);
+      assert.equal(profile.home.dc, id);
+      if(account === undefined) assert(!profile.home.account, 'Proposed identity is unnumbered');
+      else assert.equal(profile.home.account, String(account));
+      return profile;
+    }
+    async function readChatProfile(chatId) {
+      const result = await page.evaluate(async(chatId) => {
+        const [result] = await window.rootScope.managers.appProfileManager.getBlahResourceProfiles([-chatId]);
+        return result?.status === 'present' ? {id: result.profile.id, profile: Array.from(result.profile.profile)} : result;
+      }, chatId);
+      assert.equal(String(result.id), String(chatId), 'blah.getChannelProfile returns the requested channel');
+      return result.profile;
+    }
+    async function completeChatIdentity(domain, title, primaryAction) {
+      const dialog = page.getByRole('dialog', {name: 'Cross-server', exact: true});
+      const password = dialog.getByLabel('Identity password', {exact: true});
+      await dialog.waitFor();
+      await expect.poll(() => dialog.evaluate(element => element.contains(document.activeElement))).toBe(true);
+      await password.fill('test chat identity password');
+      await password.press('Enter');
+      await expect(dialog.locator('ol li')).toHaveCount(24, {timeout: 30000});
+      assert((await dialog.locator('ol li').allInnerTexts()).every(word => /^[a-z]+$/.test(word)), 'Paper key contains 24 words');
+      const saveFile = dialog.getByRole('button', {name: 'Save identity file', exact: true});
+      await expect(saveFile).toBeFocused();
+      await downloadFile(saveFile, dir + '/' + domain + '-identity.cbor', domain + '-identity.cbor');
+      for(const key of ['Tab', 'Shift+Tab']) {
+        await page.keyboard.press(key);
+        assert(await dialog.evaluate(element => element.contains(document.activeElement)), 'Chat dialog contains keyboard focus');
+      }
+      await expect(dialog.getByText(`https://${domain}/.well-known/blah/profile.cbor`, {exact: true})).toBeVisible();
+      assert.deepEqual((await new AxeBuilder({page}).include('[role="dialog"]').disableRules(['color-contrast']).analyze()).violations, []);
+      await dialog.getByRole('button', {name: 'I wrote it down', exact: true}).press('Enter');
+      await expect(dialog.locator('ol li')).toHaveCount(0);
+      const exportProfile = dialog.getByRole('button', {name: 'Export public profile', exact: true});
+      const proposed = await downloadFile(exportProfile, dir + '/' + domain + '-proposed.cbor', 'profile.cbor');
+      const verified = await verifyChatProfile(proposed, domain);
+      await publishProfile(domain, proposed);
+      // The bind action checks the exact HTTPS bytes from the shared worker before sending its proof.
+      await dialog.getByRole('button', {name: primaryAction, exact: true}).press('Enter');
+      const check = dialog.getByRole('button', {name: 'Check publication', exact: true});
+      await expect(check).toBeFocused({timeout: 30000});
+      await expect(dialog).toContainText('The chat is now bound to this identity.');
+      const entry = await page.evaluate(async(domain) => {
+        const {identities} = await window.rootScope.managers.appAccountManager.blahIdentity({action: 'list', kind: 'channel'});
+        return identities.find(entry => entry.domain === domain);
+      }, domain);
+      assert.equal(entry.id, verified.id);
+      assert.equal(entry.title, title);
+      assert(entry.chatId > 0);
+      assert.deepEqual(Buffer.from(await readChatProfile(entry.chatId)), proposed, 'The create/edit proof bound the proposed profile at the DC');
+      const numbered = await downloadFile(exportProfile, dir + '/' + domain + '-numbered.cbor', 'profile.cbor');
+      assert.equal((await verifyChatProfile(numbered, domain, entry.chatId)).id, verified.id);
+      assert(!numbered.equals(proposed), 'Numbering changes the exported profile');
+      await publishProfile(domain, numbered);
+      await downloadFile(saveFile, dir + '/' + domain + '-numbered-identity.cbor', domain + '-identity.cbor');
+      // getChannelProfile returns stored knowledge. A proof-wrapped read refetches the
+      // hosted numbered revision, just like the account read after signup. Custody is
+      // still unlocked here; closing the dialog locks it.
+      await page.evaluate(async({id, chatId}) => {
+        const managers = window.rootScope.managers;
+        const channel = await managers.appChatsManager.getChannelInput(chatId);
+        await managers.apiManager.invokeApi('blah.getChannelProfile', {id: [channel]}, {blahResourceIdentity: id});
+      }, entry);
+      await check.press('Enter');
+      await dialog.waitFor({state: 'detached'});
+      const storedProfile = await readChatProfile(entry.chatId);
+      assert.deepEqual(Buffer.from(storedProfile), numbered, 'The DC returns the published numbered profile');
+      assert.equal((await verifyChatProfile(storedProfile, domain, entry.chatId)).id, entry.id);
+      return entry;
+    }
+    async function openNewChannel(title) {
+      // At desktop width the sidebar is already visible and the chat's Close button is hidden.
+      await page.locator('#new-menu').press('Enter');
+      await page.getByRole('menuitem', {name: 'New Channel', exact: true}).press('Enter');
+      const form = page.locator('.new-channel-container.active');
+      await form.getByLabel('Channel name', {exact: true}).fill(title);
+      await expect(form.getByRole('checkbox', {name: 'Cross-server', exact: true})).not.toBeChecked();
+      return form;
+    }
+    async function finishChannelCreation(title) {
+      const members = page.locator('.add-members-container.active');
+      await members.waitFor();
+      // Leave optional subscriber selection via its own Back button; Escape routes to the chat.
+      await members.getByRole('button', {name: 'Back', exact: true}).press('Enter');
+      await members.waitFor({state: 'detached'});
+      await expect(page.locator('#column-center .chat-info').filter({hasText: title})).toBeVisible();
+      const peerId = await page.evaluate(() => window.appImManager.chat.peerId);
+      assert(peerId < 0, 'The newly created channel opened');
+      return -peerId;
+    }
+    async function assertCrossServerInfo(entry) {
+      // Peer identity lookups cache omissions for five minutes. Reopen after reload
+      // to verify persisted binding and the info panel with a fresh lookup.
+      await page.reload();
+      await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+      await page.evaluate(chatId => window.appImManager.setPeer({peerId: -chatId}), entry.chatId);
+      await page.locator('#column-center .chat-info').filter({hasText: entry.title}).click();
+      const info = page.locator('#column-right .tabs-tab.active');
+      // Reconciliation can promote the domain to the channel's public link;
+      // either that link or the fallback Identity row names the same domain.
+      await expect(info.locator('.row-title').filter({hasText: entry.domain}).first()).toBeVisible();
+      await expect(info.getByText('Only people on dc.example.org can join', {exact: true})).toHaveCount(0);
+      assert.equal((await verifyChatProfile(await readChatProfile(entry.chatId), entry.domain, entry.chatId)).id, entry.id);
+      await page.evaluate(() => window.appSidebarRight.toggleSidebar(false));
+    }
+
+    await page.setViewportSize({width: 1280, height: 900});
+    const createdTitle = 'Cross-server news';
+    const createForm = await openNewChannel(createdTitle);
+    await createForm.getByRole('checkbox', {name: 'Cross-server', exact: true}).press('Space');
+    await createForm.getByLabel('Profile domain', {exact: true}).fill(chatDomains[0]);
+    await createForm.getByRole('button', {name: 'Next', exact: true}).press('Enter');
+    const createdChatIdentity = await completeChatIdentity(chatDomains[0], createdTitle, 'New Channel');
+    assert.equal(await finishChannelCreation(createdTitle), createdChatIdentity.chatId);
+    await assertCrossServerInfo(createdChatIdentity);
+
+    const upgradedTitle = 'Initially home-only news';
+    const ordinaryForm = await openNewChannel(upgradedTitle);
+    await ordinaryForm.getByRole('button', {name: 'Next', exact: true}).press('Enter');
+    const ordinaryId = await finishChannelCreation(upgradedTitle);
+    await page.locator('#column-center .chat-info').filter({hasText: upgradedTitle}).click();
+    await page.locator('#column-right').getByText('Only people on dc.example.org can join', {exact: true}).waitFor();
+    await page.locator('#column-right .tabs-tab.active').getByRole('button', {name: 'Edit', exact: true}).press('Enter');
+    const editForm = page.locator('#column-right .edit-group-container.active');
+    const crossServer = editForm.getByRole('checkbox', {name: 'Cross-server', exact: true});
+    await expect(crossServer).not.toBeChecked();
+    await expect(editForm.getByRole('button', {name: 'Save', exact: true})).toHaveCount(0);
+    await crossServer.press('Space');
+    await editForm.getByLabel('Profile domain', {exact: true}).fill(chatDomains[1]);
+    await expect(editForm.getByLabel('Channel name', {exact: true})).toHaveText(upgradedTitle);
+    await expect(editForm.getByLabel('Description', {exact: true})).toHaveText('');
+    // No title/about/photo edits: Teleblah binds, then returns CHAT_NOT_MODIFIED.
+    await editForm.getByRole('button', {name: 'Save', exact: true}).press('Enter');
+    const upgradedChatIdentity = await completeChatIdentity(chatDomains[1], upgradedTitle, 'Save');
+    assert.equal(upgradedChatIdentity.chatId, ordinaryId);
+    await editForm.waitFor({state: 'detached'});
+    await assertCrossServerInfo(upgradedChatIdentity);
+    const chatIdentities = [createdChatIdentity, upgradedChatIdentity];
+    const signInIDs = await page.evaluate(async() => (await window.rootScope.managers.appAccountManager.blahIdentity({action: 'list'})).ids);
+    assert.deepEqual(signInIDs, signInIDsBeforeChats, 'Creating chat custody leaves the sign-in candidates unchanged');
+    for(const entry of chatIdentities) assert(!signInIDs.includes(entry.id), 'Chat custody never becomes a sign-in candidate');
+    await page.setViewportSize({width: 375, height: 720});
 
     // Settings renders the same peer info panel with self details enabled.
     await page.locator('#column-center .chat-info-container').getByRole('button', {name: 'Close', exact: true}).click();
@@ -402,6 +582,20 @@ try {
     await otherPage.goto(origin + '/?account=2&debug=1&noServiceWorker=1&a11y=1');
     await otherInput.fill('other.example.org');
     await otherPage.getByRole('button', {name: 'Connect to Blah'}).click();
+    const accountPicker = otherPage.getByRole('combobox', {name: 'Saved identity', exact: true});
+    await accountPicker.fill('alice.example.org');
+    const accountOptions = otherPage.getByRole('listbox', {name: 'Saved identity'}).getByRole('option');
+    const expectAccountOptions = async(labels) => {
+      await expect(accountOptions).toHaveCount(labels.length);
+      for(const [index, label] of labels.entries()) await expect(accountOptions.nth(index)).toHaveAccessibleName(label);
+    };
+    await expectAccountOptions([
+      'alice.example.org - ' + aliceIdentity.slice(0, 6), 'Create identity', 'Import identity from file', 'Sign in with paper key'
+    ]);
+    for(const entry of chatIdentities) {
+      await accountPicker.fill(entry.domain);
+      await expectAccountOptions(['Create identity', 'Import identity from file', 'Sign in with paper key']);
+    }
     await signUp(otherPage, 2, 'bob.example.org', 'Bob', origin + '/publish/bob');
     const accounts = await otherPage.evaluate(() => [1, 2].map(slot => JSON.parse(localStorage.getItem('account' + slot))));
     assert.equal(accounts[0].userId, userId);
@@ -426,6 +620,13 @@ try {
     const panel = page.locator('.tabs-tab.active').filter({has: page.getByText('Saved identities', {exact: true})});
     await panel.waitFor();
     assert.equal(await panel.getByRole('combobox').count(), 0);
+    const chatSection = panel.locator('.sidebar-left-section').filter({has: page.getByText('Chat identities', {exact: true})});
+    await expect(chatSection.getByRole('button')).toHaveCount(2);
+    const userSection = panel.locator('.sidebar-left-section').filter({has: page.getByText('Saved identities', {exact: true})});
+    for(const entry of chatIdentities) {
+      await expect(chatSection.getByRole('button', {name: entry.title + ' ' + entry.domain, exact: true})).toBeVisible();
+      await expect(userSection.getByText(entry.domain, {exact: true})).toHaveCount(0);
+    }
     const opener = panel.getByRole('button', {name: 'Import identity from file', exact: true});
     await opener.press('Enter');
     const dialog = page.getByRole('dialog', {name: 'Import identity from file'});
@@ -518,14 +719,11 @@ try {
     await paperDialog.getByRole('button', {name: 'I wrote it down', exact: true}).click();
     await paperDialog.waitFor({state: 'detached'});
     await expect(deviceRows).toHaveCount(2);
-    const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', {
+    const backupFile = dir + '/identity.cbor';
+    await downloadFile(page.getByRole('button', {
       name: 'Export identity file',
       exact: true
-    }).click();
-    const download = await downloadPromise;
-    const backupFile = dir + '/identity.cbor';
-    await download.saveAs(backupFile);
+    }), backupFile);
     await page.keyboard.press('Escape');
     await identityDetails.waitFor({state: 'detached'});
     const context = await browser.newContext({
@@ -650,7 +848,7 @@ try {
     await page.goto(origin + '/?account=2&debug=1&noServiceWorker=1&a11y=1');
     await page.getByRole('textbox', {name: 'DC domain'}).waitFor();
     assert.equal(await page.getByRole('textbox', {name: 'DC domain'}).inputValue(), '');
-    console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, verified peer identity row and home-only notice, profile publication, reload, recovered identity and paper-key login, dialog keyboard/focus and Axe checks.');
+    console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, Cross-server creation and toggle-only upgrade, numbered channel profiles, chat custody/sign-in separation, verified peer identity row and home-only notice, profile publication, reload, recovered identity and paper-key login, dialog keyboard/focus and Axe checks.');
   } catch(error) {
     if(process.env.BLAH_IDENTITY_SCREENSHOT) await activePage.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-failure.png', timeout: 3000}).catch(() => {});
     console.error(error);

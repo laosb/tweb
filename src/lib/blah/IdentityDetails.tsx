@@ -12,9 +12,8 @@ import type {IdentityRequest, IdentitySummary, IdentityView, PaperKeyView} from 
 import {detailsSession} from '@lib/blah/detailsSession';
 import {renewalPolicy} from '@lib/blah/renewal';
 import {encode} from '@lib/blah/vault';
-import createDownloadAnchor from '@helpers/dom/createDownloadAnchor';
+import {exportIdentityFile as exportFile} from '@lib/blah/identityFiles';
 import focusWhenSettled from '@helpers/dom/focusWhenSettled';
-import {ObjectURLScope} from '@helpers/objectUrl';
 import styles from '@lib/blah/identity.module.scss';
 
 export type DetailsProps = {
@@ -48,12 +47,6 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
     if(props.identity) void run({action: 'inspect'});
     else focusWhenSettled(password, () => !props.session.isClosed());
   });
-
-  function exportFile(name: string, bytes: BlobPart, type: string) {
-    const urls = new ObjectURLScope();
-    const url = urls.create(new Blob([bytes], {type}));
-    createDownloadAnchor(url, name, () => setTimeout(() => urls.dispose(), 30_000));
-  }
 
   async function checkPublication() {
     const check = ++publicationCheck;
@@ -158,7 +151,7 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
     try {
       await confirmationPopup({
         titleLangKey: 'BlahAddPaperKey',
-        descriptionLangKey: 'BlahAddPaperKeyHelp',
+        descriptionLangKey: identity().kind === 'channel' ? 'BlahChatPaperKeyHelp' : 'BlahAddPaperKeyHelp',
         button: {langKey: 'BlahAddPaperKey'}
       });
     } catch{ return; }
@@ -170,8 +163,7 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
     function PaperKey() {
       const popup = usePopupContext();
       return <div class={styles.panel}>
-        <ol class={styles.paperWords}><For each={paper.phrase.split(' ')}>{(word) => <li>{word}</li>}</For></ol>
-        <p>{i18n('BlahPaperKeyWrite', [<b>{domain}</b> as HTMLElement, <code>{paper.device.slice(0, 8)}</code> as HTMLElement])}</p>
+        <PaperKeyWords paper={paper} domain={domain} />
         <Button primaryFilled text="BlahPaperKeyDone" onClick={() => popup.hide()} />
       </div>;
     }
@@ -244,7 +236,7 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
         <Row><Row.Icon icon="key" /><Row.Title><code class={styles.identifier} title={identity().id}>{identity().id}</code></Row.Title><Row.Subtitle>{i18n('BlahIdentityID')}</Row.Subtitle></Row>
         <Row><Row.Icon icon="time_filled" /><Row.Title>{new Date(identity().expiresAt * 1000).toLocaleString()}</Row.Title><Row.Subtitle>{i18n('BlahProfileExpires')}</Row.Subtitle></Row>
       </Section>
-      <Section name="BlahProfileDomains" caption="BlahProfileDomainsHelp">
+      <Show when={identity().kind !== 'channel'}><Section name="BlahProfileDomains" caption="BlahProfileDomainsHelp">
         <For each={identity().domains}>{(domain) => <div role="group" aria-label={domain}>
           <Row disabled={busy()}>
             <Row.Title>{domain}</Row.Title>
@@ -257,6 +249,7 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
           <Button text="BlahAddDomain" disabled={busy() || !newDomain().trim()} onClick={addDomain} />
         </form>
       </Section>
+      </Show>
       <Section name="BlahIdentityFiles">
         <Row ref={(element) => exportButton = element} clickable={() => exportFile('profile.cbor', new Uint8Array(identity().profile), 'application/cbor')} disabled={busy()}><Row.Icon icon="document" /><Row.Title>{i18n('BlahExportProfile')}</Row.Title></Row>
         <Row clickable={() => run({action: 'backup'})} disabled={busy()}><Row.Icon icon="document" /><Row.Title>{i18n('BlahExportBackup')}</Row.Title></Row>
@@ -294,6 +287,13 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
     </Show>
     <p role="status">{busy() ? i18n('PleaseWait') : message()}</p>
   </div>;
+}
+
+export function PaperKeyWords(props: {paper: PaperKeyView, domain: string}) {
+  return <>
+    <ol class={styles.paperWords}><For each={props.paper.phrase.split(' ')}>{(word) => <li>{word}</li>}</For></ol>
+    <p>{i18n('BlahPaperKeyWrite', [<b>{props.domain}</b> as HTMLElement, <code>{props.paper.device.slice(0, 8)}</code> as HTMLElement])}</p>
+  </>;
 }
 
 export default function showIdentityDetails(props: DetailsProps) {

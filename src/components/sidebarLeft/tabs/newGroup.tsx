@@ -1,3 +1,5 @@
+import blah from '@config/blah';
+import useCrossServer from '@lib/blah/CrossServer';
 import {Component, onCleanup, onMount} from 'solid-js';
 import {MissingInvitee} from '@layer';
 import InputField from '@components/inputField';
@@ -32,6 +34,7 @@ interface OpenStreetMapInterface {
 
 const NewGroup: Component = () => {
   const [tab] = useSuperTab<typeof AppNewGroupTab>();
+  const crossServer = blah && useCrossServer();
   const {appImManager} = useHotReloadGuard();
   const promiseCollector = usePromiseCollector();
 
@@ -131,7 +134,7 @@ const NewGroup: Component = () => {
           address: userLocationAddress,
           megagroup: true
         };
-        promise = handleChannelsTooMuch(() => tab.managers.appChatsManager.createChannel(options))
+        promise = handleChannelsTooMuch(() => crossServer?.enabled() ? crossServer.createChannel(options) : tab.managers.appChatsManager.createChannel(options))
         .then(async(chatId) => {
           if(uploadAvatar) {
             uploadAvatar.file().then((inputFile) => {
@@ -151,7 +154,7 @@ const NewGroup: Component = () => {
             title: groupTitle,
             about: ''
           };
-          promise = handleChannelsTooMuch(() => tab.managers.appChatsManager.createChannel(options))
+          promise = handleChannelsTooMuch(() => crossServer?.enabled() ? crossServer.createChannel(options) : tab.managers.appChatsManager.createChannel(options))
           .then((chatId) => ({chatId, missingInvitees: [] as MissingInvitee[]}));
 
           if(peerIds.length) {
@@ -161,7 +164,7 @@ const NewGroup: Component = () => {
             });
           }
         } else {
-          promise = tab.managers.appChatsManager.createChat(
+          promise = crossServer?.enabled() ? crossServer.createChat(groupTitle, userIds) : tab.managers.appChatsManager.createChat(
             groupTitle,
             userIds
           );
@@ -198,6 +201,7 @@ const NewGroup: Component = () => {
       <Section>
         {avatarEdit.container}
         {inputWrapper}
+        {crossServer?.row}
       </Section>
     ) as HTMLElement;
 

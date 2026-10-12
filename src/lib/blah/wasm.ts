@@ -10,7 +10,7 @@ export type IdentityInfo = IdentityResult;
 let queue: Promise<unknown> = Promise.resolve();
 
 /** Serialize use of the Swift bridge; never let one account borrow another's signer. */
-export function diem(operation: string, secret: IdentitySecret, extra: Record<string, unknown> = {}, slot = 1): Promise<IdentityInfo> {
+export function diem(operation: string, secret: IdentitySecret, extra: Record<string, unknown> = {}, slot = 1, kind: 'user' | 'channel' = 'user'): Promise<IdentityInfo> {
   const run = queue.then(async() => {
     const blah = getBlahConfig(slot);
     if(!blah?.home) throw new Error('A decentralized Blah home bootstrap is required.');
@@ -40,7 +40,7 @@ export function diem(operation: string, secret: IdentitySecret, extra: Record<st
       verify: verifySignature
     };
     const policy = renewalPolicy(secret.renewal);
-    return client.identityOperation({profileLifetime: policy.profileDays * DAY, deviceLifetime: policy.deviceDays * DAY, operation, kind: 'user', domain: secret.domain, profile: Array.from(decode(secret.profile)),
+    return client.identityOperation({profileLifetime: policy.profileDays * DAY, deviceLifetime: policy.deviceDays * DAY, operation, kind, domain: secret.domain, profile: Array.from(decode(secret.profile)),
       now: Math.floor(Date.now() / 1000),
       dc: Array.from(Uint8Array.from(blah.home.identity.match(/../g), (hex) => parseInt(hex, 16))),
       dcDomain: blah.home.domain, generation: blah.home.generation,
