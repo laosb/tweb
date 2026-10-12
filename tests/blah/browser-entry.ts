@@ -7,7 +7,7 @@ DeferredIsUsingPasscode.resolveDeferred(false);
 // Two independent homes in one realm exercise the shared-worker custody boundary.
 setBlahConfig(1, blah);
 setBlahConfig(2, {...blah, home: {domain: 'other.example.org', identity: 'cd'.repeat(32), generation: '2'}});
-export {identityAction, bindIdentity, numberIdentity, withIdentity} from '@lib/blah/identity';
+export {identityAction, bindIdentity, numberIdentity, withIdentity, withResourceIdentity} from '@lib/blah/identity';
 // Observe the same logout event that makes the application reload, without navigating this fixture.
 export function resetAccount(slot?: ActiveAccountNumber) {
   const logout = new Promise((resolve) => rootScope.addEventListener('logging_out', resolve, {once: true}));

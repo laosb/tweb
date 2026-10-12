@@ -59,6 +59,43 @@ try {
   assert.equal(created.identity.devices[0].expiresAt - created.identity.devices[0].notBefore, 180 * 86400);
   assert(Array.isArray(created.backup) && (created.backup[0] >> 5) === 5);
   assert(!Buffer.from(created.backup).includes('privateKey'));
+  const channelCustody = await page.evaluate(async() => {
+    const request = {action: 'create', kind: 'channel', domain: 'news.alice.example.org', password: 'x', attempt: 'channel-test'};
+    const created = await fixture.identityAction(1, request);
+    const {identity, paperKey} = created;
+    const proposed = await (await fixture.diemClient()).verifyProfile(identity.profile, Math.floor(Date.now() / 1000), {
+      verify: async(key, data, signature) => crypto.subtle.verify('Ed25519',
+        await crypto.subtle.importKey('raw', new Uint8Array(key), 'Ed25519', false, ['verify']), new Uint8Array(signature), new Uint8Array(data))
+    });
+    await fixture.withResourceIdentity(1, identity.id, async(secret, _info, save) => {
+      await save(await fixture.diem('account', secret, {account: '98765'}, 1, 'channel'));
+    });
+    const numbered = await fixture.identityAction(1, {action: 'inspect', id: identity.id});
+    const backup = await fixture.identityAction(1, {action: 'backup', id: identity.id});
+    const file = await (await fixture.diemClient()).keyFiles.unlock(backup.backup, 'x');
+    const imported = await fixture.diem('inspect', file.contents, {}, 1, 'channel');
+    file.session.destroy();
+    await fixture.identityAction(1, {action: 'lock', id: identity.id});
+    const reused = await fixture.identityAction(1, request);
+    const users = await fixture.identityAction(1, {action: 'list'});
+    const resources = await fixture.identityAction(1, {action: 'list', kind: 'channel'});
+    const current = await fixture.withIdentity(1, async(_secret, info) => info.id);
+    await fixture.identityAction(1, {action: 'lock', id: identity.id});
+    return {id: identity.id, proposed, words: paperKey.phrase.split(' ').length, devices: identity.devices.length,
+      numbered: numbered.identity.account, imported: imported.account, reused: reused.identity.id, repeatedWords: reused.paperKey,
+      users: users.ids, resources: resources.ids, current};
+  });
+  assert.equal(channelCustody.proposed.kind, 'channel');
+  assert.equal(channelCustody.proposed.home.account, null);
+  assert.equal(channelCustody.words, 24);
+  assert.equal(channelCustody.devices, 2);
+  assert.equal(channelCustody.numbered, '98765');
+  assert.equal(channelCustody.imported, '98765');
+  assert.equal(channelCustody.reused, channelCustody.id);
+  assert.equal(channelCustody.repeatedWords, undefined);
+  assert.deepEqual(channelCustody.users, [created.identity.id]);
+  assert.deepEqual(channelCustody.resources, [channelCustody.id]);
+  assert.equal(channelCustody.current, created.identity.id);
   let hostedProfile = Buffer.from(created.identity.profile);
   let profileStatus = 200;
   await page.route('https://alice.example.org/.well-known/blah/profile.cbor', route => route.fulfill({

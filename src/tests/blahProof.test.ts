@@ -2,11 +2,12 @@ import {describe, expect, it, vi} from 'vitest';
 import type MTPNetworker from '@lib/mtproto/networker';
 import {TLDeserialization, TLSerialization} from '@lib/mtproto/tl_utils';
 import Schema from '@lib/mtproto/schema';
-const mocks = vi.hoisted(() => ({diem: vi.fn(), bind: vi.fn(), number: vi.fn()}));
+const mocks = vi.hoisted(() => ({diem: vi.fn(), bind: vi.fn(), number: vi.fn(), resource: vi.fn()}));
 vi.mock('@config/blah', () => ({getBlahConfig: () => ({home: {identity: 'ab'.repeat(32)}})}));
 vi.mock('@lib/blah/identity', () => ({
   bindIdentity: mocks.bind,
   numberIdentity: mocks.number,
+  withResourceIdentity: mocks.resource,
   withIdentity: (_slot: number, action: (secret: object) => unknown) => action({})
 }));
 vi.mock('@lib/blah/wasm', () => ({diem: mocks.diem}));
@@ -31,6 +32,8 @@ beforeEach(() => {
   mocks.bind.mockResolvedValue('alice.example.org');
   mocks.diem.mockResolvedValue({proof: [8, 9]});
   mocks.number.mockReset();
+  mocks.bind.mockClear();
+  mocks.resource.mockReset().mockImplementation((_slot, _id, action) => action({domain: 'news.example.org'}));
 });
 
 describe('Blah invocation boundary', () => {
@@ -74,6 +77,17 @@ describe('Blah invocation boundary', () => {
       challenge: [1, 2], approvedChallenge: [1, 2], expiresAt: 100});
     expect(result).toEqual(parameters.query);
     expect(wrapApiCall.mock.calls.map(([method]) => method)).toEqual(['blah.requestIdentityChallenge', 'blah.invokeWithIdentityProof']);
+  });
+
+  it('routes resource proofs through the same challenge and transport checks without binding the user slot', async() => {
+    const {networker, wrapApiCall, change} = connection();
+    await invokeBlah(1, networker, 'channels.createChannel', {title: 'News', about: '', broadcast: true}, {blahResourceIdentity: 'channel-id'});
+    expect(mocks.bind).not.toHaveBeenCalled();
+    expect(mocks.resource).toHaveBeenCalledWith(1, 'channel-id', expect.any(Function), true, false);
+    expect(wrapApiCall).toHaveBeenCalledWith('blah.requestIdentityChallenge', {domain: 'news.example.org'}, expect.anything());
+    expect(mocks.diem).toHaveBeenLastCalledWith('prove', {domain: 'news.example.org'}, expect.objectContaining({keyID: '123', sessionID: '456'}), 1, 'channel');
+    mocks.diem.mockImplementationOnce(async() => { change(); return {proof: [1]}; });
+    await expect(invokeBlah(1, networker, 'channels.editTitle', {channel: {_: 'inputChannel', channel_id: 25, access_hash: '1'}, title: 'News'}, {blahResourceIdentity: 'channel-id'})).rejects.toThrow('session changed');
   });
 
   it('refuses a session rotation while the proof is being made', async() => {
