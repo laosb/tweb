@@ -2,6 +2,16 @@ import type {ChatIdentityResponse} from '@lib/blah/chatIdentity';
 import type {IdentityView} from '@lib/blah/identity';
 import {defineStories} from '@components/popupSandbox/registry';
 
+defineStories('Blah', [{
+  id: 'blah/unlock-chat-identity',
+  fixtureOnly: true,
+  title: 'Unlock chat identity for deletion',
+  open: async() => {
+    const {unlockChatIdentity} = await import('@lib/blah/chatDeletion');
+    void unlockChatIdentity({id: 'abcdef'.padEnd(64, '0'), domain: 'news.alice.example.org'}, async() => ({}));
+  }
+}]);
+
 defineStories('Blah', (['create', 'import'] as const).map((mode) => ({
   id: `blah/identity-${mode}`,
   fixtureOnly: true,
