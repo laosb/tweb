@@ -1,4 +1,4 @@
-import {createSignal, For, Show, onCleanup, onMount} from 'solid-js';
+import {createSignal, For, onCleanup, onMount} from 'solid-js';
 import Section from '@components/section';
 import Row from '@components/rowTsx';
 import {useSuperTab} from '@components/solidJsTabs/superTabProvider';
@@ -7,7 +7,7 @@ import {i18n} from '@lib/langPack';
 import rootScope from '@lib/rootScope';
 import showIdentitySetup from '@lib/blah/IdentitySetup';
 import {detailsSession} from '@lib/blah/detailsSession';
-import type {IdentitySummary, IdentityView} from '@lib/blah/identity';
+import type {IdentityKind, IdentitySummary, IdentityView} from '@lib/blah/identity';
 import type {IdentityActions} from '@lib/blah/IdentityPanel';
 import styles from '@lib/blah/identity.module.scss';
 import focusWhenSettled from '@helpers/dom/focusWhenSettled';
@@ -41,8 +41,8 @@ export default function IdentitySettings() {
     });
   }
 
-  function setup(mode: 'create' | 'import' | 'paper') {
-    showIdentitySetup({mode, action, onIdentity: (identity) => {
+  function setup(mode: 'create' | 'import' | 'paper', kind: IdentityKind = 'user') {
+    showIdentitySetup({mode, kind, action, onIdentity: (identity) => {
       if(disposed) { void action({action: 'lock', id: identity.id}); return; }
       void refresh();
       openDetails(identity, identity);
@@ -57,12 +57,14 @@ export default function IdentitySettings() {
         <Row.Subtitle><code class={styles.identifier} title={entry.id}>{entry.id}</code></Row.Subtitle>
       </Row>}</For>
     </Section>
-    <Show when={chats().length}><Section name="BlahChatIdentities">
+    <Section name="BlahChatIdentities">
       <For each={chats()}>{(entry) => <Row clickable={(event) => openDetails(entry, undefined, event.currentTarget)}>
         <Row.Icon icon="key" /><Row.Title>{entry.title || entry.domain}</Row.Title>
         <Row.Subtitle>{entry.chatId ? entry.domain : i18n('BlahIdentityNotAttachedSubtitle')}</Row.Subtitle>
       </Row>}</For>
-    </Section></Show>
+      <Row clickable={() => setup('import', 'channel')}><Row.Icon icon="document" /><Row.Title>{i18n('BlahImportIdentity')}</Row.Title></Row>
+      <Row clickable={() => setup('paper', 'channel')}><Row.Icon icon="key" /><Row.Title>{i18n('BlahUseChatPaperKey')}</Row.Title></Row>
+    </Section>
     <Section caption="BlahIdentityCustody">
       <Row clickable={() => setup('create')}><Row.Icon icon="adduser" /><Row.Title>{i18n('BlahCreateIdentity')}</Row.Title></Row>
       <Row clickable={() => setup('import')}><Row.Icon icon="document" /><Row.Title>{i18n('BlahImportIdentity')}</Row.Title></Row>

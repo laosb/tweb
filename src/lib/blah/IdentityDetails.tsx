@@ -7,6 +7,7 @@ import confirmationPopup from '@components/confirmationPopup';
 import PopupElement, {createPopup, usePopupContext} from '@components/popups/indexTsx';
 import {i18n} from '@lib/langPack';
 import IdentityInput from '@lib/blah/IdentityInput';
+import ChatIdentityOwnership from '@lib/blah/ChatIdentityOwnership';
 import type {IdentityActions} from '@lib/blah/IdentityPanel';
 import type {IdentityRequest, IdentitySummary, IdentityView, PaperKeyView} from '@lib/blah/identity';
 import {detailsSession} from '@lib/blah/detailsSession';
@@ -236,6 +237,9 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
         <Row><Row.Icon icon="key" /><Row.Title><code class={styles.identifier} title={identity().id}>{identity().id}</code></Row.Title><Row.Subtitle>{i18n('BlahIdentityID')}</Row.Subtitle></Row>
         <Row><Row.Icon icon="time_filled" /><Row.Title>{new Date(identity().expiresAt * 1000).toLocaleString()}</Row.Title><Row.Subtitle>{i18n('BlahProfileExpires')}</Row.Subtitle></Row>
       </Section>
+      <Show when={identity().kind === 'channel' && identity().account}>
+        <ChatIdentityOwnership identity={identity()} onClaimed={() => focusWhenSettled(exportButton, () => !props.session.isClosed())} />
+      </Show>
       <Show when={identity().kind !== 'channel'}><Section name="BlahProfileDomains" caption="BlahProfileDomainsHelp">
         <For each={identity().domains}>{(domain) => <div role="group" aria-label={domain}>
           <Row disabled={busy()}>

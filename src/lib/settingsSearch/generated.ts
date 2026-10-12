@@ -80,6 +80,7 @@ const generated: GeneratedSettingsSearchData = {
     {id: 'AppBlahIdentityTab:BlahCreateIdentity', sectionId: 'AppBlahIdentityTab', kind: 'row', titleLangKey: 'BlahCreateIdentity'},
     {id: 'AppBlahIdentityTab:BlahImportIdentity', sectionId: 'AppBlahIdentityTab', kind: 'row', titleLangKey: 'BlahImportIdentity'},
     {id: 'AppBlahIdentityTab:BlahSavedIdentities', sectionId: 'AppBlahIdentityTab', kind: 'subsection', titleLangKey: 'BlahSavedIdentities'},
+    {id: 'AppBlahIdentityTab:BlahUseChatPaperKey', sectionId: 'AppBlahIdentityTab', kind: 'row', titleLangKey: 'BlahUseChatPaperKey'},
     {id: 'AppBlahIdentityTab:BlahUsePaperKey', sectionId: 'AppBlahIdentityTab', kind: 'row', titleLangKey: 'BlahUsePaperKey'},
     {id: 'AppBlockedUsersTab:BlockedUsers', sectionId: 'AppBlockedUsersTab', kind: 'row', titleLangKey: 'BlockedUsers'},
     {id: 'AppBusinessHoursDayTab:BusinessHoursDayAdd', sectionId: 'AppBusinessHoursDayTab', kind: 'row', titleLangKey: 'BusinessHoursDayAdd'},

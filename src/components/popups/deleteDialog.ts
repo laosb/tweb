@@ -1,6 +1,7 @@
 import type {PeerType} from '@appManagers/appPeersManager';
 import {FormatterArguments, LangPackKey} from '@lib/langPack';
 import rootScope from '@lib/rootScope';
+import blah from '@config/blah';
 import wrapPeerTitle from '@components/wrappers/peerTitle';
 import showPeerPopup, {PopupPeerButtonCallbackCheckboxes, PopupPeerOptions} from '@components/popups/peer';
 
@@ -60,7 +61,8 @@ export default async function showDeleteDialogPopup(
       promise = managers.appMessagesManager.flushHistory({peerId, justClear: false, revoke: checkboxes ? !!checked.size : undefined});
     } else {
       if(checked.size) {
-        promise = managers.appChatsManager.delete(peerId.toChatId());
+        promise = blah ? import('@lib/blah/chatDeletion').then(({default: deleteChat}) => deleteChat(managers, peerId.toChatId())) :
+          managers.appChatsManager.delete(peerId.toChatId());
       } else {
         return callbackLeave(e, checked);
       }
