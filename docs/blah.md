@@ -29,8 +29,10 @@ On reload, Blah fetches and verifies the profile again, allowing endpoint and RS
 rotation while rejecting older or conflicting profile versions within the same
 home namespace. A changed DC identity or database generation empties the slot's old
 session before it can connect to the new namespace. Workers verify the saved public
-profile before connecting. If discovery fails, the screen shows the error and lets you retry;
-there is no fallback to Telegram or another DC. A link with `?dc=dc.example.org`
+profile before connecting. A DC that cannot be reached on reload (down or restarting) keeps
+its saved verified profile, so a signed-in account reconnects on its own once the DC is back;
+a profile the DC does return must still pass every check. If discovery fails, the screen shows
+the error and lets you retry; there is no fallback to Telegram or another DC. A link with `?dc=dc.example.org`
 prefills the field on first use; the user still selects **Connect to Blah**.
 
 An account slot containing a legacy Telegram/number-email session, caches from a
