@@ -2,11 +2,11 @@ import blah, {blahStartupErrors, setBlahConfig} from '@config/blah';
 
 async function bootstrap() {
   if(blah?.discovery) {
-    const {connectDC, savedDC} = await import('@lib/blah/discovery');
+    const {refreshDC} = await import('@lib/blah/discovery');
     await Promise.all([1, 2, 3, 4].map(async(slot) => {
       try {
-        const saved = await savedDC(slot);
-        if(saved) setBlahConfig(slot, await connectDC(saved.domain, slot));
+        const config = await refreshDC(slot);
+        if(config) setBlahConfig(slot, config);
       } catch(error) {
         blahStartupErrors.set(slot, error instanceof Error ? error.message : String(error));
       }

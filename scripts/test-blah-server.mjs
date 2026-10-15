@@ -50,6 +50,13 @@ const free = async() => {
   await new Promise(r => s.close(r));
   return p;
 };
+const stopServer = async server => {
+  if(server.exitCode !== null || server.signalCode !== null) return;
+  server.kill('SIGTERM');
+  const stopTimer = setTimeout(() => server.kill('SIGKILL'), 5000);
+  if(server.exitCode === null && server.signalCode === null) await once(server, 'exit');
+  clearTimeout(stopTimer);
+};
 try {
   const port = await free(),
     web = await free(),
@@ -79,6 +86,8 @@ try {
     const server = spawn(tele + '/.build/debug/BlahMTProtoServer', ['--port', String(port), '--web-port', String(web),
       '--data-db', dir + '/' + domain + '-data.sqlite', '--auth-db', dir + '/' + domain + '-auth.sqlite',
       '--jobs-db', dir + '/' + domain + '-jobs.sqlite', '--federation-domain', domain,
+      // Transport keys survive a restart, as in a `--data-dir` deployment.
+      '--db', dir + '/' + domain + '-sessions.sqlite',
       '--federation-key-file', seedFile, '--federation-key-algorithm', 'ed25519',
       '--local-config-file', dir + '/local.json', '--test-profile-directory', dir + '/profiles'], {
       cwd: tele, stdio: ['ignore', 'ignore', 'pipe']
@@ -228,9 +237,10 @@ try {
     contentType: 'application/cbor', body: Buffer.from(otherDC.profile)
   }));
   let discoveryProfile = signedDC.profile;
-  await signupContext.route('https://dc.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
-    contentType: 'application/cbor', body: Buffer.from(discoveryProfile)
-  }));
+  // A stopped DC serves no profile either; its web origin is the same process.
+  let dcDown = false;
+  await signupContext.route('https://dc.example.org/.well-known/blah/profile.cbor', route => dcDown ?
+    route.abort('connectionrefused') : route.fulfill({contentType: 'application/cbor', body: Buffer.from(discoveryProfile)}));
   const domainInput = page.getByRole('textbox', {name: 'DC domain'});
   await domainInput.fill('http://dc.example.org');
   await domainInput.press('Enter');
@@ -355,6 +365,47 @@ try {
     await homeNotice.waitFor();
     assert.equal(await homeNotice.locator('..').getByRole('button').count(), 0, 'The notice is informational');
     await page.evaluate(() => window.appSidebarRight.toggleSidebar(false));
+
+    // The service account answers its commands. Its answer must reach the client after
+    // the command's own result: overtaking it is a pts gap, and a difference that delivers
+    // the command first leaves the sent message pending under its temporary id.
+    async function askServiceAccount(command, answer) {
+      await page.evaluate(() => window.appImManager.setPeer({peerId: 777000}));
+      await page.waitForFunction(() => window.appImManager.chat.peerId === 777000 && !window.appImManager.chat.setPeerPromise);
+      const chat = page.locator('#column-center .chat.active');
+      // An empty editor can lay out at zero height under its placeholder after a reload.
+      await chat.locator('.chat-input .input-message-input[contenteditable="true"]').focus();
+      await page.keyboard.type(command);
+      await page.keyboard.press('Enter');
+      await expect(chat.locator('.bubble.is-in').filter({hasText: answer}).last()).toBeVisible({timeout: 30000});
+      // The client holds the command confirmed under its server id; a stuck send keeps a
+      // temporary id beside the copy getDifference delivered.
+      await expect.poll(() => page.evaluate(async(command) => {
+        const messages = window.rootScope.managers.appMessagesManager;
+        const {history} = await messages.getHistory({peerId: 777000, limit: 20});
+        const held = await Promise.all(history.map(mid => messages.getMessageByPeer(777000, mid)));
+        return {temporary: history.filter(mid => !Number.isInteger(mid)),
+          sent: held.some(message => message.pFlags.out && message.message === command)};
+      }, command)).toEqual({temporary: [], sent: true});
+    }
+    const restartDC = () => { child = startDC('dc.example.org', port, web, dir + '/seed'); };
+    await askServiceAccount('/storage_usage', 'Storage usage');
+    // A DC restarting under an open client: the command waits for the reconnection.
+    await stopServer(child);
+    restartDC();
+    await askServiceAccount('/check_profile', 'Profile check queued.');
+    // Reloading while the DC is down keeps the signed-in account on its saved verified
+    // profile, and the client connects once the DC is back, with no further reload.
+    await stopServer(child);
+    dcDown = true;
+    await page.reload();
+    await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+    await expect(page.getByRole('textbox', {name: 'DC domain'})).toHaveCount(0);
+    dcDown = false;
+    restartDC();
+    // The connection status names itself in the search field until it is back.
+    await expect(page.locator('#column-left').getByRole('textbox', {name: 'Search', exact: true})).toBeVisible({timeout: 30000});
+    await askServiceAccount('/storage_usage', 'Storage usage');
 
     async function downloadFile(button, filename, suggestedFilename) {
       await expect(button).toBeEnabled();
@@ -941,7 +992,7 @@ try {
     await page.goto(origin + '/?account=2&debug=1&noServiceWorker=1&a11y=1');
     await page.getByRole('textbox', {name: 'DC domain'}).waitFor();
     assert.equal(await page.getByRole('textbox', {name: 'DC domain'}).inputValue(), '');
-    console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, Cross-server creation and toggle-only upgrade, locked-identity UI deletion, paper-key ownership claim by a second account, numbered channel profiles, chat custody/sign-in separation, verified peer identity row and home-only notice, profile publication, reload, recovered identity and paper-key login, dialog keyboard/focus and Axe checks.');
+    console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, Cross-server creation and toggle-only upgrade, locked-identity UI deletion, paper-key ownership claim by a second account, numbered channel profiles, chat custody/sign-in separation, verified peer identity row and home-only notice, service-account answers after the sent result, reconnection after a DC restart and a reload while it was down, profile publication, reload, recovered identity and paper-key login, dialog keyboard/focus and Axe checks.');
   } catch(error) {
     if(process.env.BLAH_IDENTITY_SCREENSHOT) await activePage.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-failure.png', timeout: 3000}).catch(() => {});
     console.error(error);
@@ -955,13 +1006,7 @@ try {
   proxy.close();
   edge?.closeAllConnections();
   if(edge) edge.close();
-  await Promise.all([child, otherChild].filter(Boolean).map(async(server) => {
-    if(server.exitCode !== null || server.signalCode !== null) return;
-    server.kill('SIGTERM');
-    const stopTimer = setTimeout(() => server.kill('SIGKILL'), 5000);
-    if(server.exitCode === null && server.signalCode === null) await once(server, 'exit');
-    clearTimeout(stopTimer);
-  }));
+  await Promise.all([child, otherChild].filter(Boolean).map(stopServer));
   await rm(dir, {
     recursive: true,
     force: true
