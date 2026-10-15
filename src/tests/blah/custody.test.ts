@@ -7,6 +7,8 @@ vi.mock('@config/blah', () => ({default: {home: {}}, ensureBlahConfig: async() =
   getBlahConfig: () => ({home: {identity: 'home', generation: '1'}})}));
 vi.mock('@lib/blah/homeStorage', () => ({bindHomeStorage: async() => {}}));
 vi.mock('@lib/blah/accountStorage', () => ({requireAccountBinding: vi.fn()}));
+vi.mock('@lib/blah/discovery', () => ({dcDomain: (value: string) => value, fetchDCProfile: async() => new Uint8Array(),
+  profileConfig: async(domain: string) => ({config: {home: {domain, identity: '0a0b', generation: '2'}}})}));
 vi.mock('@lib/blah/profile', async(importOriginal) => ({...await importOriginal<object>(), fetchProfile: mock.published}));
 vi.mock('@lib/blah/vault', async(importOriginal) => {
   let queue = Promise.resolve();
@@ -84,6 +86,46 @@ afterEach(async() => {
 });
 const create = (kind: 'user' | 'channel', extra = {}) => identityAction(1, {action: 'create', kind,
   domain: kind === 'user' ? 'alice.example.org' : 'news.alice.example.org', password: 'x', ...extra});
+
+describe('user custody away from home', () => {
+  it('unlocks an identity hosted on another DC but never signs for the slot with it', async() => {
+    const user = await create('user');
+    await bindIdentity(1);
+    const other = await create('user', {domain: 'bob.example.org'});
+    // Inspection at this slot's DC reports no namespace for an identity hosted elsewhere.
+    mock.profiles.get(other.identity.profile[0]).namespace = '';
+    await identityAction(1, {action: 'lock'});
+    const unlocked = await identityAction(1, {action: 'unlock', id: other.identity.id, password: 'x'});
+    expect(unlocked.identity.id).toBe(other.identity.id);
+    expect((await identityAction(1, {action: 'inspect', id: other.identity.id})).identity.id).toBe(other.identity.id);
+    await expect(bindIdentity(1)).rejects.toThrow('hosted on another DC');
+    await identityAction(1, {action: 'unlock', id: user.identity.id, password: 'x'});
+    expect(await bindIdentity(1)).toBe('alice.example.org');
+  });
+
+  it('moves the home to a verified DC and retires the slot the old hosting was signed in to', async() => {
+    const user = await create('user');
+    await bindIdentity(1);
+    const moved = await identityAction(1, {action: 'home', id: user.identity.id, domain: 'dc2.example.org'});
+    expect(mock.diem).toHaveBeenCalledWith('home', expect.anything(),
+      {dc: new Uint8Array([10, 11]), dcDomain: 'dc2.example.org', generation: '2'}, 1);
+    expect(moved.retired).toBe(true);
+    expect(mock.store.get('dc-domain:0a0b')).toBe('dc2.example.org');
+    const other = await create('user', {domain: 'bob.example.org'});
+    expect((await identityAction(1, {action: 'home', id: other.identity.id, domain: 'dc2.example.org'})).retired).toBe(false);
+    const operate = mock.diem.getMockImplementation();
+    mock.diem.mockImplementation(async(operation: string, ...rest: unknown[]) => {
+      if(operation === 'home') throw new Error('wrongHome');
+      return operate(operation, ...rest);
+    });
+    await expect(identityAction(1, {action: 'home', id: other.identity.id, domain: 'dc2.example.org'})).rejects.toThrow('already hosted on dc2.example.org');
+  });
+
+  it('refuses to move a chat identity', async() => {
+    const {identity} = await create('channel');
+    await expect(identityAction(1, {action: 'home', id: identity.id, domain: 'dc2.example.org'})).rejects.toThrow('Only a user identity');
+  });
+});
 
 describe('channel custody', () => {
   it('finds only held, bound chat identities and reports slot-local locks and expiry', async() => {
