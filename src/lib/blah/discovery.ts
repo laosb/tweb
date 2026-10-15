@@ -77,7 +77,27 @@ export function checkDCUpdate(previous: SavedDC, domain: string, next: DCDiscove
 
 export async function connectDC(input: string, slot = 1): Promise<BlahConfig> {
   const domain = dcDomain(input);
-  const profile = await fetchDCProfile(domain);
+  return acceptDC(domain, await fetchDCProfile(domain), slot);
+}
+
+/**
+ * Refreshes a saved home's profile on load. A DC that cannot be reached (down or
+ * restarting) keeps the saved verified profile, as workers do, so the transport
+ * reconnects once it is back; a profile the DC returns must still pass every check.
+ */
+export async function refreshDC(slot = 1): Promise<BlahConfig | undefined> {
+  const saved = await savedDC(slot);
+  if(!saved) return;
+  let profile: Uint8Array;
+  try {
+    profile = await fetchDCProfile(saved.domain);
+  } catch{
+    return restoreDC(slot);
+  }
+  return acceptDC(saved.domain, profile, slot);
+}
+
+async function acceptDC(domain: string, profile: Uint8Array, slot: number): Promise<BlahConfig> {
   const {config, version} = await profileConfig(domain, profile);
   // Cache admission is independent of network success and runs before accepting transport pins.
   await bindHomeStorage(config.home, slot);
