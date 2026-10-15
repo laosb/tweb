@@ -6,6 +6,7 @@ import {readFile, mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import assert from 'node:assert/strict';
+import {generateKeyPairSync} from 'node:crypto';
 import {blahDiemRuntimeURL} from './blah-config.mjs';
 import {localDiemRuntime, routeDiemRuntime} from '../tests/blah/localRuntime.mjs';
 
@@ -164,14 +165,17 @@ try {
     return {locked, badPassword, account: result.identity.account};
   }, created.identity.id);
   assert.deepEqual(reopened, {locked: true, badPassword: true, account: '12345'});
-  const second = await page.evaluate(async() => {
+  const second = await page.evaluate(async(id) => {
     const next = await fixture.identityAction(2, {action: 'create', domain: 'bob.example.org', password: 'second identity password'});
     await fixture.bindIdentity(2);
     await fixture.accounts.update(2, {userId: 2, dc1_auth_key: 'cd'.repeat(256)});
     let wrongHome = false;
-    try { await fixture.withIdentity(2, (secret) => fixture.diem('inspect', secret, {}, 1)); } catch{ wrongHome = true; }
-    let refused = false;
-    try { await fixture.identityAction(1, {action: 'unlock', id: next.identity.id, password: 'second identity password'}); } catch{ refused = true; }
+    try { await fixture.withIdentity(2, (secret) => fixture.diem('account', secret, {account: '5'}, 1)); } catch(error) { wrongHome = error.message === 'wrongHome'; }
+    // Custody unlocks an identity hosted on another DC; only signing for the slot is refused.
+    const away = (await fixture.identityAction(1, {action: 'unlock', id: next.identity.id, password: 'second identity password'})).identity;
+    let signer = '';
+    try { await fixture.withIdentity(1, async() => {}); } catch(error) { signer = error.message; }
+    await fixture.identityAction(1, {action: 'unlock', id, password: 'x'});
     const added = await fixture.identityAction(1, {action: 'addDevice',
       device: btoa(String.fromCharCode(...next.identity.devices[0].key))});
     const removed = await fixture.identityAction(1, {action: 'removeOtherDevices'});
@@ -179,13 +183,55 @@ try {
     await fixture.accounts.update(3, {userId: 123, dc1_auth_key: 'ab'.repeat(256)});
     const reset = await fixture.resetAccount(3);
     const empty = !Object.keys(await fixture.accounts.get(3)).length;
-    return {refused, wrongHome, id: next.identity.id, added: added.identity.devices.length, removed: removed.identity.devices.length, reset, empty};
-  });
-  assert(second.refused);
+    return {away: away.hosting, namespace: away.namespace, signer, wrongHome, id: next.identity.id,
+      added: added.identity.devices.length, removed: removed.identity.devices.length, reset, empty};
+  }, created.identity.id);
+  assert.deepEqual(second.away, {dc: 'cd'.repeat(32), domain: undefined, account: undefined, epoch: '1', current: false,
+    slot: {dc: 'ab'.repeat(32), domain: 'dc.example.org'}});
+  assert.equal(second.namespace, '');
+  assert.match(second.signer, /hosted on another DC/);
   assert(second.wrongHome);
   assert.equal(second.added, 2);
   assert.equal(second.removed, 1);
   assert(second.reset && second.empty);
+  // A home change verifies the destination's DC profile, starts a newer epoch there without an
+  // account, and retires the slot whose session belonged to the old hosting.
+  const destination = await page.evaluate(async(transportKey) => {
+    const {cbor} = await import('/cbor.mjs');
+    const sdk = await fixture.diemClient();
+    const keys = {identity: await sdk.generateSigningKey(), device: await sdk.generateSigningKey()};
+    const signers = {};
+    for(const role of ['identity', 'device']) {
+      signers[role] = await crypto.subtle.importKey('pkcs8', fixture.decode(keys[role].privateKey), 'Ed25519', false, ['sign']);
+    }
+    const domain = 'dc3.example.org';
+    const dc = await sdk.dcSetup({data: cbor({9: [domain], 16: 5, 18: [{0: domain, 1: 443, 2: true, 3: 1, 4: '/apiws'}],
+      19: [], 20: transportKey, 21: 3}), profile: null, now: Math.floor(Date.now() / 1000)}, {
+      random: size => crypto.getRandomValues(new Uint8Array(size)),
+      publicKey: role => fixture.decode(keys[role].publicKey),
+      sign: async(role, data) => new Uint8Array(await crypto.subtle.sign('Ed25519', signers[role], new Uint8Array(data))),
+      verify: async() => true
+    });
+    return {id: dc.id, profile: dc.profile};
+  }, generateKeyPairSync('rsa', {modulusLength: 2048}).publicKey.export({type: 'spki', format: 'pem'}));
+  await page.route('https://dc3.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
+    status: 200, contentType: 'application/cbor', headers: {'Access-Control-Allow-Origin': '*'}, body: Buffer.from(destination.profile)
+  }));
+  const moved = await page.evaluate(async(id) => {
+    const failure = async(request) => {
+      try { await fixture.identityAction(2, request); } catch(error) { return error.message; }
+    };
+    const result = await fixture.identityAction(2, {action: 'home', id, domain: 'dc3.example.org'});
+    let signer = '';
+    try { await fixture.withIdentity(2, async() => {}); } catch(error) { signer = error.message; }
+    return {retired: result.retired, hosting: result.identity.hosting, signer,
+      again: await failure({action: 'home', id, domain: 'dc3.example.org'})};
+  }, second.id);
+  assert.deepEqual(moved.hosting, {dc: destination.id, domain: 'dc3.example.org', account: undefined, epoch: '2', current: false,
+    slot: {dc: 'cd'.repeat(32), domain: 'other.example.org'}});
+  assert(moved.retired);
+  assert.match(moved.signer, /hosted on another DC/);
+  assert.equal(moved.again, 'This identity is already hosted on dc3.example.org.');
   // A paper key is a listed device: it signs in from its words alone, never manages devices
   // and stops working once terminated.
   const paperKey = await page.evaluate(async() => {
@@ -374,7 +420,7 @@ try {
   });
   assert.equal(dcImport.account, '777000');
   assert(dcImport.proof > 64);
-  console.log('PASS: real BlahDiem WASM creation, encrypted custody, proof/session binding, numbering, verified resource profiles, renewal, devices, paper keys, reload, home/slot isolation and recovery.');
+  console.log('PASS: real BlahDiem WASM creation, encrypted custody, proof/session binding, numbering, verified resource profiles, renewal, devices, paper keys, reload, home/slot isolation, home changes and recovery.');
 } finally {
   await browser?.close();
   await new Promise((resolve) => server.close(resolve));
