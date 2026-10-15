@@ -5,14 +5,19 @@ import {fetchProfile, profileDomain} from '@lib/blah/profile';
 import {renewalDue, renewalPolicy, RenewalPolicy} from '@lib/blah/renewal';
 import blah, {ensureBlahConfig, getBlahConfig} from '@config/blah';
 import {bindHomeStorage} from '@lib/blah/homeStorage';
+import {dcDomain, fetchDCProfile, profileConfig, type SavedDC} from '@lib/blah/discovery';
 import {decode, encode, exclusively, identityIDs, SealedIdentity, stored, storeEntries} from '@lib/blah/vault';
 import {diem, IdentityInfo, IdentitySecret, SigningKey} from '@lib/blah/wasm';
 
 export type IdentityKind = 'user' | 'channel';
 export type IdentityMetadata = {kind: IdentityKind, chatId?: ChatId, title?: string, namespace?: string, home?: string};
-export type IdentityView = Omit<IdentityInfo, 'proof'> & Partial<IdentityMetadata> & {domain: string, publisher: string, renewal: RenewalPolicy, publicationPending: boolean};
+/** A user identity's hosting from its verified profile, and the DC of the account slot viewing it. */
+export type IdentityHosting = {dc: string, domain?: string, account?: string, epoch: string, current: boolean,
+  slot: {dc: string, domain: string}};
+export type IdentityView = Omit<IdentityInfo, 'proof'> & Partial<IdentityMetadata> & {domain: string, publisher: string, renewal: RenewalPolicy,
+  publicationPending: boolean, hosting?: IdentityHosting};
 export type IdentityRequest = {
-  action: 'suggestDomain' | 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'paper' | 'publisher' | 'addDevice' | 'addPaperKey' | 'removeDevice' | 'renewal' | 'publication' | 'removeOtherDevices' | 'domains',
+  action: 'suggestDomain' | 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'paper' | 'publisher' | 'addDevice' | 'addPaperKey' | 'removeDevice' | 'renewal' | 'publication' | 'removeOtherDevices' | 'domains' | 'home',
   id?: string,
   kind?: IdentityKind,
   attempt?: string,
@@ -29,7 +34,8 @@ export type IdentityRequest = {
 export type IdentitySummary = {id: string, domain?: string} & Partial<IdentityMetadata>;
 /** A new paper key's words, shown once, and the device it certifies. */
 export type PaperKeyView = {phrase: string, device: string};
-export type IdentityResponse = {domain?: string, ids?: string[], identities?: IdentitySummary[], identity?: IdentityView, backup?: number[], publication?: {profile: number[], pending: boolean}, paperKey?: PaperKeyView};
+/** `retired`: the slot's session belonged to the hosting a home change just ended. */
+export type IdentityResponse = {domain?: string, ids?: string[], identities?: IdentitySummary[], identity?: IdentityView, backup?: number[], publication?: {profile: number[], pending: boolean}, paperKey?: PaperKeyView, retired?: boolean};
 type Unlocked = {id: string, key: KeyFileSession, until: number, timer?: ReturnType<typeof setTimeout>, renewalTimer?: ReturnType<typeof setTimeout>};
 const unlocked = new Map<number, Unlocked>();
 const resources = new Map<number, Map<string, Unlocked>>();
@@ -77,9 +83,28 @@ async function certifyPaperKey(secret: IdentitySecret, slot: number, kind: Ident
   return {info, paperKey: {phrase: paper.phrase, device: device.id}};
 }
 
-function view(secret: IdentitySecret, info: IdentityInfo, kind: IdentityKind = 'user'): IdentityView {
+/** Public DC domains this browser knows: account slots' DCs and home-change destinations. */
+async function knownDCDomain(dc: string) {
+  for(let slot = 1; slot <= 4; slot++) {
+    const saved = await stored<SavedDC>('dc-profile:' + slot);
+    if(saved?.version.id === dc) return saved.domain;
+  }
+  return stored<string>('dc-domain:' + dc);
+}
+
+async function hosting(info: IdentityInfo, slot: number): Promise<IdentityHosting> {
+  const {home} = await (await diemClient()).verifyProfile(new Uint8Array(info.profile), Math.floor(Date.now() / 1000), {verify: verifySignature});
+  if(!home) return;
+  const current = getBlahConfig(slot).home;
+  return {dc: home.dc, domain: home.dc === current.identity ? current.domain : await knownDCDomain(home.dc),
+    account: home.account ?? undefined, epoch: home.epoch, current: home.dc === current.identity,
+    slot: {dc: current.identity, domain: current.domain}};
+}
+
+async function view(secret: IdentitySecret, info: IdentityInfo, kind: IdentityKind, slot: number): Promise<IdentityView> {
   const {proof: _, ...publicInfo} = info;
-  return {...publicInfo, kind, domain: secret.domain, publisher: secret.publisher || '', renewal: renewalPolicy(secret.renewal), publicationPending: !!secret.publicationPending};
+  return {...publicInfo, kind, domain: secret.domain, publisher: secret.publisher || '', renewal: renewalPolicy(secret.renewal), publicationPending: !!secret.publicationPending,
+    ...(kind === 'user' ? {hosting: await hosting(info, slot)} : {})};
 }
 
 function session(slot: number, touch = true, id?: string) {
@@ -107,8 +132,9 @@ function lock(slot: number, id?: string) {
 type IdentityOperation<T> = (secret: IdentitySecret, info: IdentityInfo,
   save: (info: IdentityInfo, pending?: boolean) => Promise<void>) => Promise<T>;
 
+/** The slot's signer: the user identity this account slot is (or will be) bound to, hosted at its DC. */
 export function withIdentity<T>(slot: number, action: IdentityOperation<T>, touch = true, maintain = true): Promise<T> {
-  return exclusively(() => useIdentity(slot, action, touch, maintain));
+  return exclusively(() => useIdentity(slot, action, touch, maintain, undefined, true));
 }
 
 export function withResourceIdentity<T>(slot: number, id: string, action: IdentityOperation<T>, touch = true, maintain = true): Promise<T> {
@@ -117,15 +143,19 @@ export function withResourceIdentity<T>(slot: number, id: string, action: Identi
 }
 
 // Caller holds the vault lock, including the initial unlock/renewal transaction.
-async function useIdentity<T>(slot: number, action: IdentityOperation<T>, touch = true, maintain = true, id?: string): Promise<T> {
+// Custody works on any user identity; only `signer` use is limited to the slot's own.
+async function useIdentity<T>(slot: number, action: IdentityOperation<T>, touch = true, maintain = true, id?: string, signer = false): Promise<T> {
   const current = session(slot, touch, id);
   const kind = id ? 'channel' : 'user';
   const backup = await stored<SealedIdentity>('identity:' + current.id);
   const secret = await current.key.open(backup);
   let info = await diem('inspect', secret, {}, slot, kind);
   if(info.id !== current.id) throw new Error('Identity file mismatch.');
-  const binding = await stored<string>('slot:' + slot);
-  if(!id && binding && binding !== info.namespace) throw new Error('This account slot belongs to another identity. Use another account slot.');
+  if(signer) {
+    if(!info.namespace) throw new Error('This identity is hosted on another DC. Change its home DC in identity details to sign in here.');
+    const binding = await stored<string>('slot:' + slot);
+    if(binding && binding !== info.namespace) throw new Error('This account slot belongs to another identity. Use another account slot.');
+  }
   const save = async(next: IdentityInfo, pending = true) => {
     secret.profile = encode(new Uint8Array(next.profile));
     secret.publicationPending = pending;
@@ -237,7 +267,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
   }
   let kind = request.kind || (request.id && (await stored<IdentityMetadata>('metadata:' + request.id))?.kind) || 'user';
   const use = <T>(action: IdentityOperation<T>, touch = true, maintain = true) => kind === 'channel' ?
-    withResourceIdentity(slot, request.id, action, touch, maintain) : withIdentity(slot, action, touch, maintain);
+    withResourceIdentity(slot, request.id, action, touch, maintain) : exclusively(() => useIdentity(slot, action, touch, maintain));
   if(request.action === 'publication') {
     // Fetch outside the custody lock: a slow host must not delay locking keys.
     const {domains, profile} = await use(async(_secret, info) => ({domains: info.domains, profile: info.profile}), false, false);
@@ -295,10 +325,6 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
             throw new Error('This identity already exists here. Unlock its current copy instead.');
           }
         }
-        const binding = await stored<string>('slot:' + slot);
-        if(kind === 'user' && binding && binding !== info.namespace) {
-          throw new Error('This account slot belongs to another identity. Use another account slot.');
-        }
         if(request.attempt && secret.domain !== profileDomain(request.domain)) {
           throw new Error('This attempt already has an identity. Use its original domain: ' + secret.domain);
         }
@@ -312,15 +338,16 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         sessions(slot, resourceId).set({id: info.id, key, until: Date.now() + 15 * 60_000});
         session(slot, true, resourceId);
         scheduleRenewal(slot, resourceId);
-        return await useIdentity(slot, async(secret, info) => ({identity: view(secret, info, kind), paperKey}), true, true, resourceId);
+        return await useIdentity(slot, async(secret, info) => ({identity: await view(secret, info, kind, slot), paperKey}), true, true, resourceId);
       } finally {
         if(key && unlocked.get(slot)?.key !== key && ![...(resources.get(slot)?.values() || [])].some((value) => value.key === key)) key.destroy();
       }
     });
   }
+  if(request.action === 'home') return changeHome(slot, request, kind);
   return use(async(secret, current, save) => {
     if(request.id && current.id !== request.id) throw new Error('Unlock your browser identity to continue.');
-    if(request.action === 'inspect') return {identity: view(secret, current, kind)};
+    if(request.action === 'inspect') return {identity: await view(secret, current, kind, slot)};
     if(request.action === 'backup') return {backup: Array.from(await stored<SealedIdentity>('identity:' + current.id))};
     if(!secret.identity && ['renew', 'addDevice', 'removeDevice', 'removeOtherDevices', 'domains'].includes(request.action)) {
       throw new Error('Only a device that holds the identity key can add devices or renew the identity.');
@@ -334,11 +361,11 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
       let published = !!secret.publisher;
       try { await publish(secret); } catch{ published = false; }
       if(published) await save(info, false);
-      return {identity: view(secret, info, kind), paperKey: certified.paperKey};
+      return {identity: await view(secret, info, kind, slot), paperKey: certified.paperKey};
     } else if(request.action === 'renewal') {
       secret.renewal = renewalPolicy(request.renewal);
       await save(info, !!secret.publicationPending);
-      return {identity: view(secret, info, kind)};
+      return {identity: await view(secret, info, kind, slot)};
     } else if(request.action === 'removeOtherDevices') {
       for(const device of current.devices.filter((entry) => !entry.current)) {
         info = await diem('removeDevice', secret, {
@@ -368,8 +395,37 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
     await save(info); // Durable first, so publication failures are retryable without losing keys/revisions.
     await publish(secret);
     if(secret.publisher) await save(info, false);
-    return {identity: view(secret, info, kind)};
+    return {identity: await view(secret, info, kind, slot)};
   }, true, false);
+}
+
+/**
+ * Moves a user identity to another DC: a newer home epoch with no account, which the
+ * destination allocates at signup. Whichever DC receives that profile ends the old account.
+ */
+async function changeHome(slot: number, request: IdentityRequest, kind: IdentityKind): Promise<IdentityResponse> {
+  if(kind !== 'user') throw new Error('Only a user identity can change its home DC.');
+  // Fetch and verify the destination outside the custody lock, as DC discovery does.
+  const domain = dcDomain(request.domain || '');
+  const {home} = (await profileConfig(domain, await fetchDCProfile(domain))).config;
+  return exclusively(() => useIdentity(slot, async(secret, current, save) => {
+    if(request.id && current.id !== request.id) throw new Error('Unlock your browser identity to continue.');
+    let info: IdentityInfo;
+    try {
+      info = await diem('home', secret, {dc: bytesFromHex(home.identity), dcDomain: domain, generation: home.generation}, slot);
+    } catch(error) {
+      if((error as Error).message === 'wrongHome') throw new Error('This identity is already hosted on ' + domain + '.');
+      throw error;
+    }
+    const retired = !!current.namespace && await stored<string>('slot:' + slot) === current.namespace;
+    await stored('dc-domain:' + home.identity, domain);
+    await save(info); // Durable first, so a publication failure keeps the new hosting.
+    const metadata = await stored<IdentityMetadata>('metadata:' + current.id);
+    await stored('metadata:' + current.id, {...metadata, namespace: info.namespace});
+    await publish(secret);
+    if(secret.publisher) await save(info, false);
+    return {identity: await view(secret, info, kind, slot), retired};
+  }, true, false));
 }
 
 export async function numberIdentity(slot: number, account: string) {
