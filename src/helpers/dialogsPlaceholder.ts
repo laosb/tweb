@@ -109,7 +109,8 @@ export default class DialogsPlaceholder {
     this.detachTime = Date.now();
 
     const animationLevel = liteMode.getAnimationLevel();
-    if(!animationLevel) {
+    // * a hidden list (the widget's) leaves no rows to fade, and a pattern of no size throws
+    if(!animationLevel || !this.canvas.width || !this.canvas.height) {
       this.remove();
     } else if(animationLevel === 1) {
       // * reduced animations: the skeleton held still, and it fades out as a whole
