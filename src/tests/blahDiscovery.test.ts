@@ -11,7 +11,7 @@ vi.mock('@lib/blah/vault', () => ({
   decode: (value: string) => new Uint8Array(Buffer.from(value, 'base64'))
 }));
 
-import {checkDCUpdate, connectDC, dcDomain, fetchDCProfile, profileConfig, restoreDC, transportKey} from '@lib/blah/discovery';
+import {checkDCUpdate, connectDC, dcDomain, fetchDCProfile, profileConfig, refreshDC, restoreDC, transportKey} from '@lib/blah/discovery';
 
 const {publicKey} = generateKeyPairSync('rsa', {modulusLength: 2048});
 const version: DCDiscoveryResult = {
@@ -102,6 +102,24 @@ it('leaves the saved profile intact after signature, cache or identity rejection
   await expect(connectDC(saved.domain)).rejects.toThrow('Legacy');
   state.verify.mockResolvedValueOnce({...version, id: 'ef'.repeat(32)});
   await expect(connectDC(saved.domain)).rejects.toThrow('another DC');
+  expect(state.storage.get('dc-profile:1')).toEqual(saved);
+});
+
+it('keeps the saved profile on reload while the DC is unreachable, but checks a profile it returns', async() => {
+  await expect(refreshDC()).resolves.toBeUndefined();
+  expect(fetch).not.toHaveBeenCalled();
+  const selected = await connectDC(saved.domain);
+  for(const failure of [() => Promise.reject(new TypeError('Failed to fetch')), async() => new Response('', {status: 502}),
+    async() => new Response('', {status: 404})]) {
+    vi.mocked(fetch).mockImplementationOnce(failure);
+    expect(await refreshDC()).toEqual(selected);
+  }
+  // The fallback is the saved profile, verified again; it is never a substitute for one the DC served.
+  state.verify.mockRejectedValueOnce(new Error('Profile expired'));
+  vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  await expect(refreshDC()).rejects.toThrow('expired');
+  state.verify.mockResolvedValueOnce({...version, revision: '1'});
+  await expect(refreshDC()).rejects.toThrow('older');
   expect(state.storage.get('dc-profile:1')).toEqual(saved);
 });
 
