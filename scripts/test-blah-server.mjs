@@ -475,6 +475,8 @@ try {
       // to verify persisted binding and the info panel with a fresh lookup.
       await page.reload();
       await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+      // The chats page can show a moment before the client mounts its chat manager.
+      await page.waitForFunction(() => window.appImManager);
       await page.evaluate(chatId => window.appImManager.setPeer({peerId: -chatId}), entry.chatId);
       await page.locator('#column-center .chat-info').filter({hasText: entry.title}).click();
       const info = page.locator('#column-right .tabs-tab.active');
