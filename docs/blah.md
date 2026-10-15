@@ -125,6 +125,16 @@ domain and **Not attached**. They share exports, devices, paper keys and renewal
 user identities, but have no domain-username editor and never enter the sign-in picker.
 Import detects the signed profile kind, including in encrypted identity files.
 
+Any saved user identity unlocks, whichever DC hosts it. Its **Home DC** section shows that
+DC (by domain when this browser knows it), whether the DC has allocated a user ID yet, and
+whether it is the DC of the current account. An identity hosted elsewhere can manage custody
+here but cannot sign in or prove anything for this account. **Change home DC** lists the
+current account's DC first and accepts any other DC domain, whose public profile is verified
+as on sign-in. After a warning, it signs a profile of a newer home epoch without an account
+number. Publish it, then sign in to the new DC, which allocates a new user ID. Whichever DC
+receives that profile deletes the old account; chats, contacts and settings do not move. If
+the current account was signed in with that identity, it is signed out.
+
 The device list separates the current device from other devices, using the standard
 session rows. Open a device for its public key or to terminate it; **Terminate other
 devices** keeps the current device authorized. **Authorize new device** opens a separate
