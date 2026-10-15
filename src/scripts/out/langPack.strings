@@ -78,6 +78,17 @@
 "BlahUseChatPaperKey" = "Use paper key";
 "BlahUseChatPaperKeyHelp" = "Enter the chat’s profile domain and 24 paper-key words, separated by spaces. Choose a new password to protect this key in the browser. It can claim ownership or delete the chat, but cannot add devices or renew the identity. Chat identities are never used for sign-in.";
 "BlahIdentityNotAttachedSubtitle" = "Not attached";
+"BlahHomeDC" = "Home DC";
+"BlahHomeDCHelp" = "The DC that hosts your account. It allocates your user ID when you first sign in there.";
+"BlahThisAccountDC" = "This account’s DC";
+"BlahOtherDC" = "Another DC";
+"BlahUserID" = "User ID";
+"BlahUserIDNotAllocated" = "Not allocated yet";
+"BlahHostedElsewhere" = "This identity is hosted on another DC. Change its home DC to %1$s to sign in here.";
+"BlahChangeHomeDC" = "Change home DC";
+"BlahChangeHomeConfirm" = "Change home DC";
+"BlahChangeHomeWarning" = "Your account on %1$s will be deleted, with everything stored for it there. Chats, contacts and settings do not move, and this cannot be undone. Your identity, devices and profile domains stay the same. Publish the updated profile, then sign in to %2$s to get a new user ID.";
+"BlahChangeHomeUnallocated" = "%1$s has not allocated a user ID for this identity yet. Publish the updated profile, then sign in to %2$s to get one.";
 "BlahChatIdentityIntro" = "Choose a password for the chat identity at %1$s. Save its encrypted file and paper key before continuing.";
 "BlahSaveIdentityFile" = "Save identity file";
 "BlahChatPublishNumbered" = "The chat is now bound to this identity. Save the updated identity file and publish the updated public profile containing its chat number so other servers can verify it. You can close this dialog and finish publication later in Identity Manager.";
