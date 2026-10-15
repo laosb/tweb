@@ -6,6 +6,7 @@ import Section from '@components/section';
 import confirmationPopup from '@components/confirmationPopup';
 import PopupElement, {createPopup, usePopupContext} from '@components/popups/indexTsx';
 import {i18n} from '@lib/langPack';
+import rootScope from '@lib/rootScope';
 import IdentityInput from '@lib/blah/IdentityInput';
 import ChatIdentityOwnership from '@lib/blah/ChatIdentityOwnership';
 import type {IdentityActions} from '@lib/blah/IdentityPanel';
@@ -106,11 +107,13 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
       if(request.action === 'unlock') focusWhenSettled(exportButton, () => !props.session.isClosed());
       if(result.backup) exportFile(`${identity().domain}-identity.cbor`, new Uint8Array(result.backup), 'application/cbor');
       if(result.paperKey) showPaperKey(result.paperKey);
+      // The slot's account belonged to the hosting this home change ended.
+      if(result.retired) void rootScope.managers.apiManager.logOut();
       if(result.identity && request.action !== 'renewal') void checkPublication();
       return true;
     } catch(cause) {
       const error = cause as {type?: string, message?: string};
-      if(!props.session.isClosed() && ['renew', 'addDevice', 'addPaperKey', 'removeDevice', 'removeOtherDevices', 'domains'].includes(request.action)) {
+      if(!props.session.isClosed() && ['renew', 'addDevice', 'addPaperKey', 'removeDevice', 'removeOtherDevices', 'domains', 'home'].includes(request.action)) {
         try {
           // Publication can fail after a new revision has already been saved.
           const result = await props.session.action({action: 'inspect'});
@@ -171,6 +174,48 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
     createPopup(() => <PopupElement class={styles.setupPopup} closable>
       <PopupElement.Header><PopupElement.CloseButton /><PopupElement.Title title="BlahPaperKey" /></PopupElement.Header>
       <PopupElement.Body class={styles.setupBody}><PaperKey /></PopupElement.Body>
+    </PopupElement>);
+  }
+
+  const homeLabel = () => identity().hosting.domain || identity().hosting.dc;
+
+  /** Any DC by domain; the viewing account's DC comes first when the identity lives elsewhere. */
+  function ChangeHomeForm() {
+    const popup = usePopupContext();
+    const [domain, setDomain] = createSignal('');
+    const [submitting, setSubmitting] = createSignal(false);
+    const slot = identity().hosting.slot;
+    const choose = async(target: string) => {
+      target = target.trim().toLowerCase();
+      if(submitting() || !target || props.session.isClosed()) return;
+      try {
+        await confirmationPopup({
+          titleLangKey: 'BlahChangeHomeDC',
+          descriptionLangKey: identity().hosting.account ? 'BlahChangeHomeWarning' : 'BlahChangeHomeUnallocated',
+          descriptionLangArgs: [homeLabel(), target],
+          button: {langKey: 'BlahChangeHomeConfirm', isDanger: true}
+        });
+      } catch{ return; }
+      setSubmitting(true);
+      if(await run({action: 'home', domain: target})) popup.hide();
+      setSubmitting(false);
+    };
+    return <form class={styles.panel} onSubmit={(event) => { event.preventDefault(); void choose(domain()); }}>
+      <Show when={!identity().hosting.current}>
+        <Row clickable={() => void choose(slot.domain)} disabled={submitting()}>
+          <Row.Icon icon="data" /><Row.Title>{slot.domain}</Row.Title><Row.Subtitle>{i18n('BlahThisAccountDC')}</Row.Subtitle>
+        </Row>
+      </Show>
+      <IdentityInput label="BlahDCDomain" onInput={setDomain} disabled={submitting()} />
+      <Button primaryFilled text="BlahChangeHomeDC" disabled={submitting() || !domain().trim()} onClick={() => choose(domain())} />
+      <p role="status">{submitting() ? i18n('BlahDCLoading') : message()}</p>
+    </form>;
+  }
+
+  function changeHome() {
+    createPopup(() => <PopupElement class={styles.setupPopup} closable>
+      <PopupElement.Header><PopupElement.CloseButton /><PopupElement.Title title="BlahChangeHomeDC" /></PopupElement.Header>
+      <PopupElement.Body class={styles.setupBody}><ChangeHomeForm /></PopupElement.Body>
     </PopupElement>);
   }
 
@@ -237,6 +282,17 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
         <Row><Row.Icon icon="key" /><Row.Title><code class={styles.identifier} title={identity().id}>{identity().id}</code></Row.Title><Row.Subtitle>{i18n('BlahIdentityID')}</Row.Subtitle></Row>
         <Row><Row.Icon icon="time_filled" /><Row.Title>{new Date(identity().expiresAt * 1000).toLocaleString()}</Row.Title><Row.Subtitle>{i18n('BlahProfileExpires')}</Row.Subtitle></Row>
       </Section>
+      <Show when={identity().hosting}>
+        <Section name="BlahHomeDC" caption={identity().hosting.current ? 'BlahHomeDCHelp' : 'BlahHostedElsewhere'}
+          captionArgs={[identity().hosting.slot.domain]}>
+          <Row><Row.Icon icon="data" />
+            <Row.Title>{identity().hosting.domain || <code class={styles.identifier} title={identity().hosting.dc}>{identity().hosting.dc}</code>}</Row.Title>
+            <Row.Subtitle>{i18n(identity().hosting.current ? 'BlahThisAccountDC' : 'BlahOtherDC')}</Row.Subtitle></Row>
+          <Row><Row.Icon icon="user" /><Row.Title>{identity().hosting.account || i18n('BlahUserIDNotAllocated')}</Row.Title>
+            <Row.Subtitle>{i18n('BlahUserID')}</Row.Subtitle></Row>
+          <Row clickable={changeHome} disabled={busy()}><Row.Icon icon="replace" /><Row.Title>{i18n('BlahChangeHomeDC')}</Row.Title></Row>
+        </Section>
+      </Show>
       <Show when={identity().kind === 'channel' && identity().account}>
         <ChatIdentityOwnership identity={identity()} onClaimed={() => focusWhenSettled(exportButton, () => !props.session.isClosed())} />
       </Show>
