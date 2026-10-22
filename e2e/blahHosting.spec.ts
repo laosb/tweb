@@ -2,11 +2,11 @@ import {expect, test} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {openStory, preparePopupSandbox} from './popupSandbox.helpers';
 
-for(const direction of ['ltr', 'rtl'] as const) test(`hosted chooser availability, keyboard and narrow layout (${direction})`, async({page}) => {
+for(const kind of ['user', 'chat'] as const) for(const direction of ['ltr', 'rtl'] as const) test(`hosted ${kind} chooser availability, keyboard and narrow layout (${direction})`, async({page}) => {
   await preparePopupSandbox(page, false, {a11y: true});
   await page.setViewportSize({width: 390, height: 844});
   await page.evaluate((dir) => window.popupSandbox.setDirection(dir), direction);
-  expect(await openStory(page, 'blah/hosted-details')).toBeNull();
+  expect(await openStory(page, kind === 'chat' ? 'blah/hosted-chat-details' : 'blah/hosted-details')).toBeNull();
   const details = page.getByRole('dialog', {name: 'Identity details', exact: true});
   await details.getByRole('button', {name: 'Add a hosted name', exact: true}).click();
   const chooser = page.getByRole('dialog', {name: 'Add a hosted name', exact: true});
@@ -33,10 +33,13 @@ for(const direction of ['ltr', 'rtl'] as const) test(`hosted chooser availabilit
   expect(await host.getAttribute('dir')).toBe('ltr');
   const axe = await new AxeBuilder({page}).include('.popup.active').disableRules(['color-contrast']).analyze();
   expect(axe.violations).toEqual([]);
-  await page.screenshot({path: `test-results/blah-hosting-${direction}.png`});
+  await page.screenshot({path: `test-results/blah-hosting-${kind}-${direction}.png`});
   await claim.press('Space');
   await expect(chooser).toHaveCount(0);
-  await expect(details.getByRole('group', {name: 'proof.id.example', exact: true})).toBeVisible();
+  const added = details.getByRole('group', {name: 'proof.id.example', exact: true});
+  await expect(added).toBeVisible();
+  await added.getByRole('button', {name: 'Delete', exact: true}).click();
+  await expect(added).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(details).toHaveCount(0);
 });

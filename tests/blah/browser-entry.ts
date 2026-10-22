@@ -22,13 +22,14 @@ export {stored, decode} from '@lib/blah/vault';
 export {setBlahConfig};
 
 /** Real signing/hosting bridge with an in-page host transport, no DNS/server dependency. */
-export async function exerciseHostedClaim() {
+export async function exerciseHostedClaim(kind: 'user' | 'channel' = 'user') {
   const {diemClient, verifySignature} = await import('@lib/blah/runtime');
-  const {identityAction, numberIdentity} = await import('@lib/blah/identity');
+  const {identityAction, numberIdentity, withIdentity, bindIdentity} = await import('@lib/blah/identity');
   const {stored} = await import('@lib/blah/vault');
   const client = await diemClient();
   if(!client.hosting) return {supported: false};
-  setBlahConfig(3, blah);
+  const slot = kind === 'user' ? 3 : 4;
+  setBlahConfig(slot, blah);
   const domain = 'id.example';
   const hosted = {domain, label: 'alice'};
   const publications: {profile: number[], via: string, proof: string}[] = [];
@@ -64,27 +65,34 @@ export async function exerciseHostedClaim() {
       new Response(new Uint8Array(published), {headers: {'Content-Type': 'application/cbor'}}) : new Response(null, {status: 404});
   };
   try {
-    const {identity} = await identityAction(3, {action: 'create', domain: 'alice.id.example', password: 'x', hosted});
-    const {hostingPlan} = await identityAction(3, {action: 'hostingPlan', id: identity.id, hosted});
+    const signer = kind === 'channel' && (await identityAction(slot, {action: 'create', domain: 'signer.example', password: 'x'})).identity;
+    if(signer) await bindIdentity(slot);
+    const {identity, paperKey} = await identityAction(slot, {action: 'create', kind, domain: 'alice.id.example', password: 'x', hosted});
+    const {hostingPlan} = await identityAction(slot, {action: 'hostingPlan', id: identity.id, hosted});
     const nonce = await client.hosting.solve(hostingPlan.puzzle);
     let failure: string;
-    try { await identityAction(3, {action: 'hostingClaim', id: identity.id, hosted: {...hosted, proofs: {alice: nonce}}}); }
+    try { await identityAction(slot, {action: 'hostingClaim', id: identity.id, hosted: {...hosted, proofs: {alice: nonce}}}); }
     catch(error) { failure = (error as {type: string}).type; }
-    const pending = (await identityAction(3, {action: 'inspect'})).identity.publicationPending;
-    await identityAction(3, {action: 'retryPublication', id: identity.id});
+    const pending = (await identityAction(slot, {action: 'inspect', id: identity.id})).identity.publicationPending;
+    await identityAction(slot, {action: 'retryPublication', id: identity.id});
     const exactRetry = JSON.stringify(publications[0].profile) === JSON.stringify(publications[1].profile);
-    await numberIdentity(3, '42');
-    await identityAction(3, {action: 'renew', id: identity.id});
-    const publishedState = (await identityAction(3, {action: 'inspect'})).identity;
-    const check = await identityAction(3, {action: 'publication'});
-    await identityAction(3, {action: 'domains', id: identity.id, domains: ['own.example']});
+    await numberIdentity(slot, '42', kind === 'channel' ? identity.id : undefined);
+    await identityAction(slot, {action: 'renew', id: identity.id});
+    const publishedState = (await identityAction(slot, {action: 'inspect', id: identity.id})).identity;
+    const check = await identityAction(slot, {action: 'publication', id: identity.id});
+    const {backup} = await identityAction(slot, {action: 'backup', id: identity.id});
+    const opened = await client.keyFiles.unlock(backup, 'x');
+    const portable = opened.contents.hosting;
+    opened.session.destroy();
+    const isolated = !signer || (await withIdentity(slot, async(_secret, info) => info.id)) === signer.id;
+    await identityAction(slot, {action: 'domains', id: identity.id, domains: ['own.example']});
     const state = await stored<import('@lib/blah/hosting').HostedNames>('hosting:' + identity.id);
-    return {supported: true, failure, pending, exactRetry, hasProof: !!publications[0].proof,
+    return {supported: true, backup, portable, isolated, words: paperKey?.phrase.split(' ').length, kind, failure, pending, exactRetry, hasProof: !!publications[0].proof,
       account: publishedState.account, published: !publishedState.publicationPending, checked: !check.publication.pending,
       released: state.held.length === 0, releaseVia: publications[publications.length - 1].via, releaseProof: publications[publications.length - 1].proof,
       updatesWithoutProof: publications.slice(2).every((entry) => !entry.proof), puts: publications.length};
   } finally {
     window.fetch = originalFetch;
-    await identityAction(3, {action: 'lock'});
+    await identityAction(slot, {action: 'lock'});
   }
 }
