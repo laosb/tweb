@@ -315,7 +315,30 @@ try {
       assert.deepEqual(released, {held: [], status: 404});
       await details.getByRole('button', {name: 'Close', exact: true}).click();
       await details.waitFor({state: 'detached'});
-      console.log('PASS hosted UI claim, dedicated proof workers, actual Teleblah hosting PUT/discovery and unanswered last-name release reconciliation.');
+      const hostedChat = await page.evaluate(async(runtimeURL) => {
+        const manager = window.rootScope.managers.appAccountManager;
+        const users = (await manager.blahIdentity({action: 'list'})).ids;
+        const hosted = {domain: 'id.example', label: 'chat'};
+        const {identity, paperKey} = await manager.blahChatIdentity({action: 'prepare', domain: 'chat.id.example',
+          password: 'chat password', attempt: 'server-hosted-chat', hosted});
+        const {hostingPlan} = await manager.blahIdentity({action: 'hostingPlan', id: identity.id, hosted});
+        const client = await (await import(runtimeURL)).createDiem();
+        const nonce = await client.hosting.solve(hostingPlan.puzzle);
+        const claimed = await manager.blahIdentity({action: 'hostingClaim', id: identity.id, hosted: {...hosted, proofs: {chat: nonce}}});
+        const {publication} = await manager.blahIdentity({action: 'publication', id: identity.id});
+        const {backup} = await manager.blahIdentity({action: 'backup', id: identity.id});
+        const opened = await client.keyFiles.unlock(backup, 'chat password');
+        const hosting = opened.contents.hosting;
+        opened.session.destroy();
+        const after = (await manager.blahIdentity({action: 'list'})).ids;
+        await manager.blahIdentity({action: 'lock', id: identity.id});
+        return {kind: claimed.identity.kind, held: claimed.identity.hostedNames.held, pending: publication.pending,
+          words: paperKey.phrase.split(' ').length, isolated: JSON.stringify(users) === JSON.stringify(after),
+          backupHeld: hosting.held, backupPending: 'pending' in hosting};
+      }, diemRuntimeURL);
+      assert.deepEqual(hostedChat, {kind: 'channel', held: ['chat'], pending: false, words: 24,
+        isolated: true, backupHeld: ['chat'], backupPending: false});
+      console.log('PASS hosted UI claim, dedicated proof workers, actual Teleblah hosting PUT/discovery and unanswered last-name release reconciliation; hosted chat claim, exact publication, paper key, backup and custody isolation.');
     }
     accountChecks: {
     if(testHosting && process.env.BLAH_TEST_HOSTING_ONLY) break accountChecks;

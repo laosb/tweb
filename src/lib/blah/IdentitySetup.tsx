@@ -3,7 +3,7 @@ import Button from '@components/buttonTsx';
 import PopupElement, {createPopup, usePopupContext} from '@components/popups/indexTsx';
 import {i18n} from '@lib/langPack';
 import IdentityInput from '@lib/blah/IdentityInput';
-import {HostedNameChooser} from '@lib/blah/HostedNameChooser';
+import {HostedNameChoice, HostedNameChooser} from '@lib/blah/HostedNameChooser';
 import BackupDropzone from '@lib/blah/BackupDropzone';
 import type {IdentityActions} from '@lib/blah/IdentityPanel';
 import type {IdentityKind, IdentityView} from '@lib/blah/identity';
@@ -64,12 +64,7 @@ function SetupForm(props: IdentitySetupProps) {
   }
   return <form class={styles.panel} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <Show when={hostingAvailable()}>
-      <label>{i18n('BlahHostingChoice')}
-        <select disabled={busy() || !!created()} value={hosted() ? 'hosted' : 'own'} onChange={(event) => setHosted(event.currentTarget.value === 'hosted')}>
-          <option value="own">{i18n('BlahHostingOwnDomain')}</option>
-          <option value="hosted">{i18n('BlahHostingName')}</option>
-        </select>
-      </label>
+      <HostedNameChoice hosted={hosted()} disabled={busy() || !!created()} onChange={setHosted} />
     </Show>
     <fieldset disabled={busy() || !!created()}>
       <Show when={props.mode !== 'import'} fallback={<>

@@ -301,7 +301,7 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
       <Show when={identity().kind === 'channel' && identity().account}>
         <ChatIdentityOwnership identity={identity()} onClaimed={() => focusWhenSettled(exportButton, () => !props.session.isClosed())} />
       </Show>
-      <Show when={identity().kind !== 'channel'}><Section name="BlahProfileDomains" caption="BlahProfileDomainsHelp">
+      <Section name="BlahProfileDomains" caption="BlahProfileDomainsHelp">
         <For each={identity().domains}>{(domain) => <div role="group" aria-label={domain}>
           <Row disabled={busy()}>
             <Row.Title>{domain}</Row.Title>
@@ -322,7 +322,6 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
           </Show>
         </Show>
       </Section>
-      </Show>
       <Section name="BlahIdentityFiles">
         <Row ref={(element) => exportButton = element} clickable={() => exportFile('profile.cbor', new Uint8Array(identity().profile), 'application/cbor')} disabled={busy()}><Row.Icon icon="document" /><Row.Title>{i18n('BlahExportProfile')}</Row.Title></Row>
         <Row clickable={() => run({action: 'backup'})} disabled={busy()}><Row.Icon icon="document" /><Row.Title>{i18n('BlahExportBackup')}</Row.Title></Row>

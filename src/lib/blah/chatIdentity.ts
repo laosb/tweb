@@ -6,17 +6,16 @@ import type {AppPeersManager} from '@appManagers/appPeersManager';
 import type {AppProfileManager} from '@appManagers/appProfileManager';
 import type {ChannelsCreateChannel, InputFile, MissingInvitee, Updates} from '@layer';
 import {getBlahConfig} from '@config/blah';
-import {identityAction, IdentityMetadata, IdentityResponse, publicationPending, withResourceIdentity} from '@lib/blah/identity';
+import {identityAction, IdentityMetadata, IdentityRequest, IdentityResponse, numberIdentity, publicationPending, withResourceIdentity} from '@lib/blah/identity';
 import type {BlahInvokeOptions} from '@lib/blah/invoke';
 import {diemClient, verifySignature} from '@lib/blah/runtime';
 import {stored} from '@lib/blah/vault';
-import {diem} from '@lib/blah/wasm';
 import '@lib/blah/resourceProfileTypes';
 
 export type ChatIdentityChange = {action: 'createChannel', options: ChannelsCreateChannel} |
   {action: 'createChat', title: string, userIds: UserId[]} |
   {action: 'edit', chatId: ChatId, title: string, changedTitle?: string, about?: string, photo?: InputFile};
-export type ChatIdentityRequest = {action: 'prepare', domain: string, password: string, attempt: string} |
+export type ChatIdentityRequest = {action: 'prepare', domain: string, password: string, attempt: string, hosted?: IdentityRequest['hosted']} |
   {action: 'claim', id: string} |
   {action: 'bind', id: string, change: ChatIdentityChange};
 export type ChatIdentityResult = {chatId: ChatId, missingInvitees: MissingInvitee[]};
@@ -118,10 +117,7 @@ async function bindChat(slot: number, managers: Managers, id: string, change: Ch
     attachment = {...attachment, chatId: result.chatId, title, result};
     await stored('metadata:' + id, attachment);
   }
-  await withResourceIdentity(slot, id, async(secret, current, save) => {
-    if(current.account && current.account !== String(attachment.chatId)) throw new Error('This identity belongs to another chat.');
-    if(!current.account) await save(await diem('account', secret, {account: String(attachment.chatId)}, slot, 'channel'));
-  }, true, false);
+  await numberIdentity(slot, String(attachment.chatId), id);
   if(change.action === 'edit') {
     const edit = async(operation: Promise<unknown>) => {
       try { await operation; } catch(error) { if((error as {type?: string}).type !== 'CHAT_NOT_MODIFIED') throw error; }

@@ -420,13 +420,35 @@ try {
   });
   assert.equal(dcImport.account, '777000');
   assert(dcImport.proof > 64);
-  const hostedClaim = await page.evaluate(() => fixture.exerciseHostedClaim());
-  if(hostedClaim.supported) {
-    assert.deepEqual(hostedClaim, {supported: true, failure: 'BlahHostingUnreachable', pending: true, exactRetry: true,
-      hasProof: true, account: '42', published: true, checked: true, released: true,
-      releaseVia: 'alice.id.example', releaseProof: null, updatesWithoutProof: true, puts: 5});
-    console.log('Hosted claim: real WASM proofs, persistence, exact retry, numbering, renewal and release passed');
-  } else console.log('Hosted claim skipped: pinned runtime has no hosting capability');
+  for(const kind of ['user', 'channel']) {
+    const hostedClaim = await page.evaluate((kind) => fixture.exerciseHostedClaim(kind), kind);
+    if(hostedClaim.supported) {
+      const {backup, portable, isolated, words, kind: actualKind, ...result} = hostedClaim;
+      assert.deepEqual(result, {supported: true, failure: 'BlahHostingUnreachable', pending: true, exactRetry: true,
+        hasProof: true, account: '42', published: true, checked: true, released: true,
+        releaseVia: 'alice.id.example', releaseProof: null, updatesWithoutProof: true, puts: 5});
+      assert.equal(actualKind, kind);
+      assert.equal(isolated, true);
+      assert.equal(words, kind === 'channel' ? 24 : undefined);
+      assert.deepEqual(Object.keys(portable).sort(), ['domain', 'held', 'proofs']);
+      assert.deepEqual(portable.held, ['alice']);
+      assert(portable.proofs.alice.length > 0);
+      // A separate browser context has no origin-local custody or claim records.
+      const fresh = await browser.newContext();
+      await routeDiemRuntime(fresh, localRuntime);
+      const restoredPage = await fresh.newPage();
+      await restoredPage.route(`${browserOrigin}/**`, serveLocal);
+      await restoredPage.goto(browserOrigin);
+      const restored = await restoredPage.evaluate(async({backup, kind}) => {
+        const {identity} = await fixture.identityAction(1, {action: 'restore', backup, password: 'x'});
+        const {identities} = await fixture.identityAction(1, {action: 'list', kind});
+        return {kind: identity.kind, account: identity.account, hosting: identity.hostedNames, listed: identities.length};
+      }, {backup, kind});
+      assert.deepEqual(restored, {kind, account: '42', hosting: portable, listed: 1});
+      await fresh.close();
+      console.log(`Hosted ${kind}: real WASM claim, exact retry, numbering, release, custody isolation and fresh-context backup restore passed`);
+    } else console.log(`Hosted ${kind} skipped: pinned runtime has no hosting capability`);
+  }
   console.log('PASS: real BlahDiem WASM creation, encrypted custody, proof/session binding, numbering, verified resource profiles, renewal, devices, paper keys, reload, home/slot isolation, home changes and recovery.');
 } finally {
   await browser?.close();

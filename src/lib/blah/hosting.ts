@@ -1,9 +1,9 @@
-import type {HostingPlanName} from '@blahdiem/diem';
+import type {HostingPlanName, KeyFileHosting} from '@blahdiem/diem';
 import {diemClient} from '@lib/blah/runtime';
 import {profileDomain} from '@lib/blah/profile';
 import {stored} from '@lib/blah/vault';
 
-/** Public, origin-local claim state. Never part of the sealed signing secret. */
+/** Public claim state; only domain, held and proofs travel in sealed backups. */
 export type HostedNames = {
   domain: string,
   held: string[],
@@ -12,6 +12,22 @@ export type HostedNames = {
   // Written before PUT. An unanswered request must be replayed before a newer revision.
   pending?: {profile: number[], via: string, labels: string[]}
 };
+
+/** Preserve held routing first; obsolete released-name proofs need not grow backups forever. */
+export function portableHosting(state: HostedNames, domains: string[] = []): KeyFileHosting {
+  if(!state) return;
+  const labels = [...new Set([...state.held, ...hostedLabels(state.domain, domains), ...Object.keys(state.proofs)])].slice(0, 16);
+  return {domain: state.domain, held: [...state.held],
+    proofs: Object.fromEntries(Object.entries(state.proofs).filter(([label]) => labels.includes(label)))};
+}
+
+export function mergeHosting(local: HostedNames, incoming: KeyFileHosting): HostedNames {
+  if(!local) return incoming && portableHosting(incoming);
+  if(!incoming || local.domain !== incoming.domain) return local;
+  const held = [...new Set([...local.held, ...incoming.held])];
+  if(held.length > 16) throw new Error('Too many held names in the combined hosting record.');
+  return {...local, held, proofs: {...incoming.proofs, ...local.proofs}};
+}
 
 export function hostedLabels(domain: string, domains: string[]) {
   const suffix = '.' + domain;

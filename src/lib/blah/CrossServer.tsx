@@ -11,6 +11,7 @@ import {getCurrentAccount} from '@lib/accounts/getCurrentAccount';
 import {verifyResourceProfile} from '@lib/blah/resourceProfiles';
 import {profileDomain} from '@lib/blah/profile';
 import type {ChatIdentityChange} from '@lib/blah/chatIdentity';
+import {HostedNameChoice} from '@lib/blah/HostedNameChooser';
 import showChatIdentitySetup, {chatIdentityError} from '@lib/blah/ChatIdentitySetup';
 import styles from '@lib/blah/identity.module.scss';
 
@@ -23,6 +24,8 @@ export default function useCrossServer(chat?: Chat.chat | Chat.channel) {
   const [enabled, setEnabled] = createSignal(false);
   const [boundDomain, setBoundDomain] = createSignal<string>();
   const [domain, setDomain] = createSignal('');
+  const [hostingAvailable, setHostingAvailable] = createSignal(false);
+  const [hosted, setHosted] = createSignal(false);
   const [placeholder, setPlaceholder] = createSignal('news.example.org');
   const [error, setError] = createSignal('');
   const attempt = crypto.randomUUID();
@@ -30,6 +33,9 @@ export default function useCrossServer(chat?: Chat.chat | Chat.channel) {
   onCleanup(() => { alive = false; });
   onMount(() => {
     if(!eligible) return;
+    void managers.appAccountManager.blahIdentity({action: 'hostingCapability'}).then((result) => {
+      if(alive) setHostingAvailable(!!result.hostingAvailable);
+    }).catch(() => {});
     // Public metadata supplies a suggestion even while the account identity is locked.
     void managers.appAccountManager.blahIdentity({action: 'suggestDomain'}).then(({domain}) => {
       if(alive && domain) setPlaceholder(`news.${domain}`);
@@ -49,8 +55,8 @@ export default function useCrossServer(chat?: Chat.chat | Chat.channel) {
   const execute = async(change: ChatIdentityChange) => {
     setError('');
     try {
-      const checked = profileDomain(domain());
-      return await showChatIdentitySetup({domain: checked, attempt, change,
+      const checked = hosted() ? undefined : profileDomain(domain());
+      return await showChatIdentitySetup({domain: checked, hosted: hosted(), attempt, change,
         action: (request) => managers.appAccountManager.blahChatIdentity(request),
         identityAction: (request) => managers.appAccountManager.blahIdentity(request)});
     } catch(error) {
@@ -66,8 +72,10 @@ export default function useCrossServer(chat?: Chat.chat | Chat.channel) {
         <Row.Title>{i18n('BlahCrossServer')}</Row.Title>
         <Row.Subtitle>{boundDomain() || i18n('BlahCrossServerHelp')}</Row.Subtitle>
       </Row>
-      <Show when={dirty()}><InputFieldTsx plainText label="BlahProfileDomain" value={domain()} onRawInput={setDomain}
-        instanceRef={(field) => { createEffect(() => { (field.input as HTMLInputElement).placeholder = placeholder(); }); }} />
+      <Show when={dirty()}>
+        <Show when={hostingAvailable()}><HostedNameChoice hosted={hosted()} onChange={setHosted} /></Show>
+        <Show when={!hosted()}><InputFieldTsx plainText label="BlahProfileDomain" value={domain()} onRawInput={setDomain}
+          instanceRef={(field) => { createEffect(() => { (field.input as HTMLInputElement).placeholder = placeholder(); }); }} /></Show>
       </Show>
       <p role="status">{error()}</p>
     </div></Show>,
@@ -78,7 +86,7 @@ export default function useCrossServer(chat?: Chat.chat | Chat.channel) {
       setSaving(true);
       try {
         // Validate before even uploading a new photo.
-        profileDomain(domain());
+        if(!hosted()) profileDomain(domain());
         const {uploadAvatar, ...fields} = change;
         await execute({action: 'edit', ...fields, photo: uploadAvatar && await uploadAvatar.file()});
         if(alive) close();

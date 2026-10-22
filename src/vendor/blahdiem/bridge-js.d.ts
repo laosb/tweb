@@ -114,6 +114,9 @@ export interface KeyFilePayload {
     deviceDays: number;
     autoRenew: boolean;
     publicationPending: boolean;
+    hostingDomain: string | null;
+    hostingHeld: string[];
+    hostingProofs: HostingProofInfo[];
 }
 /**
  * A paper device key's canonical words, the Ed25519 seed WebCrypto signs with and the
