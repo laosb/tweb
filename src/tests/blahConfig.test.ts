@@ -102,8 +102,20 @@ describe('Blah release configuration', () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     const defines = await blahBuildDefines('test', process.cwd());
-    expect(JSON.parse(defines.__BLAH_CONFIG__)).toEqual({discovery: true, defaultDcId: 1, dcs: []});
+    expect(JSON.parse(defines.__BLAH_CONFIG__)).toEqual({discovery: true, defaultDcId: 1, dcs: [], profileHostingDomain: ''});
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('accepts an optional hosting default without changing the CDN pin', async() => {
+    enableBlah();
+    vi.stubEnv('BLAH_SERVER_CONFIG_URL', '');
+    vi.stubEnv('BLAH_BOOTSTRAP_FILE', '');
+    vi.stubEnv('BLAH_PROFILE_HOSTING_DOMAIN', ' ID.Example ');
+    const defines = await blahBuildDefines('test', process.cwd());
+    expect(JSON.parse(defines.__BLAH_CONFIG__).profileHostingDomain).toBe('id.example');
+    expect(JSON.parse(defines.__BLAH_DIEM_RUNTIME_URL__)).toContain('/bd-web/20261015-cc6f/diem.js');
+    vi.stubEnv('BLAH_PROFILE_HOSTING_DOMAIN', 'https://id.example');
+    await expect(blahBuildDefines('test', process.cwd())).rejects.toThrow('BLAH_PROFILE_HOSTING_DOMAIN');
   });
 
   it('requires explicit Blah credentials instead of the inherited Telegram ones', async() => {

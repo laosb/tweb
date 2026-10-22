@@ -96,6 +96,12 @@ export default async function blahBuildDefines(mode, root) {
     config = {discovery: true, defaultDcId: 1, dcs: []};
   }
 
+  const hostingDomain = (env.BLAH_PROFILE_HOSTING_DOMAIN || '').trim().toLowerCase();
+  if(hostingDomain && (hostingDomain.length > 253 || !domainNamePattern.test(hostingDomain))) {
+    throw new Error('BLAH_PROFILE_HOSTING_DOMAIN must be a DNS hostname');
+  }
+  config.profileHostingDomain = hostingDomain;
+
   return {
     ...runtime,
     __BLAH_CONFIG__: JSON.stringify(config),

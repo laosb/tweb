@@ -12,7 +12,7 @@ export function detailsSession(action: IdentityActions, id: string, onLock: () =
       if(closed) return Promise.reject(new Error('Identity details are closed.'));
       const result = action({...request, id});
       // Public network checks do not hold keys and must not delay locking.
-      if(request.action !== 'publication') {
+      if(!['publication', 'hostingPlan', 'hostingStatus'].includes(request.action)) {
         pending.add(result);
         void result.finally(() => pending.delete(result)).catch(() => {});
       }

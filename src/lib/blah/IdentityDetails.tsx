@@ -5,6 +5,9 @@ import Row from '@components/rowTsx';
 import Section from '@components/section';
 import confirmationPopup from '@components/confirmationPopup';
 import PopupElement, {createPopup, usePopupContext} from '@components/popups/indexTsx';
+import type {JSX} from 'solid-js';
+import {showHostedNameChooser} from '@lib/blah/HostedNameChooser';
+import {hostingMessage} from '@lib/blah/hostingMessage';
 import {i18n} from '@lib/langPack';
 import rootScope from '@lib/rootScope';
 import {bindManagersToSession} from '@lib/accounts/bindManagersToAccount';
@@ -32,7 +35,7 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
   const [identity, setIdentity] = createSignal(props.identity);
   const [pending, setPending] = createSignal(0);
   const busy = () => pending() > 0;
-  const [message, setMessage] = createSignal('');
+  const [message, setMessage] = createSignal<JSX.Element>('');
   const [newDomain, setNewDomain] = createSignal('');
   const [publicationPending, setPublicationPending] = createSignal<boolean>();
   const [publicationError, setPublicationError] = createSignal(false);
@@ -115,7 +118,7 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
       return true;
     } catch(cause) {
       const error = cause as {type?: string, message?: string};
-      if(!props.session.isClosed() && ['renew', 'addDevice', 'addPaperKey', 'removeDevice', 'removeOtherDevices', 'domains', 'home'].includes(request.action)) {
+      if(!props.session.isClosed() && ['renew', 'addDevice', 'addPaperKey', 'removeDevice', 'removeOtherDevices', 'domains', 'home', 'retryPublication'].includes(request.action)) {
         try {
           // Publication can fail after a new revision has already been saved.
           const result = await props.session.action({action: 'inspect'});
@@ -128,7 +131,7 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
           setIdentity(undefined);
           props.onIdentity(undefined);
         }
-        setMessage(error.type || error.message || 'Identity operation failed.');
+        setMessage(error.type?.startsWith('BlahHosting') ? hostingMessage(cause) : error.type || error.message || 'Identity operation failed.');
       }
       return false;
     } finally {
@@ -310,6 +313,14 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
           <IdentityInput label="BlahProfileDomain" value={newDomain()} onInput={setNewDomain} disabled={busy()} />
           <Button text="BlahAddDomain" disabled={busy() || !newDomain().trim()} onClick={addDomain} />
         </form>
+        <Show when={identity().hostingAvailable}>
+          <Button text="BlahHostingAdd" disabled={busy()} onClick={() => showHostedNameChooser({action: props.session.action,
+            identity: identity(), onIdentity: (current) => { accept(current); void checkPublication(); }})} />
+          <Show when={identity().hostedNames}>
+            <p role="status">{i18n(identity().publicationPending ? 'BlahHostingPending' : 'BlahHostingPublished')}</p>
+            <Button text="BlahHostingRetry" disabled={busy()} onClick={() => run({action: 'retryPublication'})} />
+          </Show>
+        </Show>
       </Section>
       </Show>
       <Section name="BlahIdentityFiles">
