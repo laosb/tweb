@@ -93,14 +93,15 @@ defineStories('Blah', (['password', 'backups', 'numbered'] as const).map((step) 
 })));
 
 
-defineStories('Blah', (['create', 'details'] as const).map((mode) => ({
+defineStories('Blah', (['create', 'details', 'chat', 'chat-details'] as const).map((mode) => ({
   id: `blah/hosted-${mode}`,
   fixtureOnly: true,
   title: `Hosted name: ${mode}`,
   open: async() => {
     const {default: showIdentitySetup} = await import('@lib/blah/IdentitySetup');
     const {default: showIdentityDetails} = await import('@lib/blah/IdentityDetails');
-    let identity = {...identityFixture(), hostingAvailable: true};
+    let identity: IdentityView = {...identityFixture(), kind: mode.startsWith('chat') ? 'channel' : 'user',
+      hosting: mode.startsWith('chat') ? undefined : identityFixture().hosting, hostingAvailable: true};
     let locked = false;
     const action: import('@lib/blah/IdentityPanel').IdentityActions = async(request) => {
       if(request.action === 'hostingCapability') return {hostingAvailable: true};
@@ -117,22 +118,40 @@ defineStories('Blah', (['create', 'details'] as const).map((mode) => ({
       }
       if(request.action === 'create') {
         identity = {...identity, domain: request.domain, domains: [request.domain],
-          hostedNames: {domain: request.hosted.domain, held: [], proofs: {}}};
+          hostedNames: {domain: request.hosted.domain, held: [], proofs: {}, unclaimed: request.hosted.label}};
       }
       if(request.action === 'hostingClaim') {
         const {domain, label, proofs} = request.hosted;
         if(label === 'limited') throw {type: 'BlahHostingRateLimited', retryAfter: 30};
         if(label === 'lost') throw {type: 'BlahHostingTaken'};
-        identity = {...identity, domains: [...new Set([...identity.domains, label + '.' + domain])], publicationPending: false,
+        const abandoned = identity.hostedNames?.unclaimed;
+        const domains = [...new Set([...identity.domains.filter((name) => name !== abandoned + '.' + domain), label + '.' + domain])];
+        identity = {...identity, domain: domains[0], domains, publicationPending: false,
           hostedNames: {domain, held: [label], proofs}};
       }
       if(request.action === 'domains') identity = {...identity, domains: request.domains};
       if(request.action === 'retryPublication') identity = {...identity, publicationPending: false};
       if(request.action === 'publication') return {publication: {profile: [], pending: identity.publicationPending}};
+      if(request.action === 'backup') return {backup: [1, 2, 3]};
       if(request.action === 'lock') return {};
       return {identity};
     };
-    if(mode === 'create') showIdentitySetup({mode, action, onIdentity: () => {}});
+    if(mode === 'chat') {
+      const {default: showChatIdentitySetup} = await import('@lib/blah/ChatIdentitySetup');
+      void showChatIdentitySetup({hosted: true, attempt: 'hosted-chat',
+        change: {action: 'createChannel', options: {title: 'Hosted chat', about: '', broadcast: true}},
+        identityAction: action,
+        action: async(request) => {
+          if(request.action === 'prepare') {
+            await action({...request, action: 'create'});
+            return {identity, paperKey: {phrase: Array(24).fill('example').join(' '), device: '12345678'}};
+          }
+          if(identity.publicationPending) throw new Error('BLAH_PROFILE_NOT_PUBLISHED');
+          identity = {...identity, account: '25', publicationPending: true};
+          return {identity, result: {chatId: 25, missingInvitees: []}};
+        }
+      }).catch(() => {});
+    } else if(mode === 'create') showIdentitySetup({mode, action, onIdentity: () => {}});
     else showIdentityDetails({summary: identity, identity, action, onIdentity: () => {}});
   }
 })));

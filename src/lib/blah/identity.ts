@@ -8,7 +8,7 @@ import {bindHomeStorage} from '@lib/blah/homeStorage';
 import {dcDomain, fetchDCProfile, profileConfig, type SavedDC} from '@lib/blah/discovery';
 import {decode, encode, exclusively, identityIDs, SealedIdentity, stored, storeEntries} from '@lib/blah/vault';
 import {diem, IdentityInfo, IdentitySecret, SigningKey} from '@lib/blah/wasm';
-import {HostedNames, hostingAPI, planHostedName, publishHosted} from '@lib/blah/hosting';
+import {HostedNames, hostingAPI, mergeHosting, planHostedName, portableHosting, publishHosted} from '@lib/blah/hosting';
 
 export type IdentityKind = 'user' | 'channel';
 export type IdentityMetadata = {kind: IdentityKind, chatId?: ChatId, title?: string, namespace?: string, home?: string};
@@ -106,8 +106,8 @@ async function hosting(info: IdentityInfo, slot: number): Promise<IdentityHostin
 async function view(secret: IdentitySecret, info: IdentityInfo, kind: IdentityKind, slot: number): Promise<IdentityView> {
   const {proof: _, ...publicInfo} = info;
   return {...publicInfo, kind, domain: secret.domain, publisher: secret.publisher || '', renewal: renewalPolicy(secret.renewal), publicationPending: !!secret.publicationPending,
-    hostedNames: kind === 'user' ? await stored<HostedNames>('hosting:' + info.id) : undefined,
-    hostingAvailable: kind === 'user' && !!secret.identity && !!(await diemClient()).hosting,
+    hostedNames: await stored<HostedNames>('hosting:' + info.id),
+    hostingAvailable: !!secret.identity && !!(await diemClient()).hosting,
     ...(kind === 'user' ? {hosting: await hosting(info, slot)} : {})};
 }
 
@@ -163,6 +163,8 @@ async function useIdentity<T>(slot: number, action: IdentityOperation<T>, touch 
   const save = async(next: IdentityInfo, pending = true, entries: [string, unknown][] = []) => {
     secret.profile = encode(new Uint8Array(next.profile));
     secret.publicationPending = pending;
+    secret.hosting = portableHosting(entries.find(([key]) => key === 'hosting:' + current.id)?.[1] as HostedNames ||
+      await stored<HostedNames>('hosting:' + current.id), next.domains);
     await storeEntries([['identity:' + current.id, await current.key.seal(secret)], ['domain:' + current.id, secret.domain], ...entries]);
   };
   if(maintain && secret.identity) {
@@ -267,7 +269,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
   }
   if(request.action === 'hostingCapability') return {hostingAvailable: !!(await diemClient()).hosting};
   if(request.action === 'hostingStatus') {
-    const current = unlocked.get(slot);
+    const current = resources.get(slot)?.get(request.id) || unlocked.get(slot);
     return {unlocked: !!current && current.id === request.id && current.until > Date.now()};
   }
   await ensureBlahConfig(slot);
@@ -291,8 +293,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
   const use = <T>(action: IdentityOperation<T>, touch = true, maintain = true) => kind === 'channel' ?
     withResourceIdentity(slot, request.id, action, touch, maintain) : exclusively(() => useIdentity(slot, action, touch, maintain));
   if(request.action === 'hostingPlan') {
-    if(kind !== 'user') throw {type: 'BlahHostingUnavailable'};
-    if(request.id && session(slot, false).id !== request.id) throw {type: 'BlahHostingCancelled'};
+    if(request.id && session(slot, false, kind === 'channel' ? request.id : undefined).id !== request.id) throw {type: 'BlahHostingCancelled'};
     return {hostingPlan: await planHostedName(request.hosted.domain, request.hosted.label, request.id || '0'.repeat(64))};
   }
   if(request.action === 'publication') {
@@ -321,19 +322,17 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         if(request.action === 'create') {
           const domain = profileDomain(request.domain);
           if(request.hosted) {
-            if(kind !== 'user') throw {type: 'BlahHostingUnavailable'};
             await hostingAPI();
             if(domain !== request.hosted.label + '.' + profileDomain(request.hosted.domain)) throw {type: 'BlahHostingInvalid'};
           }
           key = await files.create(request.password || '');
-          secret = {domain, profile: '', renewal: renewalPolicy(request.renewal), publicationPending: true, identity: await signingKey(), device: await signingKey()};
+          secret = {domain, profile: '', hosting: request.hosted && {domain: profileDomain(request.hosted.domain), held: [], proofs: {}}, renewal: renewalPolicy(request.renewal), publicationPending: true, identity: await signingKey(), device: await signingKey()};
           info = await diem('create', secret, {}, slot, kind);
           if(kind === 'channel') {
             secret.profile = encode(new Uint8Array(info.profile));
             ({info, paperKey} = await certifyPaperKey(secret, slot, kind));
           }
           secret.profile = encode(new Uint8Array(info.profile));
-          backup = await key.seal(secret);
         } else if(request.action === 'paper') {
           // A paper key is a listed device: keep it as device-only custody of the hosted profile.
           kind = await profileKind(hosted);
@@ -344,7 +343,6 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
           if(await stored('identity:' + info.id)) {
             throw new Error('This identity already exists here. Unlock its current copy instead.');
           }
-          backup = await key.seal(secret);
         } else {
           if(request.backup && request.backup.length > 262_144) throw new Error('Identity file is too large.');
           backup = request.action === 'restore' ? new Uint8Array(request.backup) : await stored('identity:' + request.id);
@@ -361,11 +359,17 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
           throw new Error('This attempt already has an identity. Use its original domain: ' + secret.domain);
         }
         // Kind comes from the verified profile on import, never from the file picker.
+        const localHosting = await stored<HostedNames>('hosting:' + info.id);
+        const claim = request.action === 'create' && request.hosted ?
+          {...secret.hosting, unclaimed: request.hosted.label} : request.action === 'restore' ?
+            mergeHosting(localHosting, secret.hosting) : localHosting || mergeHosting(undefined, secret.hosting);
+        secret.hosting = portableHosting(claim, info.domains);
+        backup = await key.seal(secret);
         const metadata = await stored<IdentityMetadata>('metadata:' + info.id);
         await storeEntries([['identity:' + info.id, backup], ['domain:' + info.id, info.domains[0]],
           ['metadata:' + info.id, {...metadata, kind, namespace: info.namespace, home: identityHome(slot), ...(kind === 'channel' && info.account ? {chatId: Number(info.account)} : {})}],
           ...(attemptKey ? [[attemptKey, info.id] as [string, unknown]] : []),
-          ...(request.action === 'create' && request.hosted ? [['hosting:' + info.id, {domain: profileDomain(request.hosted.domain), held: [], proofs: {}, unclaimed: request.hosted.label}] as [string, unknown]] : [])]);
+          ...(claim ? [['hosting:' + info.id, claim] as [string, unknown]] : [])]);
         const resourceId = kind === 'channel' ? info.id : undefined;
         lock(slot, resourceId);
         sessions(slot, resourceId).set({id: info.id, key, until: Date.now() + 15 * 60_000});
@@ -381,7 +385,10 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
   return use(async(secret, current, save) => {
     if(request.id && current.id !== request.id) throw new Error('Unlock your browser identity to continue.');
     if(request.action === 'inspect') return {identity: await view(secret, current, kind, slot)};
-    if(request.action === 'backup') return {backup: Array.from(await stored<SealedIdentity>('identity:' + current.id))};
+    if(request.action === 'backup') {
+      await save(current, !!secret.publicationPending);
+      return {backup: Array.from(await stored<SealedIdentity>('identity:' + current.id))};
+    }
     if(!secret.identity && ['renew', 'addDevice', 'removeDevice', 'removeOtherDevices', 'domains', 'hostingClaim'].includes(request.action)) {
       throw new Error('Only a device that holds the identity key can add devices or renew the identity.');
     }
@@ -395,7 +402,6 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
       if(await publish(secret, info)) await save(info, false);
       return {identity: await view(secret, info, kind, slot)};
     } else if(request.action === 'hostingClaim') {
-      if(kind !== 'user') throw {type: 'BlahHostingUnavailable'};
       await hostingAPI();
       const domain = profileDomain(request.hosted.domain);
       const state = await stored<HostedNames>('hosting:' + current.id);
@@ -429,7 +435,6 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         secret.profile = encode(new Uint8Array(info.profile));
       }
     } else if(request.action === 'domains') {
-      if(kind !== 'user') throw new Error('Chat identity domains cannot be changed here.');
       info = await diem('domains', secret, {domains: request.domains}, slot, kind);
       secret.domain = info.domains[0];
     } else if(request.action === 'publisher') {
@@ -482,19 +487,25 @@ async function changeHome(slot: number, request: IdentityRequest, kind: Identity
   }, true, false));
 }
 
-export async function numberIdentity(slot: number, account: string) {
-  await withIdentity(slot, async(secret, info, save) => {
+export async function numberIdentity(slot: number, account: string, id?: string) {
+  const kind = id ? 'channel' : 'user';
+  const operation: IdentityOperation<void> = async(secret, info, save) => {
     if(info.account && info.account !== account) throw new Error('The DC returned a different identity account.');
+    if(info.account && !secret.publicationPending) return;
     if(!info.account) {
       await retryHostedPublication(secret, info);
-      info = await diem('account', secret, {account}, slot);
+      info = await diem('account', secret, {account}, slot, kind);
       await save(info);
     }
-    if(await publish(secret, info)) {
-      const numbered = await diem('inspect', secret, {}, slot);
-      await save(numbered, false);
+    let published = false;
+    try { published = !!await publish(secret, info); } catch(error) {
+      // A chat is already bound: return its final step with publication still pending.
+      if(!id) throw error;
     }
-  });
+    if(published) await save(info, false);
+  };
+  if(id) await withResourceIdentity(slot, id, operation, true, false);
+  else await withIdentity(slot, operation);
 }
 
 /** Shared exact-byte publication check, outside the key custody transaction. */
