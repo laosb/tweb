@@ -2,6 +2,7 @@ import {restoreDC, savedDC} from '@lib/blah/discovery';
 
 export type BlahConfig = {
   discovery?: boolean,
+  profileHostingDomain?: string,
   expiresAt?: string,
   profileDigest?: string,
   home?: {domain: string, identity: string, generation: string},

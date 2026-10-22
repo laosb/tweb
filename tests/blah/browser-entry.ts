@@ -20,3 +20,71 @@ export {verifyResourceProfile} from '@lib/blah/resourceProfiles';
 export {stored, decode} from '@lib/blah/vault';
 
 export {setBlahConfig};
+
+/** Real signing/hosting bridge with an in-page host transport, no DNS/server dependency. */
+export async function exerciseHostedClaim() {
+  const {diemClient, verifySignature} = await import('@lib/blah/runtime');
+  const {identityAction, numberIdentity} = await import('@lib/blah/identity');
+  const {stored} = await import('@lib/blah/vault');
+  const client = await diemClient();
+  if(!client.hosting) return {supported: false};
+  setBlahConfig(3, blah);
+  const domain = 'id.example';
+  const hosted = {domain, label: 'alice'};
+  const publications: {profile: number[], via: string, proof: string}[] = [];
+  let published: Uint8Array;
+  let held: string[] = [];
+  let loseResponse = true;
+  const originalFetch = window.fetch;
+  const json = (value: unknown) => new Response(JSON.stringify(value), {headers: {'Content-Type': 'application/json'}});
+  window.fetch = async(input, init) => {
+    const url = new URL(String(input));
+    if(url.hostname !== domain && !url.hostname.endsWith('.' + domain)) return originalFetch(input, init);
+    if(url.pathname.endsWith('/hosting')) return json({domain, labelPattern: '^[a-z]+$', maxClaimsPerIdentity: 3,
+      maxUpdatesPerIdentityPerHour: 100, claimGraceAfterExpiry: 1000,
+      proofOfWork: {algorithm: 'sha256-leading-zero-bits-v1', baseBits: 8, bitsPerShorterCharacter: 0, referenceLength: 0}});
+    if(url.pathname.includes('/hosting/names/')) {
+      const label = url.pathname.split('/').pop();
+      return json({label, status: held.includes(label) ? 'claimed' : 'available', requiredBits: 8});
+    }
+    if(init?.method === 'PUT') {
+      const bytes = new Uint8Array(init.body as Uint8Array);
+      const profile = await client.verifyProfile(bytes, Math.floor(Date.now() / 1000), {verify: verifySignature});
+      const headers = new Headers(init.headers);
+      publications.push({profile: Array.from(bytes), via: url.hostname, proof: headers.get('Diem-Hosting-Proof')});
+      published = bytes;
+      held = profile.domains.filter((name) => name.endsWith('.' + domain)).map((name) => name.slice(0, -domain.length - 1));
+      if(loseResponse) { loseResponse = false; throw new TypeError('Unanswered PUT'); }
+      const identity = btoa(String.fromCharCode(...profile.id.match(/../g).map((hex) => parseInt(hex, 16))))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      return new Response(`{"identity":"${identity}","revision":${profile.revision},"domains":${JSON.stringify(held.map((label) => label + '.' + domain))}}`,
+        {headers: {'Content-Type': 'application/json'}});
+    }
+    return held.includes(url.hostname.slice(0, -domain.length - 1)) ?
+      new Response(new Uint8Array(published), {headers: {'Content-Type': 'application/cbor'}}) : new Response(null, {status: 404});
+  };
+  try {
+    const {identity} = await identityAction(3, {action: 'create', domain: 'alice.id.example', password: 'x', hosted});
+    const {hostingPlan} = await identityAction(3, {action: 'hostingPlan', id: identity.id, hosted});
+    const nonce = await client.hosting.solve(hostingPlan.puzzle);
+    let failure: string;
+    try { await identityAction(3, {action: 'hostingClaim', id: identity.id, hosted: {...hosted, proofs: {alice: nonce}}}); }
+    catch(error) { failure = (error as {type: string}).type; }
+    const pending = (await identityAction(3, {action: 'inspect'})).identity.publicationPending;
+    await identityAction(3, {action: 'retryPublication', id: identity.id});
+    const exactRetry = JSON.stringify(publications[0].profile) === JSON.stringify(publications[1].profile);
+    await numberIdentity(3, '42');
+    await identityAction(3, {action: 'renew', id: identity.id});
+    const publishedState = (await identityAction(3, {action: 'inspect'})).identity;
+    const check = await identityAction(3, {action: 'publication'});
+    await identityAction(3, {action: 'domains', id: identity.id, domains: ['own.example']});
+    const state = await stored<import('@lib/blah/hosting').HostedNames>('hosting:' + identity.id);
+    return {supported: true, failure, pending, exactRetry, hasProof: !!publications[0].proof,
+      account: publishedState.account, published: !publishedState.publicationPending, checked: !check.publication.pending,
+      released: state.held.length === 0, releaseVia: publications[publications.length - 1].via, releaseProof: publications[publications.length - 1].proof,
+      updatesWithoutProof: publications.slice(2).every((entry) => !entry.proof), puts: publications.length};
+  } finally {
+    window.fetch = originalFetch;
+    await identityAction(3, {action: 'lock'});
+  }
+}
