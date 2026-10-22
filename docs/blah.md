@@ -110,7 +110,7 @@ in up to four dedicated module workers on the UI side. Progress and cancellation
 remain available; closing the chooser or locking the identity stops the pool. No
 keys enter these workers. Cancellation, a lost name race or a failed PUT leaves the
 identity saved with publication pending. In details, **Add a hosted name** can retry
-or replace an unclaimed name. It also adds a hosted name to an existing user identity.
+or replace an unclaimed name. It also adds a hosted name to an existing user or chat identity.
 One hosting domain per identity is supported, together with any own domains.
 
 Renewal, device changes, account numbering and home moves publish signed updates
@@ -130,11 +130,30 @@ and `pending` retains the in-flight profile bytes, routing label
 and hosted labels until an acknowledged PUT. Signed revisions and claim proofs are
 saved before publication. Proofs are reusable public data, sent only for names not currently held. Ordinary
 updates omit proofs; a proof-required response makes the cached proof eligible for
-the next retry. Proofs are separate from sealed key
-files. Exported identity files do not include this origin-local record; after moving
-to another browser, use **Add a hosted name** with the same host/name to restore its
-publication routing (the host reports names already held by that identity).
-Hosted claiming for chat/channel identities and bots is not exposed.
+the next retry. Encrypted identity backups include the portable
+`hosting: {domain, held, proofs}` record. Every save and export refreshes it from local
+claim state. Restore merges names without removing locally held names and keeps local
+proofs and in-flight `pending` bytes authoritative. A different local hosting domain
+wins; importing an existing identity still refuses to overwrite its signed custody.
+Unlock uses an existing local record as-is, so a stale sealed snapshot cannot resurrect
+a released name. Old files without a hosting record remain supported. Pending publication
+bytes and the replaceable `unclaimed` hint stay local; backups never copy them. Only
+16 labels fit a portable record; obsolete proof entries beyond that are omitted, with
+held names and current profile names kept first. Combining more than 16 held names rejects the import.
+
+Chat identities use the same claim/release controls in their details. The Cross-server
+form offers **Hosted name** when the runtime supports it. Its dialog saves channel custody
+and the default paper device before running the UI proof workers, then publishes through
+the hosting API. Save the backup and paper words before binding as usual. Cancellation
+keeps the attempt reusable; publication errors offer retry. Binding still requires an
+exact public-profile match, and numbering publishes the updated hosted profile.
+
+There is no Diem bot identity manager: custody and the WASM adapter manage only `user`
+and `channel`. The upstream managed-bot popup calls `appBotsManager.createManagedBot`
+(`bots.createBot`) with a manager, display name and Telegram username; it neither creates
+nor imports signing keys or Diem bot profiles. Resource-profile verification can display
+bot domains, and managed-account token sign-in explicitly refuses bots. These paths do
+not offer hosted-name claims.
 
 ### Sign in with a paper key
 
@@ -165,7 +184,7 @@ trailing **Identity details** icon opens a dialog; closing it by any route also 
 Details reload the saved profile automatically on opening and after unlocking.
 Chat identities have a separate list, labelled by the attached chat title or by their
 domain and **Not attached**. They share exports, devices, paper keys and renewal with
-user identities, but have no domain-username editor and never enter the sign-in picker.
+user identities, including domain and hosted-name editing, and never enter the sign-in picker.
 Import detects the signed profile kind, including in encrypted identity files.
 
 Any saved user identity unlocks, whichever DC hosts it. Its **Home DC** section shows that
@@ -334,7 +353,7 @@ pinned BlahDiem release.
 
 ### Cross-server creation and upgrade
 
-**Cross-server** on the channel/group creation form reveals a profile-domain field.
+**Cross-server** on the channel/group creation form reveals the own-domain / hosted-name choice (or a profile-domain field on older runtimes).
 Existing channels and supergroups offer it to their creator in the edit form; monoforums
 follow their broadcast. A known binding is shown permanently enabled with its domain.
 Failed profile lookups hide the control rather than treating the identity as absent.

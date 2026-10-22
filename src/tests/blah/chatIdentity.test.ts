@@ -1,10 +1,14 @@
 import '@helpers/peerIdPolyfill';
 import type {Updates} from '@layer';
 import {beforeEach, expect, it, vi} from 'vitest';
-const mock = vi.hoisted(() => ({store: new Map<string, any>(), account: '', save: vi.fn(), diem: vi.fn(), publication: vi.fn(), verify: vi.fn()}));
+const mock = vi.hoisted(() => ({store: new Map<string, any>(), account: '', save: vi.fn(), diem: vi.fn(), publication: vi.fn(), verify: vi.fn(), identity: vi.fn()}));
 vi.mock('@config/blah', () => ({getBlahConfig: () => ({home: {identity: 'home'}})}));
 vi.mock('@lib/blah/identity', () => ({
-  identityAction: async() => ({identity: {id: 'resource', account: mock.account}}),
+  identityAction: mock.identity,
+  numberIdentity: async(slot: number, account: string) => {
+    if(mock.account && mock.account !== account) throw new Error('This identity belongs to another chat.');
+    if(!mock.account) await mock.save(await mock.diem('account', {}, {account}, slot, 'channel'));
+  },
   publicationPending: mock.publication,
   withResourceIdentity: async(_slot: number, _id: string, action: (...args: any[]) => unknown) =>
     action({}, {account: mock.account, domains: ['news.example.org'], profile: [1]}, mock.save)
@@ -35,6 +39,7 @@ function bind(manager: ReturnType<typeof managers>, change: ChatIdentityChange) 
   return chatIdentityAction(1, manager as any, {action: 'bind', id: 'resource', change});
 }
 beforeEach(() => {
+  mock.identity.mockReset().mockImplementation(async() => ({identity: {id: 'resource', account: mock.account}}));
   mock.store.clear(); mock.store.set('metadata:resource', {kind: 'channel'}); mock.account = '';
   mock.publication.mockReset().mockResolvedValue(false);
   mock.save.mockReset().mockImplementation(async(info) => { mock.account = info.account; });
@@ -135,4 +140,11 @@ it('resumes pending numbering and applies newly edited fields without another pr
   expect(manager.apiManager.invokeApi).toHaveBeenCalledOnce();
   expect(manager.appChatsManager.editTitle).toHaveBeenCalledWith(25, 'Second title');
   expect(mock.store.get('metadata:resource').title).toBe('Second title');
+});
+
+it('prepares hosted channel custody without a bot or user creation path', async() => {
+  const request = {action: 'prepare', domain: 'news.id.example', password: 'x', attempt: 'hosted',
+    hosted: {domain: 'id.example', label: 'news'}} as const;
+  await chatIdentityAction(2, managers() as any, request);
+  expect(mock.identity).toHaveBeenCalledWith(2, {...request, action: 'create', kind: 'channel'});
 });
