@@ -23,6 +23,15 @@ type Props = {
   onBusy?: (busy: boolean) => void
 };
 
+export function HostedNameChoice(props: {hosted: boolean, disabled?: boolean, onChange: (hosted: boolean) => void}) {
+  return <label>{i18n('BlahHostingChoice')}
+    <select disabled={props.disabled} value={props.hosted ? 'hosted' : 'own'} onChange={(event) => props.onChange(event.currentTarget.value === 'hosted')}>
+      <option value="own">{i18n('BlahHostingOwnDomain')}</option>
+      <option value="hosted">{i18n('BlahHostingName')}</option>
+    </select>
+  </label>;
+}
+
 /** Shared creation/details chooser; only public puzzles cross into the worker pool. */
 export function HostedNameChooser(props: Props) {
   const [identity, setIdentity] = createSignal(props.identity);
