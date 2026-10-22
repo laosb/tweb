@@ -420,6 +420,13 @@ try {
   });
   assert.equal(dcImport.account, '777000');
   assert(dcImport.proof > 64);
+  const hostedClaim = await page.evaluate(() => fixture.exerciseHostedClaim());
+  if(hostedClaim.supported) {
+    assert.deepEqual(hostedClaim, {supported: true, failure: 'BlahHostingUnreachable', pending: true, exactRetry: true,
+      hasProof: true, account: '42', published: true, checked: true, released: true,
+      releaseVia: 'alice.id.example', releaseProof: null, updatesWithoutProof: true, puts: 5});
+    console.log('Hosted claim: real WASM proofs, persistence, exact retry, numbering, renewal and release passed');
+  } else console.log('Hosted claim skipped: pinned runtime has no hosting capability');
   console.log('PASS: real BlahDiem WASM creation, encrypted custody, proof/session binding, numbering, verified resource profiles, renewal, devices, paper keys, reload, home/slot isolation, home changes and recovery.');
 } finally {
   await browser?.close();

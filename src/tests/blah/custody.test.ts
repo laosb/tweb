@@ -2,7 +2,7 @@ import {beforeEach, afterEach, describe, expect, it, vi} from 'vitest';
 import type {IdentityInfo, IdentitySecret} from '@lib/blah/wasm';
 
 const mock = vi.hoisted(() => ({store: new Map<string, any>(), files: new Map<number, any>(), profiles: new Map<number, any>(),
-  next: 0, created: 0, paper: vi.fn(), diem: vi.fn(), published: vi.fn()}));
+  next: 0, created: 0, paper: vi.fn(), diem: vi.fn(), published: vi.fn(), hosting: undefined as any}));
 vi.mock('@config/blah', () => ({default: {home: {}}, ensureBlahConfig: async() => {},
   getBlahConfig: () => ({home: {identity: 'home', generation: '1'}})}));
 vi.mock('@lib/blah/homeStorage', () => ({bindHomeStorage: async() => {}}));
@@ -37,6 +37,7 @@ vi.mock('@lib/blah/runtime', () => {
     destroy: vi.fn()
   });
   return {verifySignature: vi.fn(), diemClient: async() => ({
+    hosting: mock.hosting,
     generateSigningKey: async() => ({privateKey: 'secret', publicKey: 'public'}),
     paperKeys: {generate: mock.paper, restore: async() => ({key: {privateKey: 'paper-secret', publicKey: 'paper-public'}})},
     verifyProfile: async(profile: Uint8Array) => ({kind: mock.profiles.get(profile[0]).kind}),
@@ -55,10 +56,11 @@ vi.mock('@lib/blah/runtime', () => {
   })};
 });
 vi.mock('@lib/blah/wasm', () => ({diem: mock.diem}));
-import {bindIdentity, chatIdentityForId, identityAction, withIdentity, withResourceIdentity} from '@lib/blah/identity';
+import {bindIdentity, chatIdentityForId, identityAction, numberIdentity, withIdentity, withResourceIdentity} from '@lib/blah/identity';
 
 beforeEach(() => {
   vi.useFakeTimers();
+  mock.hosting = undefined;
   mock.store.clear(); mock.files.clear(); mock.profiles.clear(); mock.next = 0; mock.created = 0;
   mock.paper.mockReset().mockResolvedValue({phrase: Array(24).fill('word').join(' '), device: [42]});
   mock.diem.mockReset().mockImplementation(async(operation: string, secret: IdentitySecret, extra = {}, _slot: number, kind = 'user') => {
@@ -148,7 +150,8 @@ describe('channel custody', () => {
     const {identity} = await create(kind);
     mock.profiles.get(identity.profile[0]).account = '25';
     await identityAction(1, {action: 'lock'});
-    mock.store.clear();
+    mock.hosting = undefined;
+  mock.store.clear();
     mock.published.mockResolvedValue(new Uint8Array(identity.profile));
     const imported = await identityAction(1, {action: 'paper', domain: identity.domain, password: 'new password', phrase: 'words',
       kind: kind === 'user' ? 'channel' : 'user'});
@@ -245,5 +248,132 @@ describe('channel custody', () => {
     expect((await identityAction(1, {action: 'publication', id: channel.identity.id})).publication.pending).toBe(true);
     mock.published.mockRejectedValue(new Error('Network failed'));
     await expect(identityAction(1, {action: 'publication', id: channel.identity.id})).rejects.toThrow('Network failed');
+  });
+});
+
+
+describe('hosted profile names', () => {
+  const hosted = {domain: 'id.example', label: 'alice', proofs: {alice: [0, 1]}};
+  function enableHosting() {
+    mock.hosting = {
+      plan: vi.fn(async() => [{label: 'alice', status: 'needsProof', requiredBits: 0, puzzle: null}]),
+      publish: vi.fn(async(_domain: string, profile: number[]) => {
+        const info = mock.profiles.get(profile[0]);
+        const file = mock.store.get('identity:' + info.id);
+        expect(mock.files.get(file[0]).secret.publicationPending).toBe(true);
+        expect(atob(mock.files.get(file[0]).secret.profile).charCodeAt(0)).toBe(profile[0]);
+        return {identity: info.id, revision: '1', domains: info.domains};
+      })
+    };
+    const original = mock.diem.getMockImplementation();
+    mock.diem.mockImplementation(async(operation, ...args) => {
+      const info = await original(operation, ...args);
+      if(['domains', 'renew', 'account', 'addDevice', 'home'].includes(operation)) {
+        info.profile = [mock.profiles.size + 1];
+        mock.profiles.set(info.profile[0], structuredClone(info));
+      }
+      return info;
+    });
+  }
+  const claim = (id: string, extra = {}) => identityAction(1, {action: 'hostingClaim', id, hosted: {...hosted, ...extra}});
+  it('hides the capability on older runtimes', async() => {
+    expect(await identityAction(1, {action: 'hostingCapability'})).toEqual({hostingAvailable: false});
+    const {identity} = await create('user');
+    expect(identity.hostingAvailable).toBe(false);
+    await expect(claim(identity.id)).rejects.toMatchObject({type: 'BlahHostingUnavailable'});
+  });
+  it('plans without custody and persists a created identity before solving', async() => {
+    enableHosting();
+    expect((await identityAction(1, {action: 'hostingPlan', hosted})).hostingPlan.status).toBe('needsProof');
+    expect(mock.hosting.plan).toHaveBeenCalledWith('id.example', ['alice'], '0'.repeat(64));
+    const {identity} = await create('user', {domain: 'alice.id.example', hosted});
+    expect(identity.publicationPending).toBe(true);
+    expect(mock.hosting.publish).not.toHaveBeenCalled();
+    expect(mock.store.get('hosting:' + identity.id)).toEqual({domain: 'id.example', held: [], proofs: {}, unclaimed: 'alice'});
+    await identityAction(1, {action: 'lock'});
+    expect((await identityAction(1, {action: 'hostingStatus', id: identity.id})).unlocked).toBe(false);
+    await expect(claim(identity.id)).rejects.toThrow('Unlock');
+  });
+  it('claims with supplied proofs, persists public state and publishes renewal and numbering', async() => {
+    enableHosting();
+    const {identity} = await create('user');
+    const claimed = (await claim(identity.id)).identity;
+    expect(claimed.domains).toEqual(['alice.example.org', 'alice.id.example']);
+    expect(claimed.publicationPending).toBe(false);
+    expect(mock.store.get('hosting:' + identity.id)).toMatchObject({domain: 'id.example', held: ['alice'], proofs: hosted.proofs});
+    expect(mock.files.get(mock.store.get('identity:' + identity.id)[0]).secret.hosted).toBeUndefined();
+    const profile = mock.profiles.get(claimed.profile[0]);
+    profile.notBefore = Date.now() / 1000 - 9000;
+    profile.expiresAt = Date.now() / 1000 + 1000;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(mock.hosting.publish).toHaveBeenCalledTimes(2);
+    expect(mock.hosting.publish.mock.lastCall[2].proofs).toEqual({});
+    await numberIdentity(1, '42');
+    expect(mock.hosting.publish).toHaveBeenCalledTimes(3);
+    await identityAction(1, {action: 'home', id: identity.id, domain: 'dc2.example.org'});
+    expect(mock.hosting.publish).toHaveBeenCalledTimes(4);
+  });
+  it('preserves other signed hosted names when restoring routing after import', async() => {
+    enableHosting();
+    const {identity} = await create('user', {domain: 'existing.id.example'});
+    const {identity: claimed} = await claim(identity.id);
+    expect(claimed.domains).toEqual(['existing.id.example', 'alice.id.example']);
+  });
+  it('releases through a still held name and uses the removed name for the last release', async() => {
+    enableHosting();
+    const {identity} = await create('user');
+    await claim(identity.id);
+    await claim(identity.id, {label: 'bob', proofs: {bob: [2]}});
+    await identityAction(1, {action: 'domains', id: identity.id, domains: ['alice.example.org', 'bob.id.example']});
+    expect(mock.hosting.publish.mock.lastCall[2].via).toBe('bob');
+    await identityAction(1, {action: 'domains', id: identity.id, domains: ['alice.example.org']});
+    expect(mock.hosting.publish.mock.lastCall[2].via).toBe('bob');
+    expect(mock.store.get('hosting:' + identity.id).held).toEqual([]);
+  });
+  it('keeps unanswered PUT bytes and retries them before a newer revision', async() => {
+    enableHosting();
+    const {identity} = await create('user');
+    mock.hosting.publish.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(claim(identity.id)).rejects.toMatchObject({type: 'BlahHostingUnreachable'});
+    const saved = (await identityAction(1, {action: 'inspect', id: identity.id})).identity;
+    expect(saved.publicationPending).toBe(true);
+    expect(saved.hostedNames.pending.profile).toEqual(saved.profile);
+    await identityAction(1, {action: 'renew', id: identity.id});
+    expect(mock.hosting.publish.mock.calls[1][1]).toEqual(mock.hosting.publish.mock.calls[0][1]);
+    expect(mock.hosting.publish.mock.calls[2][1]).not.toEqual(mock.hosting.publish.mock.calls[0][1]);
+    expect((await identityAction(1, {action: 'inspect', id: identity.id})).identity.publicationPending).toBe(false);
+  });
+  it('reuses a cached proof when the host reports that a held name now needs proof', async() => {
+    enableHosting();
+    const {identity} = await create('user');
+    await claim(identity.id);
+    mock.hosting.publish.mockRejectedValueOnce({type: 'hostingProblem', code: 'proof-required', labels: [{label: 'alice'}]});
+    await expect(identityAction(1, {action: 'renew', id: identity.id})).rejects.toMatchObject({type: 'BlahHostingProofFailed'});
+    await identityAction(1, {action: 'retryPublication', id: identity.id});
+    expect(mock.hosting.publish.mock.lastCall[2].proofs).toEqual(hosted.proofs);
+  });
+  it('reconciles an unanswered final release whose route is no longer held', async() => {
+    enableHosting();
+    const {identity} = await create('user');
+    await claim(identity.id);
+    mock.hosting.publish.mockRejectedValueOnce(new TypeError('Lost release response'));
+    await expect(identityAction(1, {action: 'domains', id: identity.id, domains: ['alice.example.org']})).rejects.toMatchObject({type: 'BlahHostingUnreachable'});
+    mock.hosting.publish.mockRejectedValueOnce({type: 'hostingProblem', code: 'host-not-listed'});
+    const {identity: released} = await identityAction(1, {action: 'retryPublication', id: identity.id});
+    expect(mock.hosting.plan).toHaveBeenCalledWith('id.example', ['alice'], identity.id);
+    expect(released.hostedNames.held).toEqual([]);
+    expect(released.hostedNames.pending).toBeUndefined();
+    expect(released.publicationPending).toBe(false);
+  });
+  it('retains a refused claim and allows a replacement name, with localized structured errors', async() => {
+    enableHosting();
+    const {identity} = await create('user', {domain: 'alice.id.example', hosted});
+    mock.hosting.publish.mockRejectedValueOnce({type: 'hostingProblem', code: 'name-taken'});
+    await expect(claim(identity.id)).rejects.toMatchObject({type: 'BlahHostingTaken'});
+    expect(mock.store.get('hosting:' + identity.id).pending).toBeUndefined();
+    const {identity: replaced} = await claim(identity.id, {label: 'bob', proofs: {bob: [2]}});
+    expect(replaced.domains).toEqual(['bob.id.example']);
+    mock.hosting.publish.mockRejectedValueOnce({type: 'hostingProblem', code: 'rate-limited', retryAfter: 60});
+    await expect(identityAction(1, {action: 'retryPublication', id: identity.id})).rejects.toMatchObject({type: 'BlahHostingRateLimited', retryAfter: 60});
   });
 });

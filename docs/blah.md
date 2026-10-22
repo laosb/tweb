@@ -60,7 +60,9 @@ node scripts/prepare-cloudflare-assets.mjs
 
 No endpoint or RSA-key file is needed for domain discovery. Application credentials
 are still embedded at build time; the DC profile does not register an application.
-`BLAH_VAPID_PUBLIC_KEY` optionally enables remote push. Deploy
+`BLAH_VAPID_PUBLIC_KEY` optionally enables remote push.
+`BLAH_PROFILE_HOSTING_DOMAIN` optionally prefills the hosted-name chooser with a DNS
+hostname; it defaults to empty and is independent of the home DC. Deploy
 `.cloudflare/assets/`, as described in [deployment](cloudflare.md).
 
 An existing operator deployment can retain its release-time bootstrap by setting
@@ -81,7 +83,8 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
    `https://alice.example.org/.well-known/blah/profile.cbor` with `application/cbor`.
    The creation dialog previews this URL below its action button as you enter the domain.
    The DC must be able to fetch it directly over public HTTPS without credentials
-   or redirects. This first version does not provision DNS or profile hosting.
+   or redirects. With a runtime that supports name hosting, you can instead choose
+   **Hosted name** during creation (see below).
 4. Close identity details, enter the identity password and select **Sign in to Blah**.
    Closing details locks the identity; signing in unlocks it again. The DC may request
    admission email verification or an account password. A new identity proceeds to signup.
@@ -92,6 +95,46 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
 The DC refetches the numbered profile through a proof-wrapped account read before
 login completes. Failed publication leaves the new profile durably available for
 retry. There is no email-only, phone-number or QR identity login.
+
+### Hosted profile names
+
+When the loaded BlahDiem runtime exposes `hosting`, creation offers **Hosted name**
+or **Your own domain**. Enter the hosting domain and a single name below it. The
+chooser checks availability after typing and shows expected proof work as a number
+of attempts; availability is not a reservation. The current CDN pin predates this
+capability, so hosted controls stay hidden until a compatible release is deployed.
+The optional build default does not enable the capability by itself.
+
+**Claim and publish** first saves the identity, then solves the identity-bound proof
+in up to four dedicated module workers on the UI side. Progress and cancellation
+remain available; closing the chooser or locking the identity stops the pool. No
+keys enter these workers. Cancellation, a lost name race or a failed PUT leaves the
+identity saved with publication pending. In details, **Add a hosted name** can retry
+or replace an unclaimed name. It also adds a hosted name to an existing user identity.
+One hosting domain per identity is supported, together with any own domains.
+
+Renewal, device changes, account numbering and home moves publish signed updates
+through BlahDiem's hosting API. **Retry publication** resends saved bytes without
+signing another revision. An unanswered PUT is replayed before a newer revision is
+signed. Removing a hosted domain publishes its release through a remaining held
+name, or the last removed name; at least one profile domain must remain. If an unanswered
+final release has already removed its routing name, retry reconciles all previously
+held names through the host before marking it complete. Own domains
+still need the current profile served at each domain, and the publication check
+continues to compare every listed domain.
+
+Public claim metadata lives in `hosting:<identity ID>` in the custody vault:
+`{domain, held, proofs, unclaimed?, pending?}`. `held` contains labels, `proofs` maps labels to
+nonce byte arrays, `unclaimed` remembers a claim that may be replaced after failure,
+and `pending` retains the in-flight profile bytes, routing label
+and hosted labels until an acknowledged PUT. Signed revisions and claim proofs are
+saved before publication. Proofs are reusable public data, sent only for names not currently held. Ordinary
+updates omit proofs; a proof-required response makes the cached proof eligible for
+the next retry. Proofs are separate from sealed key
+files. Exported identity files do not include this origin-local record; after moving
+to another browser, use **Add a hosted name** with the same host/name to restore its
+publication routing (the host reports names already held by that identity).
+Hosted claiming for chat/channel identities and bots is not exposed.
 
 ### Sign in with a paper key
 
@@ -197,7 +240,7 @@ Verify the library and client integration:
 pnpm exec vitest run src/tests/blah src/tests/webPushApiManager.test.ts
 pnpm run typecheck
 node scripts/test-blah-browser.mjs
-pnpm exec playwright test e2e/blahDomains.spec.ts e2e/blahChatIdentity.spec.ts
+pnpm exec playwright test e2e/blahDomains.spec.ts e2e/blahHosting.spec.ts e2e/blahChatIdentity.spec.ts
 BLAH_SERVER_REPO=/path/to/Teleblah node scripts/test-blah-server.mjs
 ```
 
@@ -224,7 +267,11 @@ It also creates a Cross-server channel and upgrades an unchanged home-only chann
 saves encrypted backups, checks the default paper words, publishes both profile revisions, and checks
 chat custody stays out of the sign-in picker. A proof-wrapped read refreshes the DC's
 stored numbered profile; an info-panel check after reload clears the five-minute lookup cache.
-It uses Teleblah's test-only profile-directory transport; production
+With an unreleased hosting runtime, `BLAH_TEST_HOSTING=1 BLAH_TEST_HOSTING_ONLY=1`
+on the server fixture runs a focused UI claim/release against a disposable DC configured
+with `BLAH_PROFILE_HOSTING_CONFIG` and tiny proof difficulty. Without the `ONLY` switch
+it also runs the account checks.
+The account checks use Teleblah's test-only profile-directory transport; production
 still requires public HTTPS profile hosting. It needs `openssl` and the server binary
 already built. This validates identity/login support, not every post-login Telegram RPC.
 

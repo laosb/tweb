@@ -2,6 +2,17 @@ import type {ChatIdentityResponse} from '@lib/blah/chatIdentity';
 import type {IdentityView} from '@lib/blah/identity';
 import {defineStories} from '@components/popupSandbox/registry';
 
+
+function identityFixture(): IdentityView {
+  return {
+      id: '123456'.padEnd(64, '0'), domain: 'alice.example.org', domains: ['alice.example.org'], publisher: '',
+      renewal: {profileDays: 180, deviceDays: 180, autoRenew: true}, publicationPending: true,
+      notBefore: 1877904000, namespace: '', profile: [], account: '12345', expiresAt: 1893456000, devices: [],
+      hosting: {dc: '1a'.repeat(32), domain: 'old.example.org', account: '12345', epoch: '1', current: false,
+        slot: {dc: '2b'.repeat(32), domain: 'dc.example.org'}}
+  };
+}
+
 defineStories('Blah', [{
   id: 'blah/unlock-chat-identity',
   fixtureOnly: true,
@@ -33,13 +44,7 @@ defineStories('Blah', [{
   title: 'Identity details',
   open: async() => {
     const {default: showIdentityDetails} = await import('@lib/blah/IdentityDetails');
-    let identity: IdentityView = {
-      id: '123456'.padEnd(64, '0'), domain: 'alice.example.org', domains: ['alice.example.org'], publisher: '',
-      renewal: {profileDays: 180, deviceDays: 180, autoRenew: true}, publicationPending: true,
-      notBefore: 1877904000, namespace: '', profile: [], account: '12345', expiresAt: 1893456000, devices: [],
-      hosting: {dc: '1a'.repeat(32), domain: 'old.example.org', account: '12345', epoch: '1', current: false,
-        slot: {dc: '2b'.repeat(32), domain: 'dc.example.org'}}
-    };
+    let identity = identityFixture();
     showIdentityDetails({
       summary: identity, identity,
       action: async(request) => {
@@ -84,5 +89,50 @@ defineStories('Blah', (['password', 'backups', 'numbered'] as const).map((step) 
       identityAction: async(request) => request.action === 'publication' ? {publication: {profile: [], pending: true}} :
         request.action === 'backup' ? {backup: []} : {}
     }).catch(() => {});
+  }
+})));
+
+
+defineStories('Blah', (['create', 'details'] as const).map((mode) => ({
+  id: `blah/hosted-${mode}`,
+  fixtureOnly: true,
+  title: `Hosted name: ${mode}`,
+  open: async() => {
+    const {default: showIdentitySetup} = await import('@lib/blah/IdentitySetup');
+    const {default: showIdentityDetails} = await import('@lib/blah/IdentityDetails');
+    let identity = {...identityFixture(), hostingAvailable: true};
+    let locked = false;
+    const action: import('@lib/blah/IdentityPanel').IdentityActions = async(request) => {
+      if(request.action === 'hostingCapability') return {hostingAvailable: true};
+      if(request.action === 'hostingStatus') return {unlocked: !locked};
+      if(request.action === 'hostingPlan') {
+        const {label} = request.hosted;
+        locked = label === 'locked';
+        if(label === 'offline') throw {type: 'BlahHostingUnreachable'};
+        const status = label === 'taken' ? 'taken' : label === 'invalid' ? 'invalid' : 'needsProof';
+        const requiredBits = label === 'slow' || locked ? 256 : label === 'proof' ? 12 : 0;
+        return {hostingPlan: {label, status, requiredBits, puzzle: requiredBits ? {label, requiredBits,
+          input: [...new TextEncoder().encode('diem-profile-hosting-pow-v1\0id.example\0alice\0'),
+            ...Array.from({length: 32}, (_, i) => i + 1)]} : null}};
+      }
+      if(request.action === 'create') {
+        identity = {...identity, domain: request.domain, domains: [request.domain],
+          hostedNames: {domain: request.hosted.domain, held: [], proofs: {}}};
+      }
+      if(request.action === 'hostingClaim') {
+        const {domain, label, proofs} = request.hosted;
+        if(label === 'limited') throw {type: 'BlahHostingRateLimited', retryAfter: 30};
+        if(label === 'lost') throw {type: 'BlahHostingTaken'};
+        identity = {...identity, domains: [...new Set([...identity.domains, label + '.' + domain])], publicationPending: false,
+          hostedNames: {domain, held: [label], proofs}};
+      }
+      if(request.action === 'domains') identity = {...identity, domains: request.domains};
+      if(request.action === 'retryPublication') identity = {...identity, publicationPending: false};
+      if(request.action === 'publication') return {publication: {profile: [], pending: identity.publicationPending}};
+      if(request.action === 'lock') return {};
+      return {identity};
+    };
+    if(mode === 'create') showIdentitySetup({mode, action, onIdentity: () => {}});
+    else showIdentityDetails({summary: identity, identity, action, onIdentity: () => {}});
   }
 })));

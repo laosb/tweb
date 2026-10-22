@@ -82,6 +82,10 @@ try {
     requiresSignupEmailCode: false,
     requiresSignInEmailCode: false
   }));
+  const testHosting = process.env.BLAH_TEST_HOSTING === '1';
+  if(testHosting) await writeFile(dir + '/hosting.json', JSON.stringify({domain: 'id.example',
+    database: dir + '/hosting.sqlite', maxUpdatesPerIdentityPerHour: 100,
+    proofOfWork: {baseBits: 8, bitsPerShorterCharacter: 0, referenceLength: 0}}));
   const startDC = (domain, port, web, seedFile) => {
     const server = spawn(tele + '/.build/debug/BlahMTProtoServer', ['--port', String(port), '--web-port', String(web),
       '--data-db', dir + '/' + domain + '-data.sqlite', '--auth-db', dir + '/' + domain + '-auth.sqlite',
@@ -90,7 +94,8 @@ try {
       '--db', dir + '/' + domain + '-sessions.sqlite',
       '--federation-key-file', seedFile, '--federation-key-algorithm', 'ed25519',
       '--local-config-file', dir + '/local.json', '--test-profile-directory', dir + '/profiles'], {
-      cwd: tele, stdio: ['ignore', 'ignore', 'pipe']
+      cwd: tele, stdio: ['ignore', 'ignore', 'pipe'],
+      env: {...process.env, ...(testHosting && domain === 'dc.example.org' ? {BLAH_PROFILE_HOSTING_CONFIG: dir + '/hosting.json'} : {})}
     });
     server.stderr.on('data', c => logs += c);
     return server;
@@ -104,6 +109,7 @@ try {
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', dir + '/tls.key', '-out', dir + '/tls.crt', '-days', '1', '-subj', '/CN=localhost'], {
     stdio: 'ignore'
   });
+  let hostingPuts = 0;
   edge = createServer({
     key: await readFile(dir + '/tls.key'),
     cert: await readFile(dir + '/tls.crt')
@@ -126,6 +132,21 @@ try {
       }
       // Profile hosting for fetches from the shared worker, which page routes do not intercept.
       const host = new URL('https://' + req.headers.host).hostname;
+      if(testHosting && (host === 'id.example' || host.endsWith('.id.example'))) {
+        if(req.method === 'PUT' && ++hostingPuts === 3) {
+          // Commit the last-name release, then deliberately lose its acknowledgement.
+          const chunks = [];
+          for await (const chunk of req) chunks.push(chunk);
+          const response = await fetch('http://127.0.0.1:' + web + req.url, {method: 'PUT',
+            headers: req.headers, body: Buffer.concat(chunks)});
+          assert.equal(response.status, 200);
+          await response.arrayBuffer();
+          res.destroy();
+          return;
+        }
+        proxy.web(req, res, {target: 'http://127.0.0.1:' + web});
+        return;
+      }
       if(req.method === 'GET' && path === '/.well-known/blah/profile.cbor' && profileDomains.includes(host)) {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Content-Type', 'application/cbor');
@@ -180,6 +201,7 @@ try {
       ...process.env,
       BLAH_BOOTSTRAP_FILE: '',
       BLAH_SERVER_CONFIG_URL: '',
+      BLAH_PROFILE_HOSTING_DOMAIN: testHosting ? 'id.example' : '',
       BLAH_API_ID: '12345',
       BLAH_API_HASH: '0123456789abcdef0123456789abcdef'
     },
@@ -191,7 +213,7 @@ try {
     // SharedWorker requests do not inherit a Playwright context's ignoreHTTPSErrors.
     args: ['--no-sandbox', '--ignore-certificate-errors',
       // Keep the page and worker on an allowed CDN origin while serving everything locally.
-      '--host-resolver-rules=' + ['blah-server-test.blahim.com', ...profileDomains].map(host => `MAP ${host} 127.0.0.1:${tlsPort}`).join(',') +
+      '--host-resolver-rules=' + ['blah-server-test.blahim.com', ...profileDomains, ...(testHosting ? ['id.example', '*.id.example'] : [])].map(host => `MAP ${host} 127.0.0.1:${tlsPort}`).join(',') +
         (localRuntime.size ? `,MAP ${new URL(diemRuntimeURL).hostname} 127.0.0.1:${tlsPort}` : '')]
   });
   const signupContext = await browser.newContext({
@@ -260,6 +282,43 @@ try {
   await page.evaluate(async() => { await window.useAppSettings()[1]('increaseContrast', false); window.themeController.setTheme(); });
   await page.keyboard.press('Enter');
   try {
+    if(testHosting) {
+      const picker = page.getByRole('combobox', {name: 'Saved identity', exact: true});
+      await picker.fill('create');
+      await page.getByRole('option', {name: 'Create identity', exact: true}).click();
+      const setup = page.getByRole('dialog', {name: 'Create identity', exact: true});
+      await setup.getByRole('combobox', {name: 'Profile address'}).selectOption('hosted');
+      await setup.getByLabel('Identity password', {exact: true}).fill('hosted password');
+      assert.equal(await setup.getByRole('textbox', {name: 'Hosting domain', exact: true}).inputValue(), 'id.example');
+      await setup.getByRole('textbox', {name: 'Name', exact: true}).fill('browser');
+      await setup.getByRole('button', {name: 'Claim and publish', exact: true}).click();
+      const details = page.getByRole('dialog', {name: 'Identity details', exact: true});
+      await details.getByText('Hosted profile published.', {exact: true}).waitFor();
+      const first = await page.evaluate(async() => {
+        const manager = window.rootScope.managers.appAccountManager;
+        const {identity} = await manager.blahIdentity({action: 'inspect'});
+        const {publication} = await manager.blahIdentity({action: 'publication'});
+        return {domains: identity.domains, held: identity.hostedNames.held, pending: publication.pending};
+      });
+      assert.deepEqual(first, {domains: ['browser.id.example'], held: ['browser'], pending: false});
+      await details.getByRole('textbox', {name: 'Profile domain', exact: true}).fill('own.example');
+      await details.getByRole('button', {name: 'Add domain', exact: true}).click();
+      await details.getByRole('group', {name: 'browser.id.example', exact: true}).getByRole('button', {name: 'Delete', exact: true}).click();
+      await details.getByRole('group', {name: 'browser.id.example', exact: true}).waitFor({state: 'detached'});
+      await details.getByText('Publication pending. Retry the claim or choose another name.', {exact: true}).waitFor();
+      await details.getByRole('button', {name: 'Retry publication', exact: true}).click();
+      await details.getByText('Hosted profile published.', {exact: true}).waitFor();
+      const released = await page.evaluate(async() => {
+        const {identity} = await window.rootScope.managers.appAccountManager.blahIdentity({action: 'inspect'});
+        return {held: identity.hostedNames.held, status: (await fetch('https://browser.id.example/.well-known/blah/profile.cbor')).status};
+      });
+      assert.deepEqual(released, {held: [], status: 404});
+      await details.getByRole('button', {name: 'Close', exact: true}).click();
+      await details.waitFor({state: 'detached'});
+      console.log('PASS hosted UI claim, dedicated proof workers, actual Teleblah hosting PUT/discovery and unanswered last-name release reconciliation.');
+    }
+    accountChecks: {
+    if(testHosting && process.env.BLAH_TEST_HOSTING_ONLY) break accountChecks;
     await checkIdentityLayout(page);
     async function signUp(page, slot, domain, name, publisher) {
       const picker = page.getByRole('combobox', {name: 'Saved identity', exact: true});
@@ -993,6 +1052,7 @@ try {
     await page.getByRole('textbox', {name: 'DC domain'}).waitFor();
     assert.equal(await page.getByRole('textbox', {name: 'DC domain'}).inputValue(), '');
     console.log('PASS per-account DC sign-in, two-home account switching/reload/logout, exact signed WebSocket URLs, full browser signup, Cross-server creation and toggle-only upgrade, locked-identity UI deletion, paper-key ownership claim by a second account, numbered channel profiles, chat custody/sign-in separation, verified peer identity row and home-only notice, service-account answers after the sent result, reconnection after a DC restart and a reload while it was down, profile publication, reload, recovered identity and paper-key login, dialog keyboard/focus and Axe checks.');
+    }
   } catch(error) {
     if(process.env.BLAH_IDENTITY_SCREENSHOT) await activePage.screenshot({path: process.env.BLAH_IDENTITY_SCREENSHOT + '-failure.png', timeout: 3000}).catch(() => {});
     console.error(error);

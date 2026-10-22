@@ -65,6 +65,40 @@ export interface DCSetupResult {
     expiresAt: number;
     devices: DeviceInfo[];
 }
+export interface HostingWorkInfo {
+    algorithm: string;
+    baseBits: number;
+    bitsPerShorterCharacter: number;
+    referenceLength: number;
+}
+export interface HostingPolicyInfo {
+    domain: string;
+    labelPattern: string;
+    maxClaimsPerIdentity: number;
+    maxUpdatesPerIdentityPerHour: number;
+    claimGraceAfterExpiry: number;
+    proofOfWork: HostingWorkInfo;
+}
+export interface HostingPuzzleInfo {
+    label: string;
+    input: number[];
+    requiredBits: number;
+}
+export interface HostingNameInfo {
+    label: string;
+    status: string;
+    requiredBits: number | null;
+    puzzle: HostingPuzzleInfo | null;
+}
+export interface HostingProofInfo {
+    label: string;
+    nonce: number[];
+}
+export interface HostingPublishedInfo {
+    identity: string;
+    revision: string;
+    domains: string[];
+}
 export interface KeyFileInfo {
     id: string;
     salt: number[];
@@ -165,6 +199,9 @@ export type Exports = {
      * Creates or renews a DC profile entirely in the operator's browser.
      */
     dcSetup(input: DCSetupRequest, crypto: any): Promise<DCSetupResult>;
+    hostingPolicy(domain: string, callbacks: any): Promise<HostingPolicyInfo>;
+    hostingPlan(domain: string, labels: string[], identity: number[], callbacks: any): Promise<HostingNameInfo[]>;
+    hostingPublish(domain: string, encoding: number[], via: string | null, proofs: HostingProofInfo[], solve: boolean, callbacks: any): Promise<HostingPublishedInfo>;
     keyFileInfo(encoding: number[]): KeyFileInfo;
     sealKeyFile(input: KeyFilePayload, salt: number[], crypto: any): Promise<number[]>;
     openKeyFile(encoding: number[], crypto: any): Promise<KeyFilePayload>;

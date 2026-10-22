@@ -5,7 +5,7 @@
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   gap: 1rem;
-  text-align: left;
+  text-align: start;
   overflow-wrap: anywhere;
   font-size: 15px;
   line-height: 1.5;
@@ -59,7 +59,7 @@
   }
 }
 
-.sectionNote { font-size: 12px; color: var(--secondary-text-color); text-align: left; }
+.sectionNote { font-size: 12px; color: var(--secondary-text-color); text-align: start; }
 
 .detailsSettings {
   .lockedDetails { min-height: calc(100dvh - 10rem); align-content: center; max-width: 420px; margin-inline: auto; width: 100%; }
