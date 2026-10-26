@@ -329,7 +329,7 @@ It also creates a Cross-server channel and upgrades an unchanged home-only chann
 saves encrypted backups, checks the default paper words, publishes both profile revisions, and checks
 chat custody stays out of the sign-in picker. A proof-wrapped read refreshes the DC's
 stored numbered profile; an info-panel check after reload clears the five-minute lookup cache.
-With an unreleased hosting runtime, `BLAH_TEST_HOSTING=1 BLAH_TEST_HOSTING_ONLY=1`
+With the pinned release, `BLAH_TEST_HOSTING=1 BLAH_TEST_HOSTING_ONLY=1`
 on the server fixture runs a focused UI claim/release against a disposable DC configured
 with `BLAH_PROFILE_HOSTING_CONFIG` and tiny proof difficulty. Without the `ONLY` switch
 it also runs the account checks.
@@ -353,7 +353,6 @@ For QR interoperability with the real TDLib fork, build Teleblah's server and
 ```sh
 BLAH_SERVER_REPO=/path/to/Teleblah \
 TDLIB_PATH=/path/to/qr-capable/libtdjson.so \
-BLAH_DIEM_LOCAL_DIST=/path/to/BlahDiem/Web/dist \
 BLAH_TEST_DEVICE_LINK_TDLIB=1 BLAH_TEST_DEVICE_LINK_ONLY=1 \
   node scripts/test-blah-server.mjs
 ```
