@@ -1,4 +1,5 @@
 import {Component, createMemo, createSignal, For, onCleanup, onMount, Show} from 'solid-js';
+import blah from '@config/blah';
 import Button from '@components/buttonTsx';
 import InputField from '@components/inputField';
 import PeerTitle from '@components/peerTitle';
@@ -350,6 +351,15 @@ const ActiveSessions: Component = () => {
 
   return (
     <>
+      <Show when={blah}>
+        <Section>
+          <Button text="BlahLinkDevice" icon="qr" onClick={async() => {
+            const managers = tab.managers;
+            const {default: showDeviceLinkPopup} = await import('@lib/blah/DeviceLinkPopup');
+            showDeviceLinkPopup({managers, onLinked: refresh});
+          }} />
+        </Section>
+      </Show>
       <Section
         name="CurrentSession"
         nameRight={renameAnchor()}

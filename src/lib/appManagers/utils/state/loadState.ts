@@ -470,7 +470,7 @@ async function applyBuildVersionToStorage() {
 }
 
 async function loadStateForAllAccounts() {
-  await (await import('@lib/blah/identity')).requireHomeStorage();
+  await (await import('@lib/blah/homeStorage')).requireHomeStorage();
   await (await import('@lib/blah/accountStorage')).prepareAccountStorage();
   if(TEST_MULTI_MIGRATION) {
     // * clear all storages to test migration

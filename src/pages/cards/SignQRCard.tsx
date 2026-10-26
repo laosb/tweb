@@ -1,4 +1,4 @@
-import {onCleanup, onMount} from 'solid-js';
+import {createSignal, lazy, Show, onCleanup, onMount} from 'solid-js';
 
 import Button from '@components/buttonTsx';
 import LanguageChangeButton from '@components/languageChangeButton';
@@ -14,8 +14,11 @@ import {paintQrCode} from '@helpers/qrCode/paintQrCode';
 import type {DcId} from '@types';
 import {AuthAuthorization, AuthLoginToken} from '@layer';
 import App from '@config/app';
-import {LangPackKey, i18n} from '@lib/langPack';
+import blah from '@config/blah';
+import type {DeviceLinkResult} from '@lib/blah/deviceLinkTypes';
+import I18n, {LangPackKey, i18n} from '@lib/langPack';
 import AccountController from '@lib/accounts/accountController';
+import bindManagersToAccount from '@lib/accounts/bindManagersToAccount';
 import rootScope from '@lib/rootScope';
 
 import AuthCard from '@/pages/AuthCard';
@@ -26,6 +29,7 @@ if(import.meta.hot) import.meta.hot.accept();
 
 type Spec = Extract<CardSpec, {name: 'signQR'}>;
 
+const LinkPassword = lazy(() => import('@lib/blah/DeviceLinkPassword'));
 const FETCH_INTERVAL = 3;
 const QR_SIZE = 240;
 
@@ -36,13 +40,50 @@ const QR_SIZE = 240;
  * card. The loop terminates when the card unmounts (cleanup flips `stopped`).
  */
 export default function SignQRCard(_props: {spec: Spec}) {
-  const {accountNumber, managers, navigate, toIm} = useAuthFlow();
+  const {accountNumber, managers: flowManagers, navigate, toIm} = useAuthFlow();
+  const managers = bindManagersToAccount(flowManagers, accountNumber);
 
   // Persistent host for the QR canvas (qr-code-styling injects its canvas
   // into this div). We hand it to <MediaHeader.Sticker element={...}>.
   let stickerHost: HTMLDivElement;
   let preloader: HTMLElement | undefined;
   let stopped = false;
+  const attempt = crypto.randomUUID();
+  let parameter = '';
+  let started = false;
+  const [needsPassword, setNeedsPassword] = createSignal(false);
+  const [error, setError] = createSignal('');
+  const [linkURL, setLinkURL] = createSignal('');
+  const [copied, setCopied] = createSignal(false);
+  let wake: () => void;
+  const onLoginToken = (slot: number) => { if(slot === accountNumber) wake?.(); };
+  rootScope.addEventListener('blah_login_token', onLoginToken);
+
+  async function applyLinkedResult(result: DeviceLinkResult) {
+    if(stopped) return true;
+    parameter = result.parameter || parameter;
+    if(result.needsPassword) { setNeedsPassword(true); return true; }
+    if(result.loginToken?._ === 'auth.loginTokenSuccess') {
+      const authorization = result.loginToken.authorization;
+      if(authorization._ !== 'auth.authorization') throw new Error('DEVICE_LINK_INVALID');
+      await managers.apiManager.setUser(authorization.user);
+      toIm();
+      return true;
+    }
+    return false;
+  }
+
+  async function finishLink(password: string) {
+    try {
+      await applyLinkedResult(await managers.appAccountManager.blahDeviceLink({action: 'complete', attempt, password}));
+    } catch(error) {
+      if(stopped) return;
+      if((error as ApiError).type === 'SESSION_PASSWORD_NEEDED') {
+        stopped = true;
+        navigate({name: 'password'});
+      } else throw error;
+    }
+  }
 
   // Latest token we've drawn — kept so the theme_changed listener can repaint
   // synchronously without waiting for the next `iterate` cycle to come around.
@@ -80,7 +121,7 @@ export default function SignQRCard(_props: {spec: Spec}) {
     if(!QRCodeStylingCtor) return;
 
     const encoded = bytesToBase64(token);
-    const url = 'tg://login?token=' + fixBase64String(encoded, true);
+    const url = 'tg://login?token=' + fixBase64String(encoded, true) + (parameter ? '&blah=' + parameter : '');
 
     const style = window.getComputedStyle(document.documentElement);
     const surfaceColor = style.getPropertyValue('--light-filled-primary-color').trim();
@@ -115,13 +156,14 @@ export default function SignQRCard(_props: {spec: Spec}) {
       Array.from(stickerHost.children).slice(0, -1).forEach((el) => el.remove());
     }
 
+    if(url !== linkURL()) { setLinkURL(url); setCopied(false); }
     lastDrawnToken = token;
   }
 
   /* ---------- theme_changed: repaint with new CSS-variable colors ---------- */
 
   const onThemeChanged = () => {
-    if(stopped || !lastDrawnToken) return;
+    if(stopped || needsPassword() || !lastDrawnToken) return;
     paintQR(lastDrawnToken);
   };
   rootScope.addEventListener('theme_changed', onThemeChanged);
@@ -133,6 +175,23 @@ export default function SignQRCard(_props: {spec: Spec}) {
 
   async function iterate(QRCodeStyling: any, isLoop: boolean): Promise<boolean> {
     try {
+      if(blah) {
+        const result = await managers.appAccountManager.blahDeviceLink(started ? {action: 'poll', attempt} :
+          {action: 'begin', attempt, label: 'Blah Web', exceptIds: (await AccountController.getUserIds()).map((id) => id.toUserId())});
+        started = true;
+        if(await applyLinkedResult(result)) return true;
+        if(result.loginToken?._ !== 'auth.loginToken') throw new Error('DEVICE_LINK_INVALID');
+        if(!prevToken || !bytesCmp(prevToken, result.loginToken.token)) {
+          prevToken = result.loginToken.token;
+          QRCodeStylingCtor = QRCodeStyling;
+          await paintQR(prevToken);
+        }
+        if(!stopped) await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => { wake = undefined; resolve(); }, FETCH_INTERVAL * 1000);
+          wake = () => { clearTimeout(timer); wake = undefined; resolve(); };
+        });
+        return false;
+      }
       const userIds = await AccountController.getUserIds();
       let loginToken = await managers.apiManager.invokeApi('auth.exportLoginToken', {
         api_id: App.id,
@@ -184,7 +243,8 @@ export default function SignQRCard(_props: {spec: Spec}) {
           console.warn('SignQRCard: AUTH_TOKEN_EXPIRED');
           return false;
         default:
-          console.error('SignQRCard: default error:', err);
+          if(blah) setError((await import('@lib/blah/deviceLinkMessage')).deviceLinkMessage(err));
+          else console.error('SignQRCard: default error:', err);
           stopped = true;
           break;
       }
@@ -216,6 +276,9 @@ export default function SignQRCard(_props: {spec: Spec}) {
 
   onCleanup(() => {
     stopped = true;
+    wake?.();
+    rootScope.removeEventListener('blah_login_token', onLoginToken);
+    if(blah) void managers.appAccountManager.blahDeviceLink({action: 'cancel', attempt}).catch(() => {});
     rootScope.removeEventListener('user_auth', onUserAuth);
     rootScope.removeEventListener('theme_changed', onThemeChanged);
   });
@@ -228,28 +291,40 @@ export default function SignQRCard(_props: {spec: Spec}) {
       inputWrapper={false}
       header={
         <MediaHeader>
-          <MediaHeader.Sticker ref={stickerHost} class={styles.qrContainer} size={QR_SIZE}/>
-          <h1
-            class={`${mediaHeaderStyles.title} text-center text-overflow-wrap`}
-            style={{'margin-top': 0}}
-          >
-            {i18n('Login.QR.Title')}
-          </h1>
-          <MediaHeader.Subtitle class="secondary">{i18n('Login.QR.Subtitle')}</MediaHeader.Subtitle>
+          <Show when={!needsPassword()} fallback={<h1 class={`${mediaHeaderStyles.title} text-center text-overflow-wrap`}>{i18n('BlahLinkPasswordTitle')}</h1>}>
+            <MediaHeader.Sticker ref={stickerHost} class={styles.qrContainer} size={QR_SIZE}/>
+            <h1
+              class={`${mediaHeaderStyles.title} text-center text-overflow-wrap`}
+              style={{'margin-top': 0}}
+            >
+              {i18n('Login.QR.Title')}
+            </h1>
+            <MediaHeader.Subtitle class="secondary">{i18n('Login.QR.Subtitle')}</MediaHeader.Subtitle>
+          </Show>
         </MediaHeader>
       }
     >
-      {helpList}
+      <Show when={needsPassword()} fallback={helpList}>
+        <LinkPassword onSubmit={finishLink} />
+      </Show>
+      <Show when={blah && !needsPassword()}>
+        <Button class="btn-primary btn-secondary btn-primary-transparent primary" text={copied() ? 'LinkCopied' : 'CopyLink'}
+          disabled={!linkURL() || stopped} onClick={async() => {
+            try { await navigator.clipboard.writeText(linkURL()); setCopied(true); }
+            catch{ setError(I18n.format('BlahLinkCopyFailed', true)); }
+          }} />
+      </Show>
+      <p role="alert">{error()}</p>
       <Button
         class="btn-primary btn-secondary btn-primary-transparent primary"
         onClick={() => {
           stopped = true;
           navigate({name: 'signIn'});
         }}
-        text="Login.QR.Cancel"
+        text={blah ? 'BlahUseIdentity' : 'Login.QR.Cancel'}
       />
       {accountNumber === 1 && <LanguageChangeButton />}
-      <PasskeyLoginButton />
+      {!blah && <PasskeyLoginButton />}
     </AuthCard>
   );
 }

@@ -94,6 +94,7 @@ export default class AppAccountManager extends AppManager {
     let loaded = false;
 
     this.apiUpdatesManager.addMultipleEventsListeners({
+      updateLoginToken: () => this.rootScope.dispatchEvent('blah_login_token', this.getAccountNumber()),
       updateNewAuthorization: (update) => {
         if(!loaded) {
           pendingUpdates.push(update);
@@ -338,6 +339,11 @@ export default class AppAccountManager extends AppManager {
   public async blahIdentity(request: import('@lib/blah/identity').IdentityRequest) {
     const {identityAction} = await import('@lib/blah/identity');
     return identityAction(this.getAccountNumber(), request);
+  }
+
+  public async blahDeviceLink(request: import('@lib/blah/deviceLinkTypes').DeviceLinkRequest) {
+    const {deviceLinkAction} = await import('@lib/blah/invoke');
+    return deviceLinkAction(this.getAccountNumber(), this.apiManager, request, this.timeManager.getServerTimeOffset());
   }
 
   public async blahChatIdentity(request: import('@lib/blah/chatIdentity').ChatIdentityRequest) {
