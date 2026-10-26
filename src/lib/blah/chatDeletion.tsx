@@ -11,6 +11,8 @@ import type {IdentitySummary} from '@lib/blah/identity';
 import {chatIdentityError} from '@lib/blah/chatIdentityError';
 import styles from '@lib/blah/identity.module.scss';
 
+if(import.meta.hot) import.meta.hot.accept();
+
 /** Cancellation wins over an in-flight unlock and locks any late custody. */
 export function unlockChatIdentity(identity: IdentitySummary, action: IdentityActions): Promise<boolean> {
   return new Promise((resolve) => {

@@ -96,6 +96,8 @@ export default function BlahSignInCard() {
         </fieldset>
       </form>
     </Show>
+    <Button class="btn-primary btn-secondary btn-primary-transparent primary" disabled={busy()}
+      text="Login.QR.Login" onClick={() => flow.navigate({name: 'signQR'})} />
     <Button class="btn-primary btn-secondary btn-primary-transparent primary" disabled={busy()} onClick={toggleToken}
       text={useToken() ? 'BlahUseIdentity' : 'BlahUseManagedAccountToken'} />
   </AuthCard>;
