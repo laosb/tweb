@@ -13,6 +13,7 @@ import AxeBuilder from '@axe-core/playwright';
 import {cbor} from '../tests/blah/cbor.mjs';
 import {checkIdentityLayout} from '../tests/blah/identityLayout.mjs';
 import {checkDeviceLink} from '../tests/blah/deviceLink.mjs';
+import {checkDeviceLinkTdlib} from '../tests/blah/deviceLinkTdlib.mjs';
 import {loadEnv} from 'vite';
 import {blahDiemRuntimeURL} from './blah-config.mjs';
 import {localDiemRuntime} from '../tests/blah/localRuntime.mjs';
@@ -431,6 +432,11 @@ try {
     // These go through the application schema and manager, never a raw UI RPC.
     await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
     await page.locator('#auth-pages').waitFor({state: 'hidden'});
+    if(process.env.BLAH_TEST_DEVICE_LINK_TDLIB === '1') {
+      await checkDeviceLinkTdlib({browser, page, origin, signedDC, identityID: aliceIdentity, userId,
+        tele, dir, port, rsa, dc: Buffer.from(id, 'hex').toString('base64'), runtimeURL: diemRuntimeURL});
+      if(process.env.BLAH_TEST_DEVICE_LINK_ONLY === '1') break accountChecks;
+    }
     if(process.env.BLAH_TEST_DEVICE_LINK === '1') {
       await checkDeviceLink({browser, page, origin, signedDC, identityID: aliceIdentity, userId, runtimeURL: diemRuntimeURL});
       if(process.env.BLAH_TEST_DEVICE_LINK_ONLY === '1') break accountChecks;
