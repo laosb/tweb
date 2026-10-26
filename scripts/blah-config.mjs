@@ -12,7 +12,7 @@ export function blahDiemRuntimeURL(cdnHost = '') {
   if(host.trim() !== host || host.length > 253 || !domainNamePattern.test(host)) {
     throw new Error('BLAH_DIEM_CDN_HOST must be a DNS hostname without a scheme, port or path');
   }
-  return `https://${host}/bd-web/20261022-0303/diem.js`;
+  return `https://${host}/bd-web/20261026-ab02/diem.js`;
 }
 
 /**
