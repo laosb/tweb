@@ -70,6 +70,7 @@ const generated: GeneratedSettingsSearchData = {
     {id: 'AppActiveSessionsTab:AuthSessions.RenameDevice', sectionId: 'AppActiveSessionsTab', kind: 'row', titleLangKey: 'AuthSessions.RenameDevice'},
     {id: 'AppActiveSessionsTab:AuthSessions.TerminateIfAwayFor', sectionId: 'AppActiveSessionsTab', kind: 'row', titleLangKey: 'AuthSessions.TerminateIfAwayFor'},
     {id: 'AppActiveSessionsTab:AuthSessions.TerminateIfAwayTitle', sectionId: 'AppActiveSessionsTab', kind: 'subsection', titleLangKey: 'AuthSessions.TerminateIfAwayTitle'},
+    {id: 'AppActiveSessionsTab:BlahLinkDevice', sectionId: 'AppActiveSessionsTab', kind: 'row', titleLangKey: 'BlahLinkDevice'},
     {id: 'AppActiveSessionsTab:ChatAutomation.Session', sectionId: 'AppActiveSessionsTab', kind: 'row', titleLangKey: 'ChatAutomation.Session'},
     {id: 'AppActiveSessionsTab:CurrentSession', sectionId: 'AppActiveSessionsTab', kind: 'subsection', titleLangKey: 'CurrentSession'},
     {id: 'AppActiveSessionsTab:OtherSessions', sectionId: 'AppActiveSessionsTab', kind: 'subsection', titleLangKey: 'OtherSessions'},

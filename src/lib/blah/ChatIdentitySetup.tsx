@@ -14,6 +14,8 @@ import focusWhenSettled from '@helpers/dom/focusWhenSettled';
 import {chatIdentityError} from '@lib/blah/chatIdentityError';
 import styles from '@lib/blah/identity.module.scss';
 
+if(import.meta.hot) import.meta.hot.accept();
+
 export {chatIdentityError} from '@lib/blah/chatIdentityError';
 
 type Props = {

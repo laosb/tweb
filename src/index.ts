@@ -484,7 +484,7 @@ async function startApplication() {
 
   rootScope.managers = getProxiedManagers();
   if(blah?.discovery || blah?.home) {
-    await (await import('@lib/blah/identity')).requireHomeStorage();
+    await (await import('@lib/blah/homeStorage')).requireHomeStorage();
   }
   await checkLastActiveAccountFromTMe();
 
