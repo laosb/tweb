@@ -1,10 +1,17 @@
 import {render} from 'solid-js/web';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import appNavigationController from '@components/appNavigationController';
+import {detailsSession} from '@lib/blah/detailsSession';
 
 const mock = vi.hoisted(() => ({link: vi.fn(), identity: vi.fn(), toast: vi.fn(), mount: undefined as any,
-  close: undefined as (() => void), linked: vi.fn()}));
+  close: undefined as (() => void), hide: vi.fn(), linked: vi.fn()}));
 vi.mock('@lib/langPack', () => ({default: {format: (key: string) => key},
-  i18n: (key: string, args: unknown[] = []) => [key, ...args]}));
+  i18n: (key: string, args: (string | Node)[] = []) => {
+    const fragment = document.createDocumentFragment();
+    fragment.append(key, ...args);
+    return fragment;
+  }}));
+vi.mock('@environment/touchSupport', () => ({default: false}));
 vi.mock('@helpers/dom/focusWhenSettled', () => ({default: vi.fn()}));
 vi.mock('@lib/calls/helpers/getStream', () => ({default: vi.fn()}));
 vi.mock('@lib/blah/identityFiles', () => ({exportIdentityFile: vi.fn()}));
@@ -25,7 +32,7 @@ vi.mock('@components/popups/indexTsx', () => {
   const Popup = (props: any) => { mock.close = props.onClose; return <div role="dialog">{props.children}</div>; };
   return {default: Object.assign(Popup, {Header: Content, Body: Content, Scrollable: Content,
     CloseButton: (): null => null, Title: (): null => null}),
-  createPopup: (factory: () => any) => mock.mount(factory), usePopupContext: () => ({hide: () => mock.close()})};
+  createPopup: (factory: () => any) => mock.mount(factory), usePopupContext: () => ({hide: mock.hide})};
 });
 import showDeviceLinkPopup from '@lib/blah/DeviceLinkPopup';
 
@@ -53,6 +60,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   host = document.createElement('div'); document.body.append(host);
   mock.mount = (factory: () => any) => dispose = render(factory, host);
+  mock.hide.mockImplementation(() => mock.close());
   mock.link.mockImplementation(async(request) => request.action === 'inspect' ?
     {id: 'alice', domain: 'alice.example.org', label: 'New browser', unlocked: true} : {});
 });
@@ -75,7 +83,7 @@ describe('O device-link confirmation UI', () => {
     expect(mock.link.mock.calls.map(([request]) => request.action)).toEqual(['inspect', 'prepare', 'accept', 'cancel']);
     expect(mock.link.mock.calls[1][0]).toMatchObject({transferIdentity: true});
     expect(mock.linked).toHaveBeenCalledOnce();
-    expect(mock.toast).toHaveBeenCalledExactlyOnceWith({langPackKey: 'BlahLinkSuccess'});
+    expect(mock.hide).toHaveBeenCalledOnce();
   });
 
   it('sends an explicit false when identity transfer is unchecked', async() => {
@@ -84,6 +92,56 @@ describe('O device-link confirmation UI', () => {
     button('BlahLinkApprove').click();
     await settle();
     expect(mock.link.mock.calls[1][0]).toMatchObject({action: 'prepare', transferIdentity: false});
+  });
+
+  it.each([
+    ['ltr', false, 'Escape'], ['ltr', true, 'Escape'],
+    ['ltr', false, 'Back'], ['ltr', true, 'Back'],
+    ['rtl', false, 'Escape'], ['rtl', true, 'Escape'],
+    ['rtl', false, 'Back'], ['rtl', true, 'Back']
+  ] as const)('closes details in %s after approval (transfer: %s) on the first %s', async(direction, transferIdentity, navigation) => {
+    const realToast = await vi.importActual<typeof import('@components/toast')>('@components/toast');
+    vi.useFakeTimers();
+    // Exercise the actual toast/navigation capture: a mocked success toast hid this bug.
+    mock.toast.mockImplementation(realToast.toastNew);
+    mock.identity.mockResolvedValue({});
+    const session = detailsSession(mock.identity, 'alice', () => {});
+    await session.action({action: 'unlock'});
+    mock.linked.mockImplementation(() => session.action({action: 'inspect'}));
+    const details = document.createElement('div');
+    details.dir = direction;
+    const back = document.createElement('button');
+    details.append(back);
+    document.body.append(details);
+    let closing: Promise<unknown>;
+    const item = {type: 'left' as const, onPop: () => {
+      closing = session.close();
+      details.remove();
+    }};
+    appNavigationController.pushItem(item);
+    back.addEventListener('click', () => appNavigationController.back('left'));
+    try {
+      mount(); await inspect();
+      if(!transferIdentity) host.querySelector<HTMLInputElement>('input[type=checkbox]').click();
+      button('BlahLinkApprove').click();
+      await settle();
+      expect(mock.link.mock.calls[1][0]).toMatchObject({transferIdentity});
+      expect(mock.hide).toHaveBeenCalledOnce();
+      // Navigate while the old success toast would still be visible (before its 3 s timeout).
+      if(navigation === 'Escape') window.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+      else back.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, detail: 1}));
+      expect(details.isConnected).toBe(false);
+      expect(session.isClosed()).toBe(true);
+      await closing;
+      expect(mock.identity).toHaveBeenLastCalledWith({action: 'lock', id: 'alice'});
+    } finally {
+      appNavigationController.removeItem(item);
+      realToast.hideToast();
+      await session.close();
+      details.remove();
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+    }
   });
 
   it('prompts to unlock before preparation and relocks custody opened by this popup', async() => {
