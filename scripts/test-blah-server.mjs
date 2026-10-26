@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import AxeBuilder from '@axe-core/playwright';
 import {cbor} from '../tests/blah/cbor.mjs';
 import {checkIdentityLayout} from '../tests/blah/identityLayout.mjs';
+import {checkDeviceLink} from '../tests/blah/deviceLink.mjs';
 import {loadEnv} from 'vite';
 import {blahDiemRuntimeURL} from './blah-config.mjs';
 import {localDiemRuntime} from '../tests/blah/localRuntime.mjs';
@@ -430,6 +431,10 @@ try {
     // These go through the application schema and manager, never a raw UI RPC.
     await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
     await page.locator('#auth-pages').waitFor({state: 'hidden'});
+    if(process.env.BLAH_TEST_DEVICE_LINK === '1') {
+      await checkDeviceLink({browser, page, origin, signedDC, identityID: aliceIdentity, userId, runtimeURL: diemRuntimeURL});
+      if(process.env.BLAH_TEST_DEVICE_LINK_ONLY === '1') break accountChecks;
+    }
     const resourceProfiles = await page.evaluate(async(userId) => {
       const managers = window.rootScope.managers;
       const channelId = await managers.appChatsManager.createChannel({title: 'Home-only fixture', about: '', megagroup: true});

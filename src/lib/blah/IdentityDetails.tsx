@@ -350,6 +350,12 @@ export function IdentityDetails(props: DetailsTabPayload & {onExit: () => void})
         <Section name="OtherSessions"><For each={identity().devices.filter((entry) => !entry.current)}>{(entry) => <DeviceRow entry={entry} />}</For></Section>
       </Show>
       <Section name="Devices">
+        <Show when={identity().kind !== 'channel'}>
+          <Row disabled={busy()} clickable={async() => {
+            const {default: showDeviceLinkPopup} = await import('@lib/blah/DeviceLinkPopup');
+            if(!props.session.isClosed()) showDeviceLinkPopup({managers, id: identity().id, onLinked: async() => { await run({action: 'inspect'}); }});
+          }}><Row.Icon icon="qr" /><Row.Title>{i18n('BlahLinkDevice')}</Row.Title></Row>
+        </Show>
         <Row clickable={authorizeDevice} disabled={busy()}><Row.Icon icon="add" /><Row.Title>{i18n('BlahAuthorizeDevice')}</Row.Title></Row>
         <Row clickable={addPaperKey} disabled={busy()}><Row.Icon icon="key" /><Row.Title>{i18n('BlahAddPaperKey')}</Row.Title></Row>
       </Section>

@@ -10,9 +10,12 @@ import {diem} from '@lib/blah/wasm';
 // chunk importing the worker entry again loses the entry URL's query parameters
 // and creates a second instance of its unlocked-identity maps.
 export {chatIdentityAction} from '@lib/blah/chatIdentity';
+export {deviceLinkAction} from '@appManagers/blahDeviceLink';
 
 // Application schema extension: upstream generated Telegram schemas remain untouched.
 Schema.API.constructors.push(
+  {id: 0x0e8e43c5, predicate: 'blah.deviceLink', type: 'blah.DeviceLink',
+    params: [{name: 'flags', type: '#'}, {name: 'request', type: 'bytes'}, {name: 'response', type: 'flags.0?bytes'}]},
   {id: 0x2b2e0aab, predicate: 'blah.identityChallenge', type: 'blah.IdentityChallenge',
     params: [{name: 'data', type: 'bytes'}, {name: 'expires_at', type: 'int'}]},
   {id: 0xc0d31b67 | 0, predicate: 'blah.resourceProfile', type: 'blah.ResourceProfile',
@@ -20,6 +23,8 @@ Schema.API.constructors.push(
 );
 delete Schema.API.constructorsIndex;
 Schema.API.methods.push(
+  {id: 0x0df49ce9, method: 'blah.getDeviceLink', params: [{name: 'token', type: 'bytes'}], type: 'blah.DeviceLink'},
+  {id: 0xf7e9bfa5 | 0, method: 'blah.invokeWithDeviceLink', params: [{name: 'link', type: 'bytes'}, {name: 'query', type: '!X'}], type: 'X'},
   {id: 0xdceefd53 | 0, method: 'blah.requestIdentityChallenge', params: [{name: 'domain', type: 'string'}], type: 'blah.IdentityChallenge'},
   {id: 0x61b4c668, method: 'blah.invokeWithIdentityProof', params: [{name: 'proof', type: 'bytes'}, {name: 'query', type: '!X'}], type: 'X'},
   {id: 0x517800c0, method: 'blah.getUserProfile', params: [{name: 'id', type: 'Vector<InputUser>'}], type: 'Vector<blah.ResourceProfile>'},
@@ -27,7 +32,7 @@ Schema.API.methods.push(
   {id: 0xff5c6967 | 0, method: 'blah.getStickerSetProfile', params: [{name: 'id', type: 'Vector<InputStickerSet>'}], type: 'Vector<blah.ResourceProfile>'}
 );
 
-export type BlahInvokeOptions = InvokeApiOptions & {blahResourceIdentity?: string};
+export type BlahInvokeOptions = InvokeApiOptions & {blahResourceIdentity?: string, blahDeviceLink?: Uint8Array};
 
 async function chatIdentityCall(slot: number, networker: MTPNetworker, method: string, params: any, options: BlahInvokeOptions) {
   const target = method === 'channels.deleteChannel' ? params.channel : params.peer;
@@ -67,17 +72,26 @@ export async function provenCall(slot: number, networker: MTPNetworker, method: 
 /** Keep single-use proof retries outside generic API migration/retry handling. */
 export function invokeBlah(slot: number, networker: MTPNetworker, method: string, params: any, options: BlahInvokeOptions) {
   if(networker.dcId !== 1) throw new Error('Wrong Blah home DC.');
-  const proofRequired = !!options.blahResourceIdentity || method === 'auth.sendCode' || method === 'auth.signUp';
-  if(method === 'auth.exportLoginToken' || method === 'auth.importLoginToken' || method.includes('PasskeyLogin')) {
+  const proofRequired = !!options.blahResourceIdentity || method === 'auth.sendCode' || method === 'auth.signUp' ||
+    method === 'auth.acceptLoginToken' || (method === 'auth.exportLoginToken' && !options.blahDeviceLink);
+  if(method === 'auth.importLoginToken' || method.includes('PasskeyLogin')) {
     throw new Error('Blah requires browser identity sign-in.');
+  }
+  if(method === 'auth.acceptLoginToken' && !options.blahDeviceLink) throw {type: 'DEVICE_LINK_REQUIRED'};
+  let queryMethod = method;
+  let queryParams = params;
+  if(options.blahDeviceLink) {
+    if(method !== 'auth.exportLoginToken' && method !== 'auth.acceptLoginToken') throw {type: 'DEVICE_LINK_INVALID'};
+    queryMethod = 'blah.invokeWithDeviceLink';
+    queryParams = {link: options.blahDeviceLink, query: (serializer: TLSerialization) => serializer.storeMethod(method, params)};
   }
   const promise = method === 'channels.deleteChannel' || method === 'messages.editChatCreator' ?
     chatIdentityCall(slot, networker, method, params, options) :
-    proofRequired ? provenCall(slot, networker, method, params, options) : networker.wrapApiCall(method, params, options);
+    proofRequired ? provenCall(slot, networker, queryMethod, queryParams, options) : networker.wrapApiCall(queryMethod, queryParams, options);
   return promise.then(async(result) => {
-    const authorization = result?._ === 'auth.sentCodeSuccess' ? result.authorization : result;
+    const authorization = (result?._ === 'auth.sentCodeSuccess' || result?._ === 'auth.loginTokenSuccess') ? result.authorization : result;
     if(authorization?._ === 'auth.authorization' && getBlahConfig(slot)?.home &&
-      ['auth.sendCode', 'auth.signIn', 'auth.signUp', 'auth.checkPassword', 'auth.recoverPassword'].includes(method)) {
+      ['auth.exportLoginToken', 'auth.sendCode', 'auth.signIn', 'auth.signUp', 'auth.checkPassword', 'auth.recoverPassword'].includes(method)) {
       await numberIdentity(slot, String(authorization.user.id));
       try {
         await provenCall(slot, networker, 'account.getAuthorizations', {});
