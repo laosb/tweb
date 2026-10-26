@@ -270,6 +270,7 @@ export type BroadcastEvents = {
 
   'botforum_pending_topic_created': {peerId: PeerId, tempId: number, newId?: number},
   'promo_data_update': MyPromoData,
+  'blah_login_token': number,
   'unconfirmed_authorizations_update': UnconfirmedAuthorization[],
 
   'auto_delete_period_update': {peerId: PeerId, period: number},

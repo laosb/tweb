@@ -20,7 +20,7 @@ import {IDB} from '@lib/files/idb';
 import ctx from '@environment/ctx';
 import blah, {ensureBlahConfig, getBlahConfig} from '@config/blah';
 import {invokeBlah} from '@lib/blah/invoke';
-import {requireAccountBinding} from '@lib/blah/identity';
+import {requireAccountBinding} from '@lib/blah/accountStorage';
 import noop from '@helpers/noop';
 import Modes from '@config/modes';
 import bytesFromHex from '@helpers/bytes/bytesFromHex';
