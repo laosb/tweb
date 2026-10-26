@@ -65,6 +65,32 @@ export interface DCSetupResult {
     expiresAt: number;
     devices: DeviceInfo[];
 }
+export interface DeviceLinkInspection {
+    device: number[];
+    label: string;
+    verifies: number[];
+}
+export interface DeviceLinkBeginning {
+    request: number[];
+    parameter: string;
+    session: string;
+}
+export interface DeviceLinkOpening {
+    profile: number[];
+    domain: string;
+    identityKey: boolean;
+    metadata: number[] | null;
+    keyFileContents: number[];
+}
+export interface DeviceLinkApproval {
+    parameter: string;
+    request: number[];
+    profile: number[];
+    domain: string;
+    transferIdentity: boolean;
+    metadata: number[] | null;
+    now: number;
+}
 export interface HostingWorkInfo {
     algorithm: string;
     baseBits: number;
@@ -202,11 +228,20 @@ export type Exports = {
      * Creates or renews a DC profile entirely in the operator's browser.
      */
     dcSetup(input: DCSetupRequest, crypto: any): Promise<DCSetupResult>;
+    inspectDeviceLink(parameter: string, request: number[]): DeviceLinkInspection;
+    destroyDeviceLink(session: string): void;
+    beginDeviceLink(label: string, crypto: any): Promise<DeviceLinkBeginning>;
+    openDeviceLink(session: string, response: number[], expectedDC: number[], now: number): Promise<DeviceLinkOpening>;
+    respondToDeviceLink(input: DeviceLinkApproval, keyFile: number[], crypto: any): Promise<number[]>;
     hostingPolicy(domain: string, callbacks: any): Promise<HostingPolicyInfo>;
     hostingPlan(domain: string, labels: string[], identity: number[], callbacks: any): Promise<HostingNameInfo[]>;
     hostingPublish(domain: string, encoding: number[], via: string | null, proofs: HostingProofInfo[], solve: boolean, callbacks: any): Promise<HostingPublishedInfo>;
     keyFileInfo(encoding: number[]): KeyFileInfo;
     sealKeyFile(input: KeyFilePayload, salt: number[], crypto: any): Promise<number[]>;
+    /**
+     * Installs native custody bytes returned by device linking without exporting individual keys.
+     */
+    sealKeyFileContents(encoding: number[], salt: number[], crypto: any): Promise<number[]>;
     openKeyFile(encoding: number[], crypto: any): Promise<KeyFilePayload>;
     /**
      * The paper key that 32 bytes of random `entropy` encode.

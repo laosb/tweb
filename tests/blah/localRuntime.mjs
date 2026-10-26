@@ -6,9 +6,15 @@ export async function localDiemRuntime(runtimeURL) {
   const directory = process.env.BLAH_DIEM_LOCAL_DIST;
   const files = new Map();
   if(directory) {
-    for(const [name, contentType] of [['diem.js', 'text/javascript'], ['diem.wasm', 'application/wasm']]) {
+    for(const [name, contentType] of [['diem.js', 'text/javascript'], ['diem.wasm', 'application/wasm'], ['device-link-worker.js', 'text/javascript']]) {
+      let body;
+      try { body = await readFile(join(directory, name)); }
+      catch(error) {
+        if(name === 'device-link-worker.js' && error.code === 'ENOENT') continue;
+        throw error;
+      }
       files.set(new URL(name, runtimeURL).href, {
-        body: await readFile(join(directory, name)), contentType,
+        body, contentType,
         headers: {'Access-Control-Allow-Origin': '*'}
       });
     }

@@ -94,7 +94,7 @@ format and validation are owned by [blah-config.mjs](../scripts/blah-config.mjs)
 
 The DC refetches the numbered profile through a proof-wrapped account read before
 login completes. Failed publication leaves the new profile durably available for
-retry. There is no email-only, phone-number or QR identity login.
+retry. There is no email-only or phone-number identity login. QR login links a new device to an existing identity, as described below.
 
 ### Hosted profile names
 
@@ -163,6 +163,39 @@ the words and a new identity password, then sign in as usual. The browser fetche
 hosted profile and keeps the paper's device key as device-only custody, like a device
 identity file. It can sign in only while the hosted profile lists that device, and it
 cannot add devices, publish device changes or recover the identity.
+
+### Log in by QR code
+
+Connect the new browser to your home DC, then choose **Log in by QR code**. On a
+signed-in device, open **Settings → Devices → Link device by QR code**, or the
+same action in **Identity Manager → Identity details → Devices**. Scan the code
+with the camera, when supported, or use **Copy Link** on the new device and paste
+its `tg://login` link. Both devices must
+use the same home DC.
+
+The approving device shows the new device’s name and **Also let this device approve
+new devices**, checked by default. Clear it to give the new browser device-only
+custody. Enter your existing identity password if asked. Approval needs custody
+that can authorize devices; a paper key alone cannot do this.
+
+The updated public profile is saved before publication. A configured publisher
+must acknowledge it before approval continues. With manual hosting, export and
+publish the file at the displayed URL, then continue. If the DC still sees an old
+profile, acceptance retries with fresh challenges after 1, 2, 4, 8 and 15 seconds.
+An expired code needs another scan.
+
+The new browser generates its own device key and a temporary encryption key. The
+login link’s secret stays between the two devices; the DC receives only the
+public request and encrypted response. When approved, choose a **new local identity
+password** in the new browser. Custody and the account-slot binding are saved before
+sign-in completes. Telegram’s existing two-step verification password still applies.
+The approval satisfies the per-sign-in email check; QR login cannot create an account.
+
+Approval authority travels only inside the encrypted grant. Portable publisher,
+renewal and hosted-name metadata can travel with it, but pending publication bytes
+and other local retry state never do. Cancelling the flow destroys temporary link
+keys; an already saved device certification remains in Identity Manager and can be
+terminated there. Existing local identity custody is never overwritten by a grant.
 
 ### Sign in to a managed account
 
@@ -273,7 +306,8 @@ authenticated account.
 Both WASM browser fixtures serve local content under test `blahim.com` origins and need
 network access to load the real CDN module and WASM under its CORS policy.
 For an unreleased runtime, set `BLAH_DIEM_LOCAL_DIST=/path/to/BlahDiem/Web/dist`
-on either test command to serve its `diem.js` and `diem.wasm` at the pinned URLs,
+on either test command to serve its `diem.js`, `diem.wasm` and optional
+`device-link-worker.js` at the pinned URLs,
 including in shared workers. Production builds do not read this switch. The pinned
 release includes `verifyProfile` for resource-profile checks.
 The server fixture additionally builds the Blah client, starts two disposable debug

@@ -1,9 +1,9 @@
-import type {HostingPlanName, KeyFileSession} from '@blahdiem/diem';
+import type {DeviceLinkApproval, HostingPlanName, KeyFileSession} from '@blahdiem/diem';
 import {diemClient, verifySignature} from '@lib/blah/runtime';
 import bytesFromHex from '@helpers/bytes/bytesFromHex';
 import {fetchProfile, profileDomain} from '@lib/blah/profile';
 import {renewalDue, renewalPolicy, RenewalPolicy} from '@lib/blah/renewal';
-import blah, {ensureBlahConfig, getBlahConfig} from '@config/blah';
+import {ensureBlahConfig, getBlahConfig} from '@config/blah';
 import {bindHomeStorage} from '@lib/blah/homeStorage';
 import {dcDomain, fetchDCProfile, profileConfig, type SavedDC} from '@lib/blah/discovery';
 import {decode, encode, exclusively, identityIDs, SealedIdentity, stored, storeEntries} from '@lib/blah/vault';
@@ -49,12 +49,7 @@ function sessions(slot: number, id?: string) {
   return {get: () => entries.get(id), set: (value: Unlocked) => entries.set(id, value), delete: () => entries.delete(id)};
 }
 
-export async function requireHomeStorage() {
-  if(!blah?.discovery && !blah?.home) return;
-  for(let slot = 1; slot <= 4; slot++) {
-    await bindHomeStorage(getBlahConfig(slot)?.home, slot);
-  }
-}
+export {requireHomeStorage} from '@lib/blah/homeStorage';
 
 async function signingKey(): Promise<SigningKey> {
   return (await diemClient()).generateSigningKey();
@@ -516,4 +511,63 @@ export async function publicationPending(domains: string[], profile: number[]) {
     pending ||= !hosted || hosted.length !== profile.length || hosted.some((byte, index) => byte !== profile[index]);
   }
   return pending;
+}
+
+/** Install the verified grant before any RPC can authorize the new account slot. */
+export async function installLinkedIdentity(slot: number, contents: IdentitySecret | Uint8Array, password: string, alive: () => boolean) {
+  return exclusively(async() => {
+    const key = await (await diemClient()).keyFiles.create(password);
+    try {
+      const secret = contents instanceof Uint8Array ? await key.open(await key.seal(contents)) : contents;
+      const info = await diem('inspect', secret, {}, slot);
+      if(!info.namespace || !info.account) throw {type: 'DEVICE_LINK_INVALID'};
+      if(await stored('identity:' + info.id)) throw {type: 'BLAH_LINK_IDENTITY_EXISTS'};
+      const binding = await stored<string>('slot:' + slot);
+      if(binding && binding !== info.namespace) throw {type: 'DEVICE_LINK_INVALID'};
+      const claim = mergeHosting(await stored<HostedNames>('hosting:' + info.id), secret.hosting);
+      secret.hosting = portableHosting(claim, info.domains);
+      secret.publicationPending = false;
+      const backup = await key.seal(secret);
+      if(!alive()) throw {type: 'BLAH_LINK_CANCELLED'};
+      await storeEntries([['identity:' + info.id, backup], ['domain:' + info.id, secret.domain],
+        ['metadata:' + info.id, {kind: 'user', namespace: info.namespace, home: identityHome(slot)}],
+        ['slot:' + slot, info.namespace], ...(claim ? [['hosting:' + info.id, claim] as [string, unknown]] : [])]);
+      lock(slot);
+      if(!alive()) return;
+      sessions(slot).set({id: info.id, key, until: Date.now() + 15 * 60_000});
+      session(slot);
+      scheduleRenewal(slot);
+    } finally {
+      if(unlocked.get(slot)?.key !== key) key.destroy();
+    }
+  });
+}
+
+/** QR admission must save and publish the certified revision before sending its grant. */
+export function certifyLinkedDevice(slot: number, id: string, device: Uint8Array) {
+  return withIdentity(slot, async(secret, info, save) => {
+    if(info.id !== id || !secret.identity) throw {type: 'BLAH_LINK_APPROVAL_REQUIRED'};
+    await retryHostedPublication(secret, info);
+    if(!info.devices.some((entry) => entry.key.length === device.length && entry.key.every((byte, index) => byte === device[index]))) {
+      info = await diem('addDevice', secret, {device}, slot);
+      await save(info);
+    }
+    const published = !!await publish(secret, info);
+    if(published) await save(info, false);
+    return {identity: await view(secret, info, 'user', slot), manualPublication: !published};
+  }, true, false);
+}
+
+export async function linkedAccountIdentity(slot: number, id?: string) {
+  const binding = await stored<string>('slot:' + slot);
+  const entries = await listIdentities();
+  const identity = entries.find((entry) => entry.kind !== 'channel' && entry.namespace === binding && (!id || entry.id === id));
+  if(!identity || !binding || binding === 'managed-account') throw {type: 'BLAH_LINK_APPROVAL_REQUIRED'};
+  const current = unlocked.get(slot);
+  return {...identity, unlocked: current?.id === identity.id && current.until > Date.now()};
+}
+
+/** Caller holds withIdentity's vault lock and has saved the published revision. */
+export function respondToLinkedDevice(slot: number, input: DeviceLinkApproval) {
+  return session(slot).key.respondToDeviceLink(input);
 }

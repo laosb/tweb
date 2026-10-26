@@ -155,3 +155,28 @@ defineStories('Blah', (['create', 'details', 'chat', 'chat-details'] as const).m
     else showIdentityDetails({summary: identity, identity, action, onIdentity: () => {}});
   }
 })));
+
+defineStories('Blah', [{
+  id: 'blah/device-link',
+  fixtureOnly: true,
+  title: 'Link device by QR code',
+  managers: {
+    appAccountManager: {
+      blahDeviceLink: async(request: {action: string, link?: string}) => {
+        if(request.action === 'inspect') {
+          if(!request.link?.includes('&blah=')) throw {type: 'BLAH_LINK_REQUIRED'};
+          return {label: 'Blah Web · New browser', id: 'alice', domain: 'alice.example.org', unlocked: false};
+        }
+        if(request.action === 'prepare') return {identity: identityFixture(), manualPublication: true};
+        return {};
+      },
+      blahIdentity: async() => ({})
+    }
+  },
+  open: async() => {
+    const [{default: showDeviceLinkPopup}, {default: rootScope}, {bindManagersToSession}] = await Promise.all([
+      import('@lib/blah/DeviceLinkPopup'), import('@lib/rootScope'), import('@lib/accounts/bindManagersToAccount')
+    ]);
+    showDeviceLinkPopup({managers: bindManagersToSession(rootScope.managers)});
+  }
+}]);

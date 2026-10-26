@@ -1,4 +1,4 @@
-import type {BlahConfig} from '@config/blah';
+import blah, {getBlahConfig, type BlahConfig} from '@config/blah';
 import Modes from '@config/modes';
 import {exclusively, stored, storeEntries} from '@lib/blah/vault';
 
@@ -115,4 +115,11 @@ export async function shiftHomeStorage(upTo: number, beforeShift?: () => Promise
 export async function accountsShareHome(first: number, second: number) {
   const [a, b] = await Promise.all([stored<string>('home:' + first), stored<string>('home:' + second)]);
   return a === b;
+}
+
+export async function requireHomeStorage() {
+  if(!blah?.discovery && !blah?.home) return;
+  for(let slot = 1; slot <= 4; slot++) {
+    await bindHomeStorage(getBlahConfig(slot)?.home, slot);
+  }
 }
