@@ -328,6 +328,30 @@ The account checks use Teleblah's test-only profile-directory transport; product
 still requires public HTTPS profile hosting. It needs `openssl` and the server binary
 already built. This validates identity/login support, not every post-login Telegram RPC.
 
+For QR interoperability with the real TDLib fork, build Teleblah's server and
+`BlahDeviceLinkTool` (`swift build --jobs 3 --product BlahMTProtoServer` and
+`swift build --jobs 3 --product BlahDeviceLinkTool` in that checkout), then run:
+
+```sh
+BLAH_SERVER_REPO=/path/to/Teleblah \
+TDLIB_PATH=/path/to/qr-capable/libtdjson.so \
+BLAH_DIEM_LOCAL_DIST=/path/to/BlahDiem/Web/dist \
+BLAH_TEST_DEVICE_LINK_TDLIB=1 BLAH_TEST_DEVICE_LINK_ONLY=1 \
+  node scripts/test-blah-server.mjs
+```
+
+This needs Deno on `PATH` (or `DENO`), the fork's device-link APIs, and matching
+BlahDiem QR support. `BLAH_DEVICE_LINK_TOOL_BIN` selects a prebuilt crypto tool.
+The fixture creates an Ed25519 identity in tweb, approves a TDLib peer with key
+transfer through the paste UI, then uses that peer to approve a fresh browser
+without transfer. It decodes the rendered QR bitmap with `jsqr`, completes the
+local password step, reloads, and checks the certified device in Identity Manager.
+Both directions reject an altered `blah` digest before certification. The peer
+uses Teleblah's existing TDLib FFI and Swift crypto adapters on the same DC's TCP
+endpoint; the profile publisher stays separate from the DC. Omitting the `ONLY`
+switch also runs the ordinary server checks. `TMPDIR` chooses the disposable
+fixture directory; keys and databases are removed at shutdown.
+
 ## Keeping upstream rebases small
 
 `src/lib/blah/` owns custody, the identity UI and application proof adapters;

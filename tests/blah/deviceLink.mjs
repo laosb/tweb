@@ -43,47 +43,6 @@ export async function checkDeviceLink({browser, page, origin, signedDC, identity
     return next;
   }
 
-  async function details(owner, ownerPassword) {
-    active = owner;
-    await owner.locator('.sidebar-tools-button').click();
-    await owner.getByRole('menuitem', {name: 'Identity Manager', exact: true}).click();
-    const list = owner.locator('.tabs-tab.active').filter({has: owner.getByText('Saved identities', {exact: true})});
-    await list.getByRole('button').filter({hasText: identityID}).click();
-    const locked = owner.locator('.tabs-tab.active').filter({has: owner.getByRole('button', {name: 'Unlock identity', exact: true})});
-    await locked.getByLabel('Identity password', {exact: true}).fill(ownerPassword);
-    await locked.getByRole('button', {name: 'Unlock identity', exact: true}).click();
-    return owner.locator('.tabs-tab.active').filter({has: owner.getByRole('button', {name: 'Export public profile', exact: true})});
-  }
-
-  async function custody(next, expectedTransfer) {
-    const result = await next.evaluate(async({identityID, password, runtimeURL}) => {
-      const manager = window.rootScope.managers.appAccountManager;
-      await manager.blahIdentity({action: 'unlock', id: identityID, password});
-      const {identity} = await manager.blahIdentity({action: 'inspect', id: identityID});
-      const {backup} = await manager.blahIdentity({action: 'backup', id: identityID});
-      const client = await (await import(runtimeURL)).createDiem();
-      const opened = await client.keyFiles.unlock(backup, password);
-      try {
-        // Return public assertions only; private material stays in the browser.
-        return {id: identity.id, domain: opened.contents.domain, account: identity.account,
-          identityKey: !!opened.contents.identity, deviceKey: opened.contents.device.publicKey,
-          publisher: opened.contents.publisher, pending: !!opened.contents.publicationPending,
-          pendingHosting: !!opened.contents.hosting?.pending};
-      } finally {
-        opened.session.destroy();
-        await manager.blahIdentity({action: 'lock', id: identityID});
-      }
-    }, {identityID, password, runtimeURL});
-    assert.equal(result.id, identityID);
-    assert.equal(String(result.account), String(userId));
-    assert.equal(result.identityKey, expectedTransfer);
-    assert.equal(result.pending, false);
-    assert.equal(result.pendingHosting, false);
-    assert.notEqual(new URL('https://' + result.domain).hostname, 'dc.example.org');
-    if(expectedTransfer) assert.equal(result.publisher, origin + '/publish');
-    return result;
-  }
-
   async function link(owner, next, ownerPassword, transferIdentity) {
     active = next;
     await next.waitForFunction(() => window.deviceLinkTestURL);
@@ -92,7 +51,8 @@ export async function checkDeviceLink({browser, page, origin, signedDC, identity
     const url = new URL(link);
     assert(url.searchParams.get('token'));
     assert(url.searchParams.get('blah'));
-    const ownerDetails = await details(owner, ownerPassword);
+    active = owner;
+    const ownerDetails = await openDeviceLinkIdentity(owner, ownerPassword, identityID);
     await ownerDetails.getByRole('button', {name: 'Link device by QR code', exact: true}).click();
     const dialog = owner.getByRole('dialog', {name: 'Link device by QR code', exact: true});
     await dialog.getByRole('textbox', {name: /link/i}).fill(link);
@@ -110,7 +70,7 @@ export async function checkDeviceLink({browser, page, origin, signedDC, identity
     // Reload discards the opaque in-memory link session and requires real custody.
     await next.reload();
     await next.locator('#page-chats').waitFor({state: 'visible'});
-    const result = await custody(next, transferIdentity);
+    const result = await inspectLinkedCustody(next, {identityID, password, runtimeURL, userId, origin}, transferIdentity);
     active = owner;
     await owner.keyboard.press('Escape');
     await ownerDetails.waitFor({state: 'detached'});
@@ -137,4 +97,44 @@ export async function checkDeviceLink({browser, page, origin, signedDC, identity
   } finally {
     await Promise.all(contexts.map(context => context.close()));
   }
+}
+
+export async function openDeviceLinkIdentity(owner, ownerPassword, identityID) {
+  await owner.locator('.sidebar-tools-button').click();
+  await owner.getByRole('menuitem', {name: 'Identity Manager', exact: true}).click();
+  const list = owner.locator('.tabs-tab.active').filter({has: owner.getByText('Saved identities', {exact: true})});
+  await list.getByRole('button').filter({hasText: identityID}).click();
+  const locked = owner.locator('.tabs-tab.active').filter({has: owner.getByRole('button', {name: 'Unlock identity', exact: true})});
+  await locked.getByLabel('Identity password', {exact: true}).fill(ownerPassword);
+  await locked.getByRole('button', {name: 'Unlock identity', exact: true}).click();
+  return owner.locator('.tabs-tab.active').filter({has: owner.getByRole('button', {name: 'Export public profile', exact: true})});
+}
+
+export async function inspectLinkedCustody(next, {identityID, password, runtimeURL, userId, origin}, expectedTransfer) {
+  const result = await next.evaluate(async({identityID, password, runtimeURL}) => {
+    const manager = window.rootScope.managers.appAccountManager;
+    await manager.blahIdentity({action: 'unlock', id: identityID, password});
+    const {identity} = await manager.blahIdentity({action: 'inspect', id: identityID});
+    const {backup} = await manager.blahIdentity({action: 'backup', id: identityID});
+    const client = await (await import(runtimeURL)).createDiem();
+    const opened = await client.keyFiles.unlock(backup, password);
+    try {
+      // Return public assertions only; private material stays in the browser.
+      return {id: identity.id, domain: opened.contents.domain, account: identity.account,
+        identityKey: !!opened.contents.identity, deviceKey: opened.contents.device.publicKey,
+        publisher: opened.contents.publisher, pending: !!opened.contents.publicationPending,
+        pendingHosting: !!opened.contents.hosting?.pending};
+    } finally {
+      opened.session.destroy();
+      await manager.blahIdentity({action: 'lock', id: identityID});
+    }
+  }, {identityID, password, runtimeURL});
+  assert.equal(result.id, identityID);
+  assert.equal(String(result.account), String(userId));
+  assert.equal(result.identityKey, expectedTransfer);
+  assert.equal(result.pending, false);
+  assert.equal(result.pendingHosting, false);
+  assert.notEqual(new URL('https://' + result.domain).hostname, 'dc.example.org');
+  if(expectedTransfer) assert.equal(result.publisher, origin + '/publish');
+  return result;
 }
