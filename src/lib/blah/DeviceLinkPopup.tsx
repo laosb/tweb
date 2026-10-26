@@ -3,7 +3,6 @@ import Button from '@components/buttonTsx';
 import CheckboxField from '@components/checkboxFieldTsx';
 import Row from '@components/rowTsx';
 import PopupElement, {createPopup, usePopupContext} from '@components/popups/indexTsx';
-import {toastNew} from '@components/toast';
 import focusWhenSettled from '@helpers/dom/focusWhenSettled';
 import type {AppManagers} from '@lib/managers';
 import bindManagersToAccount from '@lib/accounts/bindManagersToAccount';
@@ -115,7 +114,6 @@ export default function showDeviceLinkPopup(props: Props) {
       if(closed) return;
       await props.onLinked?.();
       if(closed) return;
-      toastNew({langPackKey: 'BlahLinkSuccess'});
       popup.hide();
     }
     async function prepare() {
