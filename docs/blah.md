@@ -328,6 +328,9 @@ The account checks use Teleblah's test-only profile-directory transport; product
 still requires public HTTPS profile hosting. It needs `openssl` and the server binary
 already built. This validates identity/login support, not every post-login Telegram RPC.
 
+`BLAH_TEST_MENUS_ONLY=1` checks that clicking the attachment button opens the
+built-in attachment menu against the disposable DC, in LTR and RTL.
+
 For QR interoperability with the real TDLib fork, build Teleblah's server and
 `BlahDeviceLinkTool` (`swift build --jobs 3 --product BlahMTProtoServer` and
 `swift build --jobs 3 --product BlahDeviceLinkTool` in that checkout), then run:
