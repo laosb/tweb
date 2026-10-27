@@ -4,9 +4,10 @@ The `feedback-widget` branch ships one conversation with the configured DC suppo
 account, rendered by the full client's own chat page. Customers get its message
 bubbles, history, replies, editing and media viewer, and can send text, system emoji,
 photos, videos and files. There are no chat lists, profiles, account settings, calls,
-voice or round messages, contact sharing, sticker or GIF pickers, inline bots, custom
-emoji or attach-menu apps; links to other chats and profiles do not navigate. Code
-blocks show without syntax highlighting, and a poll shows only its question.
+voice or round messages, message multi-select, contact sharing, sticker or GIF
+pickers, inline bots, custom emoji or attach-menu apps; links to other chats and
+profiles do not navigate. Code blocks show without syntax highlighting, and a poll
+shows only its question.
 The widget follows the system's light or dark appearance.
 
 ## Build and configure
@@ -79,6 +80,10 @@ may initiate a conversation with that DC's configured support contact. Blocks an
 contact privacy still apply. Actual bots are not customer accounts and are refused
 by this widget.
 
+Configure S3-compatible object storage on the DC before accepting attachments.
+Text messaging alone does not verify that storage is available: a DC without it
+rejects media finalization with `FILE_STORAGE_UNAVAILABLE`.
+
 ## Embed and authenticate
 
 Provision one managed account per customer on your backend. Give the browser its
@@ -109,8 +114,10 @@ reload it and follow the same path. A revoked or invalid token shows an error wi
 login form, and the chat stays hidden.
 
 The widget is the ordinary client with its storage: the session and message cache
-live in the widget origin's IndexedDB and storage, with its shared and service
-workers, and reloading restores them before revalidating the token. The token
+live in the widget origin's IndexedDB and storage, with its workers. Reloading
+restores them before revalidating the token.
+On Safari the widget uses a dedicated worker: WebKit cannot read attachment Blobs
+passed from a cross-origin iframe to a shared worker. The token
 itself is not stored. One origin holds one customer at a time, so sibling widgets
 for different customers need different origins.
 
@@ -180,7 +187,9 @@ over to [`src/widget/index.ts`](../src/widget/index.ts) in place of the auth flo
 signs in with the token and opens the support chat.
 [`src/widget/restrictions.ts`](../src/widget/restrictions.ts) narrows the client by
 wrapping a few upstream entry points rather than editing them, and fails at startup if
-one is renamed.
+one is renamed. These restrictions also disable message multi-select through the
+selection controller and remove its menu items, covering pointer, touch, keyboard
+and report-selection entry points while keeping hover reactions.
 
 [`widget-release.yml`](../.github/workflows/widget-release.yml) builds and verifies
 pushes and pull requests targeting `feedback-widget`. Successful branch pushes and
@@ -213,10 +222,11 @@ any origin to read it, so a provisioning page hosted elsewhere, such as the Blah
 feedback DC setup page, can configure the same release.
 
 Keep future rebase conflicts small: widget behavior belongs in `src/widget/`, its
-build config and tests. Upstream files carry only the widget's configuration hooks
+build config and tests. Shared files carry the widget's configuration hooks
 (`src/config/blah.ts`, `src/config/app.ts`, the worker URL helper, the DC URL and the
-start-up hand-over) plus `*:widget` package scripts and the README pointer. After
-rebasing, adapt the wrapped entry points in `restrictions.ts` and run the checks below.
+start-up hand-over), plus `*:widget` package scripts and the README pointer. After
+rebasing, adapt the wrapped entry points in `restrictions.ts` and
+`selectionRestrictions.ts` and run the checks below.
 
 ```sh
 pnpm test:widget
@@ -233,12 +243,24 @@ asset loading, keyboard navigation, narrow layout and Axe. It requires no live D
 or account. The workflow runs it before packaging the unchanged build output.
 
 The last command needs a built debug DC, OpenSSL and Playwright Chromium with its
-OS dependencies. It seeds disposable managed accounts, runs the production widget
+OS dependencies. Run the same checks in WebKit with `WIDGET_BROWSER=webkit`;
+`BLAH_BROWSER_EXECUTABLE` optionally selects a browser executable or wrapper.
+The harness seeds disposable managed accounts, runs the production widget
 inside a cross-origin iframe and uses real encrypted WebSockets. It checks customer-first
-messaging, a support reply, reload, the single-chat restrictions, account
+messaging, photo-first contact, video/file uploads and byte-for-byte downloads,
+a support reply, reload, the single-chat and no-multi-select restrictions, account
 replacement/logout across page loads and fragment changes, revoked/missing/invalid
 tokens, CSS customization in light and dark mode, narrow layout and Axe, and that no
 request leaves the widget origin. Its second-client driver is built only into a
-temporary directory. The client's opt-in `?a11y=1` keyboard layer currently leaves the
+temporary directory. Its local S3 fixture holds disposable media bytes; upload
+authorization, finalization and downloads run through the real DC. Set
+`TMPDIR` and `WIDGET_TEST_ARTIFACTS` to keep temporary files and failure logs in a
+chosen run directory; `WIDGET_SKIP_BUILD=1` tests an already built widget.
+Add `WIDGET_DIST=/path/to/extracted/archive`
+to test the hosted release itself. Both browsers exercise the popup Send button
+inside a cross-origin iframe, including a captionless first photo, and capture
+page errors, promise rejections and media errors. WebKit uses an existing H.264 MP4
+fixture; Chromium generates VP9 WebM, since the test browsers differ in codec support.
+The client's opt-in `?a11y=1` keyboard layer currently leaves the
 composer without a usable editor, so the fixture runs without it. Screen-reader and
 physical touch testing remain manual.
