@@ -151,8 +151,9 @@ try {
   await expect(domain).toBeFocused();
   const axe = await new AxeBuilder({page}).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   assert.deepEqual(axe.violations, []);
-  await mkdir(new URL('../tmp/widget/', import.meta.url), {recursive: true});
-  await page.screenshot({path: fileURLToPath(new URL('../tmp/widget/setup.png', import.meta.url)), fullPage: true});
+  const artifacts = process.env.WIDGET_TEST_ARTIFACTS || fileURLToPath(new URL('../tmp/widget/', import.meta.url));
+  await mkdir(artifacts, {recursive: true});
+  await page.screenshot({path: artifacts + '/setup.png', fullPage: true});
   await page.setViewportSize({width: 320, height: 720});
   assert(await page.locator('body').evaluate(body => body.scrollWidth <= body.clientWidth));
   await expect(preview.getByRole('heading', {name: 'Customer support'})).toBeVisible();
