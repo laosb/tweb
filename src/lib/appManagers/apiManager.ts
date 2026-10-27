@@ -780,7 +780,7 @@ export class ApiManager extends ApiManagerMethods {
         if(getBlahConfig(this.getAccountNumber())?.home && (error.code === 303 || error.type?.startsWith('FILE_MIGRATE_'))) throw error;
         // if(!options.ignoreErrors) {
         if(error.type !== 'FILE_REFERENCE_EXPIRED' && error.type !== 'FILE_REFERENCE_INVALID'/*  && error.type !== 'MSG_WAIT_FAILED' */) {
-          this.log.error('Error', error.code, error.type, this.baseDcId, dcId, method, params);
+          this.log.error('Error', error.code, error.type, this.baseDcId, dcId, method, method === 'auth.importBotAuthorization' ? undefined : params);
         }
 
         if(error.code === 401 && this.baseDcId === dcId) {

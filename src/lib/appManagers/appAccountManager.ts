@@ -434,6 +434,7 @@ export default class AppAccountManager extends AppManager {
   /** Blah managed accounts sign in with their token, like a bot, but are ordinary users. */
   public async importManagedAccountAuthorization(token: string) {
     const authorization = await this.apiManager.invokeApi('auth.importBotAuthorization', {
+      flags: 0,
       api_id: App.id,
       api_hash: App.hash,
       bot_auth_token: token

@@ -111,6 +111,7 @@ describe('account login wrappers', () => {
     apiManager.setUser.mockImplementationOnce(async() => { order.push('user'); });
     await manager.importManagedAccountAuthorization('42:' + 'a'.repeat(32));
     expect(apiManager.invokeApi).toHaveBeenCalledWith('auth.importBotAuthorization', {
+      flags: 0,
       api_id: App.id,
       api_hash: App.hash,
       bot_auth_token: '42:' + 'a'.repeat(32)
