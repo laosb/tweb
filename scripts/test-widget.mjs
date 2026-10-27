@@ -181,6 +181,13 @@ try {
   await page.bringToFront();
   await navigate(alice.token);
   await expect(title).toHaveText('Customer Care');
+  await frame.locator('#column-center .chat.active .attach-file').click();
+  const attachmentMenu = frame.getByRole('menu').filter({has: frame.getByRole('menuitem', {name: 'Document', exact: true})});
+  await expect(attachmentMenu).toBeVisible();
+  const titleBox = await title.boundingBox();
+  await page.mouse.click(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2);
+  await expect(attachmentMenu).not.toBeVisible();
+  console.log('PASS attachment menu opens on click and closes');
   // Exercise the real file picker handler and popup Send button, independently of
   // the attachment menu's opening gesture.
   await widgetFrame().evaluate(() => window.rootScope.addEventListener('message_error', event => console.log('MEDIA_ERROR ' + JSON.stringify(event.error, Object.getOwnPropertyNames(event.error || {})))));

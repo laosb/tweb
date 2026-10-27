@@ -247,7 +247,7 @@ OS dependencies. Run the same checks in WebKit with `WIDGET_BROWSER=webkit`;
 `BLAH_BROWSER_EXECUTABLE` optionally selects a browser executable or wrapper.
 The harness seeds disposable managed accounts, runs the production widget
 inside a cross-origin iframe and uses real encrypted WebSockets. It checks customer-first
-messaging, photo-first contact, video/file uploads and byte-for-byte downloads,
+messaging, attachment-menu opening on click, photo-first contact, video/file uploads and byte-for-byte downloads,
 a support reply, reload, the single-chat and no-multi-select restrictions, account
 replacement/logout across page loads and fragment changes, revoked/missing/invalid
 tokens, CSS customization in light and dark mode, narrow layout and Axe, and that no
