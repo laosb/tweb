@@ -71,9 +71,13 @@ Setup writes these public deployment tags. They can also be set manually in
 Use the DC's 2048-bit RSA **public** key, encoded as hexadecimal modulus/exponent.
 The exact WebSocket path and query are retained. The page hands the validated pins to
 the client's workers. Missing or invalid tags fail closed; the running widget has no
-Telegram endpoint/key, discovery, HTTP fallback or numeric DC migration. Query
-parameters such as `test=1` and `debug=1` cannot change the widget's transport or
-enable credential logging. Configure the support account in the DC's admin UI.
+Telegram endpoint/key, discovery or numeric DC migration. HTTP uses the same pinned
+host and port over HTTPS at `/apiw1`, without the WebSocket path or query. The TLS
+proxy must forward those POSTs to the DC's MTProto listener with its configured
+real-IP header. Transport selection follows `.env`; `?http=1` selects HTTP only.
+Query parameters such as `test=1` and `debug=1` cannot move the widget off its pinned
+DC or enable credential logging.
+Configure the support account in the DC's admin UI.
 
 The DC must include the managed-account support exception: ordinary customer tokens
 may initiate a conversation with that DC's configured support contact. Blocks and

@@ -74,12 +74,15 @@ describe('Blah release configuration', () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     const defines = await blahBuildDefines('widget', process.cwd());
+    for(const key of ['VITE_MTPROTO_HAS_WS', 'VITE_MTPROTO_HAS_HTTP', 'VITE_MTPROTO_AUTO', 'VITE_MTPROTO_HTTP', 'VITE_MTPROTO_HTTP_UPLOAD']) {
+      expect(defines).not.toHaveProperty(`import.meta.env.${key}`);
+    }
     expect(defines).toMatchObject({
       __BLAH_WIDGET__: 'true',
       __BLAH_CONFIG__: 'undefined',
       'import.meta.env.VITE_API_ID': '""',
       'import.meta.env.VITE_API_HASH': '""',
-      'import.meta.env.VITE_MTPROTO_HAS_HTTP': '""'
+      'import.meta.env.VITE_PUSH_SERVER_KEY': '""'
     });
     expect(fetch).not.toHaveBeenCalled();
   });
