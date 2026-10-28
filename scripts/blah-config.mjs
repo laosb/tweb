@@ -108,13 +108,8 @@ export default async function blahBuildDefines(mode, root) {
     ...Object.fromEntries(Object.entries({
       VITE_API_ID: env.BLAH_API_ID,
       VITE_API_HASH: env.BLAH_API_HASH,
-      // Never inherit Telegram's push key or its HTTP fallback from .env.
-      VITE_PUSH_SERVER_KEY: env.BLAH_VAPID_PUBLIC_KEY || '',
-      VITE_MTPROTO_HAS_WS: '1',
-      VITE_MTPROTO_HAS_HTTP: '',
-      VITE_MTPROTO_AUTO: '',
-      VITE_MTPROTO_HTTP: '',
-      VITE_MTPROTO_HTTP_UPLOAD: ''
+      // Never inherit Telegram's push key from .env.
+      VITE_PUSH_SERVER_KEY: env.BLAH_VAPID_PUBLIC_KEY || ''
     }).map(([key, value]) => [`import.meta.env.${key}`, JSON.stringify(value)]))
   };
 }

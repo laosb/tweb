@@ -1,4 +1,4 @@
-// Real tweb UI/worker -> TLS WebSocket -> a throwaway Teleblah DC. No production services.
+// Real tweb UI/worker -> TLS WebSocket or HTTPS -> a throwaway Teleblah DC. No production services.
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {openSync} from 'node:fs';
@@ -21,6 +21,7 @@ import {localDiemRuntime} from '../tests/blah/localRuntime.mjs';
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const diemRuntimeURL = blahDiemRuntimeURL(loadEnv('blah', repo, '').BLAH_DIEM_CDN_HOST);
 const localRuntime = await localDiemRuntime(diemRuntimeURL);
+const testHttp = process.env.BLAH_TEST_HTTP_ONLY === '1';
 const tele = process.env.BLAH_SERVER_REPO;
 if(!tele) throw new Error('Set BLAH_SERVER_REPO to a Teleblah checkout with a built debug server.');
 const require = createRequire(repo + '/package.json');
@@ -96,6 +97,7 @@ try {
       // Transport keys survive a restart, as in a `--data-dir` deployment.
       '--db', dir + '/' + domain + '-sessions.sqlite',
       '--federation-key-file', seedFile, '--federation-key-algorithm', 'ed25519',
+      '--real-ip-header', 'X-Real-IP', '--real-ip-header-required', 'true',
       '--local-config-file', dir + '/local.json', '--test-profile-directory', dir + '/profiles'], {
       cwd: tele, stdio: ['ignore', 'ignore', 'pipe'],
       env: {...process.env, ...(testHosting && domain === 'dc.example.org' ? {BLAH_PROFILE_HOSTING_CONFIG: dir + '/hosting.json'} : {})}
@@ -112,7 +114,7 @@ try {
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', dir + '/tls.key', '-out', dir + '/tls.crt', '-days', '1', '-subj', '/CN=localhost'], {
     stdio: 'ignore'
   });
-  let hostingPuts = 0;
+  let hostingPuts = 0, httpRequests = 0;
   edge = createServer({
     key: await readFile(dir + '/tls.key'),
     cert: await readFile(dir + '/tls.crt')
@@ -126,6 +128,13 @@ try {
         return;
       }
       const path = new URL(req.url, 'https://localhost').pathname;
+      if(['POST', 'OPTIONS'].includes(req.method) && /^\/apiw?1?(?:_test)?$/.test(path)) {
+        if(req.method === 'POST') ++httpRequests;
+        req.headers['x-real-ip'] = req.socket.remoteAddress;
+        const dcPort = new URL('https://' + req.headers.host).hostname === 'other-server-test.blahim.com' ? otherPort : port;
+        proxy.web(req, res, {target: 'http://127.0.0.1:' + dcPort});
+        return;
+      }
       if(req.method === 'PUT' && ['/publish', '/publish/bob', '/publish/carol'].includes(path)) {
         const chunks = [];
         for await (const chunk of req) chunks.push(chunk);
@@ -190,6 +199,7 @@ try {
   edge.on('upgrade', (req, socket, head) => {
     assert(['/discovered/ws?route=home', '/rotated/ws?route=home', '/other/ws?route=home'].includes(req.url));
     connectedPaths.add(req.url);
+    req.headers['x-real-ip'] = req.socket.remoteAddress;
     proxy.ws(req, socket, head, {target: 'ws://127.0.0.1:' + (req.url.startsWith('/other/') ? otherPort : port)});
   });
   proxy.on('error', () => {});
@@ -216,7 +226,7 @@ try {
     // SharedWorker requests do not inherit a Playwright context's ignoreHTTPSErrors.
     args: ['--no-sandbox', '--ignore-certificate-errors',
       // Keep the page and worker on an allowed CDN origin while serving everything locally.
-      '--host-resolver-rules=' + ['blah-server-test.blahim.com', ...profileDomains, ...(testHosting ? ['id.example', '*.id.example'] : [])].map(host => `MAP ${host} 127.0.0.1:${tlsPort}`).join(',') +
+      '--host-resolver-rules=' + ['blah-server-test.blahim.com', 'other-server-test.blahim.com', ...profileDomains, ...(testHosting ? ['id.example', '*.id.example'] : [])].map(host => `MAP ${host} 127.0.0.1:${tlsPort}`).join(',') +
         (localRuntime.size ? `,MAP ${new URL(diemRuntimeURL).hostname} 127.0.0.1:${tlsPort}` : '')]
   });
   const signupContext = await browser.newContext({
@@ -232,7 +242,7 @@ try {
   page.on('console', m => {
     if(m.type() === 'error') diagnostics.push(m.text().slice(0, 350));
   });
-  await page.goto(origin + '/?debug=1&noServiceWorker=1&a11y=1');
+  await page.goto(origin + '/?debug=1&noServiceWorker=1&a11y=1' + (testHttp ? '&http=1' : ''));
   const makeDCProfile = async({data, rotatedData, identityKey, runtimeURL}) => {
     const {createDiem} = await import(runtimeURL);
     const diem = await createDiem();
@@ -256,7 +266,7 @@ try {
     rotatedData: cbor({9: ['dc.example.org'], 16: 5, 18: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/rotated/ws?route=home'}], 19: [], 20: rsa.pkcs1Pem, 21: 1}),
     identityKey: privateKey.export({format: 'jwk'}), runtimeURL: diemRuntimeURL});
   assert.equal(signedDC.id, id);
-  const otherData = cbor({9: ['other.example.org'], 16: 5, 18: [{0: '127.0.0.1', 1: tlsPort, 2: true, 3: 1, 4: '/other/ws?route=home'}], 19: [], 20: rsa.pkcs1Pem, 21: 1});
+  const otherData = cbor({9: ['other.example.org'], 16: 5, 18: [{0: 'other-server-test.blahim.com', 1: tlsPort, 2: true, 3: 1, 4: '/other/ws?route=home'}], 19: [], 20: rsa.pkcs1Pem, 21: 1});
   const otherDC = await page.evaluate(makeDCProfile, {data: otherData, rotatedData: otherData, identityKey: otherKey, runtimeURL: diemRuntimeURL});
   await signupContext.route('https://other.example.org/.well-known/blah/profile.cbor', route => route.fulfill({
     contentType: 'application/cbor', body: Buffer.from(otherDC.profile)
@@ -468,6 +478,7 @@ try {
     // the command's own result: overtaking it is a pts gap, and a difference that delivers
     // the command first leaves the sent message pending under its temporary id.
     async function askServiceAccount(command, answer) {
+      await page.waitForFunction(() => !!window.appImManager?.chat);
       await page.evaluate(() => window.appImManager.setPeer({peerId: 777000}));
       await page.waitForFunction(() => window.appImManager.chat.peerId === 777000 && !window.appImManager.chat.setPeerPromise);
       const chat = page.locator('#column-center .chat.active');
@@ -485,6 +496,16 @@ try {
         return {temporary: history.filter(mid => !Number.isInteger(mid)),
           sent: held.some(message => message.pFlags.out && message.message === command)};
       }, command)).toEqual({temporary: [], sent: true});
+    }
+    if(testHttp) {
+      await askServiceAccount('/storage_usage', 'Storage usage');
+      await page.reload();
+      await page.locator('#page-chats').waitFor({state: 'visible', timeout: 30000});
+      await askServiceAccount('/check_profile', 'Profile check queued.');
+      assert(httpRequests > 0, 'The client must POST MTProto requests');
+      assert.equal(connectedPaths.size, 0, 'HTTP-only mode must not open a WebSocket');
+      console.log(`PASS HTTP-only DC discovery, UI signup/sign-in, service-account sends and replies, and signed-in reload (${httpRequests} MTProto POSTs; zero WebSockets).`);
+      break accountChecks;
     }
     const restartDC = () => { child = startDC('dc.example.org', port, web, dir + '/seed'); };
     await askServiceAccount('/storage_usage', 'Storage usage');
