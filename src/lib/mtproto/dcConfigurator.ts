@@ -115,7 +115,12 @@ export class DcConfigurator {
     }
 
     let chosenServer: string;
-    if(Modes.ssl || !Modes.http) {
+    const blahDc = getBlahDc(dcId, this.accountNumber);
+    if(blahDc) {
+      const url = new URL('/apiw1', blahDc.url);
+      url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
+      chosenServer = url.href;
+    } else if(Modes.ssl || !Modes.http) {
       const suffix = getTelegramConnectionSuffix(connectionType);
       const subdomain = this.sslSubdomains[dcId - 1] + suffix;
       const path = Modes.test ? 'apiw_test1' : 'apiw1';
