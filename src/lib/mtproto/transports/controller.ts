@@ -1,4 +1,5 @@
 import App from '@config/app';
+import {ensureBlahConfig} from '@config/blah';
 import deferredPromise from '@helpers/cancellablePromise';
 import EventListenerBase from '@helpers/eventListenerBase';
 import pause from '@helpers/schedulers/pause';
@@ -36,6 +37,7 @@ export class MTTransportController extends EventListenerBase<{
   }
 
   public async pingTransports() {
+    await ensureBlahConfig(1);
     const dcConfigurator = this.dcConfigurator ??= new DcConfigurator();
     const timeout = 2000;
     const transports: {[k in TransportType]?: MTTransport} = this.transports = {
@@ -86,7 +88,7 @@ export class MTTransportController extends EventListenerBase<{
     this.pinging = true;
 
     while(true) {
-      const {https, websocket} = await this.pingTransports();
+      const {https, websocket} = await this.pingTransports().catch(() => ({https: false, websocket: false}));
       if(https || websocket) {
         this.dispatchEvent('transport', websocket || !https ? 'websocket' : 'https');
       }

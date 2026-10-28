@@ -133,7 +133,7 @@ describe('Blah release configuration', () => {
     await expect(blahBuildDefines('test', process.cwd())).rejects.toThrow('HTTP 503');
   });
 
-  it('embeds the topology and forces WS-only transport with no Telegram push key', async() => {
+  it('embeds the topology without overriding transports or inheriting the Telegram push key', async() => {
     enableBlah();
     const fetch = vi.fn().mockResolvedValue({ok: true, json: async() => ({dcs: [dc(1)],
       home: {domain: 'dc.example.org', identity: 'ab'.repeat(32), generation: '1'}})});
@@ -144,9 +144,9 @@ describe('Blah release configuration', () => {
     const value = (key: string) => JSON.parse(defines[`import.meta.env.${key}`]);
     expect(JSON.parse(defines.__BLAH_CONFIG__).defaultDcId).toBe(1);
     expect(value('VITE_API_ID')).toBe('123');
-    expect(value('VITE_MTPROTO_HAS_WS')).toBe('1');
-    for(const key of ['VITE_PUSH_SERVER_KEY', 'VITE_MTPROTO_HAS_HTTP', 'VITE_MTPROTO_AUTO', 'VITE_MTPROTO_HTTP', 'VITE_MTPROTO_HTTP_UPLOAD']) {
-      expect(value(key)).toBe('');
+    expect(value('VITE_PUSH_SERVER_KEY')).toBe('');
+    for(const key of ['VITE_MTPROTO_HAS_WS', 'VITE_MTPROTO_HAS_HTTP', 'VITE_MTPROTO_AUTO', 'VITE_MTPROTO_HTTP', 'VITE_MTPROTO_HTTP_UPLOAD']) {
+      expect(defines).not.toHaveProperty(`import.meta.env.${key}`);
     }
   });
 });
