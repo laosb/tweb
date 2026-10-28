@@ -315,6 +315,7 @@ type MESSAGE_ACTION_TYPE = Message.messageService['action']['_'];
 type IGNORE_ACTION_KEY = MESSAGE_ACTION_TYPE;
 type IGNORE_ACTION_VALUE = true | ((message: Message.messageService) => boolean);
 const IGNORE_ACTIONS_ARRAY: [IGNORE_ACTION_KEY, IGNORE_ACTION_VALUE][] = [
+  ['messageActionEmpty', true],
   ['messageActionHistoryClear', true],
   ['messageActionChatCreate', (message) => message.pFlags.out],
   ['messageActionChannelMigrateFrom', true],
