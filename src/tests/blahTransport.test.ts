@@ -7,7 +7,9 @@ vi.mock('@lib/crypto/cryptoMessagePort', () => ({default: {
   }
 }}));
 
-vi.mock('@lib/mtproto/transports/http', () => ({default: class {}}));
+vi.mock('@lib/mtproto/transports/http', () => ({default: class {
+  constructor(public dcId: number, public url: string, public logSuffix: string) {}
+}}));
 vi.mock('@lib/mtproto/transports/websocket', () => ({default: class {}}));
 vi.mock('@lib/mtproto/transports/tcpObfuscated', () => ({default: class {}}));
 vi.mock('@lib/mtproto/transports/socketProxied', () => ({default: class {}}));
@@ -25,8 +27,8 @@ beforeEach(() => {
   vi.resetModules();
   vi.stubGlobal('__BLAH_CONFIG__', config);
   vi.stubEnv('VITE_MTPROTO_HAS_WS', '1');
-  vi.stubEnv('VITE_MTPROTO_HAS_HTTP', '');
-  vi.stubEnv('VITE_MTPROTO_AUTO', '');
+  vi.stubEnv('VITE_MTPROTO_HAS_HTTP', '1');
+  vi.stubEnv('VITE_MTPROTO_AUTO', '1');
 });
 
 afterEach(() => {
@@ -62,7 +64,9 @@ it('validates the entire byte range before constructing URLs', async() => {
 
 it('leaves Telegram routing and validation unchanged without Blah', async() => {
   vi.stubGlobal('__BLAH_CONFIG__', undefined);
-  const {assertValidDcId, constructTelegramWebSocketUrl} = await import('@lib/mtproto/dcConfigurator');
+  const {assertValidDcId, constructTelegramWebSocketUrl, DcConfigurator} = await import('@lib/mtproto/dcConfigurator');
+  expect(new DcConfigurator().chooseServer(1, 'client', 'https')).toMatchObject({url: 'https://pluto.web.telegram.org/apiw1'});
+  expect(new DcConfigurator().chooseServer(2, 'download', 'https')).toMatchObject({url: 'https://venus-1.web.telegram.org/apiw1'});
   expect(constructTelegramWebSocketUrl(2, 'download')).toBe('wss://kws2-1.web.telegram.org/apiws');
   expect(() => assertValidDcId(6)).toThrow('invalid dcId');
   const {DC_IDS} = await import('@config/dc');
@@ -79,6 +83,11 @@ it('uses the exact signed home endpoint for every connection and never falls bac
   for(const type of ['client', 'upload', 'download'] as const) {
     expect(constructTelegramWebSocketUrl(1, type, true)).toBe('wss://dc.example.org/custom/ws?route=one');
   }
+  const {DcConfigurator} = await import('@lib/mtproto/dcConfigurator');
+  for(const type of ['client', 'upload', 'download'] as const) {
+    expect(new DcConfigurator().chooseServer(1, type, 'https')).toMatchObject({url: 'https://dc.example.org/apiw1'});
+  }
+  expect(() => new DcConfigurator().chooseServer(2, 'client', 'https')).toThrow('DC1');
   expect(() => constructTelegramWebSocketUrl(2, 'client')).toThrow('DC1');
 });
 
@@ -86,16 +95,19 @@ it('refuses transport before discovery or after profile expiry', async() => {
   const config: BlahConfig = {discovery: true, defaultDcId: 1, dcs: [], home: undefined, expiresAt: '1'};
   vi.stubGlobal('__BLAH_CONFIG__', config);
   const {getBlahDc, setBlahConfig} = await import('@config/blah');
+  const {DcConfigurator} = await import('@lib/mtproto/dcConfigurator');
+  expect(() => new DcConfigurator().chooseServer(1, 'client', 'https')).toThrow('refresh');
   expect(() => getBlahDc(1)).toThrow('refresh');
   setBlahConfig(1, config);
   config.home = {domain: 'dc.example.org', identity: 'ab'.repeat(32), generation: '1'};
+  expect(() => new DcConfigurator().chooseServer(1, 'client', 'https')).toThrow('refresh');
   expect(() => getBlahDc(1)).toThrow('refresh');
 });
 
 it('routes concurrent account transports independently even when both homes are DC1', async() => {
   vi.stubGlobal('__BLAH_CONFIG__', {discovery: true, defaultDcId: 1, dcs: []});
   const {setBlahConfig, getBlahDc} = await import('@config/blah');
-  const {constructTelegramWebSocketUrl} = await import('@lib/mtproto/dcConfigurator');
+  const {constructTelegramWebSocketUrl, DcConfigurator} = await import('@lib/mtproto/dcConfigurator');
   for(const slot of [1, 2]) {
     setBlahConfig(slot, {discovery: true, defaultDcId: 1, expiresAt: '9999999999',
       home: {domain: `dc${slot}.example.org`, identity: String(slot).repeat(64), generation: '1'},
@@ -104,6 +116,7 @@ it('routes concurrent account transports independently even when both homes are 
   for(const type of ['client', 'upload', 'download'] as const) {
     for(const slot of [2, 1, 2]) {
       expect(constructTelegramWebSocketUrl(1, type, true, slot)).toBe(`wss://dc${slot}.example.org/exact?home=${slot}`);
+      expect(new DcConfigurator(slot).chooseServer(1, type, 'https')).toMatchObject({url: `https://dc${slot}.example.org/apiw1`});
       expect(getBlahDc(1, slot).rsaKey.modulus).toBe(String(slot));
       expect(() => constructTelegramWebSocketUrl(2, type, false, slot)).toThrow('DC1');
     }
@@ -128,4 +141,25 @@ it('keeps RSA trust scoped to the account home in a shared worker', async() => {
   expect(await second.select(fingerprints)).toMatchObject({modulus: 'bb'});
   expect(await first.select([fingerprints[1]])).toBeUndefined();
   expect(await second.select([fingerprints[0]])).toBeUndefined();
+});
+
+it('routes HTTP client, upload and download connections to C3, including its default DC', async() => {
+  const {DcConfigurator} = await import('@lib/mtproto/dcConfigurator');
+  for(const type of ['client', 'upload', 'download'] as const) {
+    for(const dcId of [255, 2]) {
+      expect(new DcConfigurator().chooseServer(dcId, type, 'https')).toMatchObject({
+        url: `https://dc${dcId === 255 ? 255 : 6}.example.org/apiw1`
+      });
+    }
+  }
+});
+
+it.each([
+  ['wss://dc.example.org:8443/custom/ws?route=one#fragment', 'https://dc.example.org:8443/apiw1'],
+  ['ws://dc.example.org:8080/custom/ws?route=one#fragment', 'http://dc.example.org:8080/apiw1'],
+  ['ws://dc.example.org/apiws', 'http://dc.example.org/apiw1']
+])('derives HTTP from the pinned origin %s', async(url, expected) => {
+  vi.stubGlobal('__BLAH_CONFIG__', {...config, dcs: [{...config.dcs[0], url}]});
+  const {DcConfigurator} = await import('@lib/mtproto/dcConfigurator');
+  expect(new DcConfigurator().chooseServer(6, 'client', 'https')).toMatchObject({url: expected});
 });

@@ -17,8 +17,8 @@ domain with BlahDiem WASM. The current browser crypto adapter supports Ed25519 D
 profiles, including those created by the DC setup wizard.
 
 The profile must advertise a TLS WebSocket client endpoint and a database
-generation. Blah uses the signed endpoint's exact path/query and RSA transport key;
-TCP and plain WebSocket endpoints cannot be used by this browser client. The profile
+generation. WebSocket uses the signed endpoint's exact path/query and RSA transport
+key. Discovery does not accept TCP or plain WebSocket endpoints. The profile
 endpoint must allow cross-origin reads and return `application/cbor`.
 
 The first verified profile pins **one independent home DC per account slot**.
@@ -46,6 +46,15 @@ Logout clears that slot and moves the remaining accounts together with their hom
 and identity bindings, leaving the freed slot available for another home. Encrypted
 identity custody survives logout and automatic slot cleanup. Existing origin-wide pins
 migrate to their original account slots; unused slots can select a different home.
+
+Transport selection follows the same `.env` flags as upstream. `?http=1` forces
+MTProto HTTP: the client uses the pinned WebSocket host and port, maps `wss:` to
+`https:` (`ws:` to `http:` for operator configurations), and posts to `/apiw1`
+without the WebSocket path, query or fragment. Forward `POST /api…` through the
+TLS proxy to the DC's MTProto listener, including its configured real-IP header.
+Missing or expired discovery profiles fail closed; HTTP never falls back to a
+Telegram endpoint. Automatic probing waits for slot 1's verified profile and
+retains upstream's global transport selection across accounts.
 
 ### Build the client
 
@@ -327,6 +336,12 @@ it also runs the account checks.
 The account checks use Teleblah's test-only profile-directory transport; production
 still requires public HTTPS profile hosting. It needs `openssl` and the server binary
 already built. This validates identity/login support, not every post-login Telegram RPC.
+
+Run the focused HTTPS transport check with `BLAH_TEST_HTTP_ONLY=1` and
+`BLAH_SERVER_REPO=/path/to/Teleblah node scripts/test-blah-server.mjs`. It signs in
+through the UI with `?http=1`, sends service-account commands before and after a
+reload, and asserts MTProto POST traffic with no WebSocket connections. Its TLS
+proxy forwards `/api…` and stamps the DC's required real-IP header.
 
 `BLAH_TEST_MENUS_ONLY=1` checks that clicking the attachment button opens the
 built-in attachment menu against the disposable DC, in LTR and RTL.
