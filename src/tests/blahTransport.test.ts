@@ -163,3 +163,14 @@ it.each([
   const {DcConfigurator} = await import('@lib/mtproto/dcConfigurator');
   expect(new DcConfigurator().chooseServer(6, 'client', 'https')).toMatchObject({url: expected});
 });
+
+it('keeps widget HTTP on its pinned DC and refuses a mismatch or missing pin', async() => {
+  vi.stubGlobal('__BLAH_CONFIG__', {...config, widget: {param: 'pins'}});
+  const {DcConfigurator} = await import('@lib/mtproto/dcConfigurator');
+  expect(new DcConfigurator().chooseServer(6, 'client', 'https')).toMatchObject({url: 'https://dc6.example.org/apiw1'});
+  expect(() => new DcConfigurator().chooseServer(2, 'client', 'https')).toThrow('WIDGET_DC_MISMATCH');
+  vi.resetModules();
+  vi.stubGlobal('__BLAH_CONFIG__', {...config, widget: {}, dcs: []});
+  const {DcConfigurator: MissingPins} = await import('@lib/mtproto/dcConfigurator');
+  expect(() => new MissingPins().chooseServer(1, 'client', 'https')).toThrow('WIDGET_DC_MISMATCH');
+});
