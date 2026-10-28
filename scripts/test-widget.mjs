@@ -106,6 +106,11 @@ try {
   const paths = new Set(), requests = [], missing = [];
   edge = createServer({key: await readFile(dir + '/tls.key'), cert: await readFile(dir + '/tls.crt')}, async(req, res) => {
     const path = decodeURIComponent(new URL(req.url, 'https://localhost').pathname);
+    // The authorizer races HTTP and WebSocket; serve both transport endpoints.
+    if(['POST', 'OPTIONS'].includes(req.method) && /^\/apiw?1?(?:_test)?$/.test(path)) {
+      proxy.web(req, res, {target: 'http://127.0.0.1:' + port});
+      return;
+    }
     requests.push(path);
     try {
       let body, type;
@@ -129,6 +134,10 @@ try {
   edge.on('upgrade', (req, socket, head) => {
     paths.add(req.url);
     assert.equal(req.url, '/exact/socket?widget=1');
+    // Preserve the configured public path, then route to the DC's transport endpoint.
+    req.url = '/apiws';
+    // A browser may reset an upgraded TLS socket when it closes a frame.
+    socket.on('error', error => { if(error.code !== 'ECONNRESET') logs.push('SOCKET_ERROR ' + error.message); });
     proxy.ws(req, socket, head, {target: 'ws://127.0.0.1:' + port});
   });
   proxy.on('error', () => {});
@@ -173,10 +182,11 @@ try {
   const driver = await context.newPage();
   const driverErrors = [];
   driver.on('pageerror', (err) => driverErrors.push(err.message));
+  driver.on('console', msg => logs.push('DRIVER ' + msg.text()));
   driver.on('console', (msg) => driverErrors.push(msg.text()));
   await driver.goto(origin + '/driver');
   await driver.waitForFunction(() => !!window.widgetTestDriver).catch((error) => { throw new Error(driverErrors.join('\n') || error.message); });
-  await driver.evaluate(async({config, token}) => window.widgetTestDriver.connect(config, token).catch(error => { throw new Error(JSON.stringify(error)); }), {config, token: support.token});
+  await driver.evaluate(async({config, token}) => window.widgetTestDriver.connect(config, token).catch(error => { throw new Error(JSON.stringify(error, Object.getOwnPropertyNames(error || {}))); }), {config, token: support.token});
 
   await page.bringToFront();
   await navigate(alice.token);
@@ -265,17 +275,24 @@ try {
     await widgetFrame().evaluate(rtl => window.I18n.forceRTL(rtl), rtl);
     await bubble('Widget photo regression').scrollIntoViewIfNeeded();
     const selectable = bubble('Widget photo regression');
-    // Inspect the real builder without opening the reaction picker (the disposable
-    // DC does not supply its reaction documents).
-    const contextItems = await selectable.evaluate(element => {
-      const chat = window.appImManager.chat;
-      const menu = Object.create(chat.contextMenu);
-      menu.message = chat.getMessageByPeer(+element.dataset.peerId, +element.dataset.mid);
-      menu.setButtons();
-      return menu.buttons.map(button => button.text);
-    });
-    assert(contextItems.includes('Reply'), 'the real bubble menu still offers ordinary actions');
-    assert(!contextItems.includes('Message.Context.Select'));
+    const errorsBeforeMenu = errors.length;
+    await selectable.getByText('Widget photo regression', {exact: true}).click({button: 'right'});
+    const contextMenu = frame.locator('#bubble-contextmenu');
+    await expect(contextMenu).toBeVisible();
+    await expect(contextMenu.getByText('Reply', {exact: true})).toBeVisible();
+    await expect(contextMenu.getByText('Select', {exact: true})).toHaveCount(0);
+    const strip = contextMenu.locator('.btn-menu-reactions-reaction');
+    await expect.poll(async() => (await strip.evaluateAll(elements => elements.map(e => e.getAttribute('aria-label'))))
+      .map(label => ({'Thumbs Up': '👍', 'Thumbs Down': '👎', 'Red Heart': '❤'}[label] || label)))
+      .toEqual(['👍', '👎', '❤']);
+    for(let i = 0; i < 3; ++i) await expect(strip.nth(i).locator('.btn-menu-reactions-reaction-select canvas')).toBeVisible({timeout: 30_000});
+    if(process.env.BLAH_MENU_SCREENSHOTS) {
+      await page.waitForTimeout(600);
+      await page.screenshot({path: `${process.env.BLAH_MENU_SCREENSHOTS}/widget-menu-${rtl ? 'rtl' : 'ltr'}.png`});
+    }
+    await page.keyboard.press('Escape');
+    await expect(contextMenu).not.toBeVisible();
+    assert.deepEqual(errors.slice(errorsBeforeMenu), [], 'right-click opens the real menu without pageerror');
     assert.equal(await widgetFrame().evaluate(() => window.appImManager.chat.topbar.menuButtons.some(button => button.text === 'Chat.Menu.SelectMessages')), false);
     await selectable.locator('.time').dispatchEvent('click');
     await selectable.getByText('Widget photo regression', {exact: true}).click({modifiers: ['Shift']});
