@@ -1,0 +1,16 @@
+// Heroicons micro (16px solid), enlarged to a 24px-tall arrow. See
+// src/vendor/heroicons/LICENSE. Keep the animated glyph wrapper and all other states.
+.chat-input .btn-send .btn-send-icon-send {
+  margin: 0;
+  font-size: 0;
+
+  &::before {
+    content: "";
+    display: block;
+    width: 2rem;
+    height: 2rem;
+    margin-top: -.25rem;
+    background-color: currentColor;
+    mask: url('../../vendor/heroicons/arrow-up.svg') center / contain no-repeat;
+  }
+}
