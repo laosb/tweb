@@ -1,13 +1,14 @@
 import type {AuthState} from '@types';
-import type {User} from '@layer';
 import blah from '@config/blah';
 import rootScope from '@lib/rootScope';
 import AccountController from '@lib/accounts/accountController';
+import {bindManagersToSession} from '@lib/accounts/bindManagersToAccount';
 import {getCurrentAccount} from '@lib/accounts/getCurrentAccount';
 import appNavigationController from '@components/appNavigationController';
 import {readToken} from '@/widget/config';
 import {restrictToSupport} from '@/widget/restrictions';
 import {applyWidgetTheme} from '@/widget/theme';
+import {widgetRevision} from '@/widget/revision';
 import '@/widget/style.scss';
 
 const AUTH_ERRORS = new Set(['ACCESS_TOKEN_INVALID', 'ACCESS_TOKEN_EXPIRED', 'AUTH_KEY_UNREGISTERED', 'MANAGED_ACCOUNT_REQUIRED']);
@@ -16,6 +17,7 @@ function errorText(code: string) {
   if(AUTH_ERRORS.has(code) || code?.startsWith('USER_MIGRATE_')) {
     return 'This customer token is no longer valid. Please reopen support from the application.';
   }
+  if(code === 'STARTUP_TIMEOUT') return 'Connecting to support took too long. Please check your connection and reconnect.';
   if(code === 'SUPPORT_UNAVAILABLE') return 'Support is currently unavailable.';
   return 'Could not connect to support. Please try again.';
 }
@@ -47,6 +49,7 @@ function logOut() {
  * with the home DC's support account. Returns once the chat is open or a status shows.
  */
 export async function startWidget(authState: AuthState) {
+  console.info('Blah widget', widgetRevision());
   document.body.classList.add('blah-widget');
   const token = readToken(location.hash);
   // A token change runs the same path as a fresh load.
@@ -60,6 +63,7 @@ export async function startWidget(authState: AuthState) {
     reload(url === true ? undefined : url);
   };
 
+  const managers = bindManagersToSession(rootScope.managers);
   const signedIn = authState._ === 'authStateSignedIn';
   if(!blah.widget.param) {
     showStatus('Support has not been configured.');
@@ -70,42 +74,64 @@ export async function startWidget(authState: AuthState) {
     else showStatus('This support chat requires a customer token.');
     return;
   }
-  // `<user id>:<secret>`: another account's session goes before this one signs in.
-  const {userId} = await AccountController.get(getCurrentAccount());
-  if(signedIn && String(userId) !== token.split(':')[0]) {
-    await logOut();
-    return;
-  }
-
   showStatus('Connecting to support…');
-  let support: User.user;
+  // Keep partially constructed chat UI hidden and unfocusable until every stage succeeds.
+  const chats = document.getElementById('page-chats');
+  chats.inert = true;
+  document.body.classList.add('widget-starting');
+  const attempt = new AbortController();
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      attempt.abort();
+      reject(new Error('STARTUP_TIMEOUT'));
+    }, 45_000);
+  });
   try {
-    // Also for a restored session: a revoked or rotated token must not reopen the chat.
-    await rootScope.managers.appAccountManager.importManagedAccountAuthorization(token);
-    const result = await rootScope.managers.apiManager.invokeApi('help.getSupport', {});
-    const user = result.user;
-    if(user._ !== 'user' || user.pFlags?.deleted || user.id === +token.split(':')[0]) {
-      throw new Error('SUPPORT_UNAVAILABLE');
-    }
-    await rootScope.managers.appUsersManager.saveApiUser(user);
-    support = user;
+    await Promise.race([timeout, (async() => {
+      // `<user id>:<secret>`: another account's session goes before this one signs in.
+      const {userId} = await AccountController.get(getCurrentAccount());
+      attempt.signal.throwIfAborted();
+      if(signedIn && String(userId) !== token.split(':')[0]) {
+        await logOut();
+        return;
+      }
+      // Also for a restored session: a revoked or rotated token must not reopen the chat.
+      await managers.appAccountManager.importManagedAccountAuthorization(token);
+      attempt.signal.throwIfAborted();
+      const result = await managers.apiManager.invokeApi('help.getSupport', {});
+      attempt.signal.throwIfAborted();
+      const user = result.user;
+      await managers.appUsersManager.saveApiUser(user);
+      attempt.signal.throwIfAborted();
+      if(user._ !== 'user' || user.pFlags?.deleted || user.id === +token.split(':')[0]) {
+        throw new Error('SUPPORT_UNAVAILABLE');
+      }
+      const peerId = user.id.toPeerId(false);
+      const appImManager = restrictToSupport(peerId);
+      const {bootstrapIm} = await import('@/pages/bootstrapIm');
+      attempt.signal.throwIfAborted();
+      await bootstrapIm();
+      attempt.signal.throwIfAborted();
+      applyWidgetTheme();
+      await appImManager.setInnerPeer({peerId});
+      attempt.signal.throwIfAborted();
+      // Without the opt-in a11y layer, the history is otherwise not keyboard-scrollable.
+      appImManager.chat.bubbles.scrollable.container.tabIndex = 0;
+      document.getElementById('widget').replaceChildren();
+      chats.inert = false;
+      document.body.classList.remove('widget-starting');
+    })()]);
   } catch(error) {
+    // Pending RPCs may still settle. They must neither advance startup nor clear this status.
+    attempt.abort();
     const code = (error as ApiError)?.type || (error as Error)?.message;
     if(AUTH_ERRORS.has(code) && signedIn) {
       await logOut();
       return;
     }
     showStatus(errorText(code), true);
-    return;
+  } finally {
+    clearTimeout(timer);
   }
-
-  const peerId = support.id.toPeerId(false);
-  const appImManager = restrictToSupport(peerId);
-  const {bootstrapIm} = await import('@/pages/bootstrapIm');
-  await bootstrapIm();
-  applyWidgetTheme();
-  await appImManager.setInnerPeer({peerId});
-  // Without the opt-in a11y layer, the history is otherwise not keyboard-scrollable.
-  appImManager.chat.bubbles.scrollable.container.tabIndex = 0;
-  document.getElementById('widget').replaceChildren();
 }

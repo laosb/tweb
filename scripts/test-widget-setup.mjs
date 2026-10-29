@@ -14,6 +14,11 @@ import {makeDCProfile} from '../tests/blah/dcProfile.mjs';
 
 const dist = fileURLToPath(new URL('../dist/widget/', import.meta.url));
 const originalIndex = await readFile(dist + 'index.html', 'utf8');
+const manifest = JSON.parse(await readFile(dist + 'build.json', 'utf8'));
+assert.match(manifest.revision, /^[a-f0-9]{40}(-dirty)?$/);
+assert.equal(new Date(manifest.builtAt).toISOString(), manifest.builtAt);
+assert(manifest.version);
+assert(originalIndex.includes('name="blah-widget-revision" content="' + manifest.revision + '"'));
 const assets = await readdir(dist + 'assets');
 assert(!assets.some(name => /diem|\.wasm$/.test(name)), 'BlahDiem must load from the CDN, not the archive.');
 const runtimeURL = blahDiemRuntimeURL(loadEnv('production', fileURLToPath(new URL('../', import.meta.url)), '').BLAH_DIEM_CDN_HOST);
@@ -58,6 +63,7 @@ try {
     if(new URL(request.url()).origin === new URL(runtimeURL).origin) runtimeRequests.add(request.url());
   });
   await page.goto(browserOrigin + '/support/setup.html');
+  await expect(page.locator('#build-revision')).toHaveText(manifest.revision);
   const fixtureOptions = {identityKey, runtimeURL};
   const signed = await page.evaluate(makeDCProfile, {...fixtureOptions, data: data()});
   let profile = Buffer.from(signed.profile), profileStatus = 200, holdProfile;
@@ -117,6 +123,7 @@ try {
       scripts: [...doc.querySelectorAll('script[src]')].map(script => script.getAttribute('src')),
       styles: [...doc.querySelectorAll('link[rel="stylesheet"]')].map(link => link.getAttribute('href'))};
   }, generatedIndex);
+  assert.equal(details.meta['blah-widget-revision'], manifest.revision);
   assert.equal(details.meta['blah-widget-dc-id'], '1');
   assert.equal(details.meta['blah-widget-rsa-modulus'], Buffer.from(rsa.export({format: 'jwk'}).n, 'base64url').toString('hex'));
   assert.equal(details.meta['blah-widget-rsa-exponent'], '010001');
@@ -130,12 +137,15 @@ try {
   // Context-level, so the client's shared and service worker scripts are served too.
   await context.route(browserOrigin + '/**', serveLocal);
   widget.on('pageerror', error => errors.push(error.message));
+  const revisionLogs = [];
+  widget.on('console', message => { if(message.text().startsWith('Blah widget ')) revisionLogs.push(message.text()); });
   const widgetSockets = [];
   widget.on('websocket', socket => widgetSockets.push(socket.url()));
   await widget.goto(browserOrigin + '/support/index.html');
   await expect(widget.getByRole('status')).toContainText('requires a customer token', {timeout: 30_000})
   .catch((error) => { throw new Error(errors.join('\n') + '\n' + error.message); });
   assert.equal(await widget.locator('html').evaluate(html => getComputedStyle(html).getPropertyValue('--widget-bubble-radius').trim()), '8px');
+  assert.deepEqual(revisionLogs, ['Blah widget ' + manifest.revision]);
   await widget.close();
   // The client may dial its pinned DC before reading the fragment, but nowhere else.
   for(const url of widgetSockets) assert.equal(url, 'wss://dc.example.org/exact/ws?route=one%2Ftwo&client=widget');
@@ -149,7 +159,8 @@ try {
   await expect(verify).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(domain).toBeFocused();
-  const axe = await new AxeBuilder({page}).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+  // The inert styling preview forbids scripts; Axe cannot inject into that sandbox.
+  const axe = await new AxeBuilder({page}).exclude('#preview').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   assert.deepEqual(axe.violations, []);
   const artifacts = process.env.WIDGET_TEST_ARTIFACTS || fileURLToPath(new URL('../tmp/widget/', import.meta.url));
   await mkdir(artifacts, {recursive: true});

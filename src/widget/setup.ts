@@ -50,7 +50,7 @@ export async function discoverWidgetDC(input: string) {
   return {domain, dc: config.dcs[0], version};
 }
 
-/** Keep the built entry's asset URLs intact; only deployment metadata and theme change. */
+/** Keep the built entry's asset URLs and revision meta intact; only deployment metadata and theme change. */
 export function generateWidgetIndex(template: string, input: WidgetConfig, theme: WidgetTheme) {
   const config = validateConfig(input);
   const doc = new DOMParser().parseFromString(template, 'text/html');
