@@ -114,7 +114,9 @@ try {
     requests.push(path);
     try {
       let body, type;
-      if(path === '/host') {
+      if(path === '/favicon.ico') {
+        res.writeHead(204); res.end(); return;
+      } else if(path === '/host') {
         body = '<!doctype html><html lang="en"><head><title>Widget host</title></head><body><iframe title="Customer support" name="customer-feedback" src="' + origin + '/" style="border:0;width:390px;height:640px"></iframe></body></html>';
         type = 'text/html';
       } else if(path === '/' || path === '/index.html') {
@@ -191,6 +193,30 @@ try {
   await page.bringToFront();
   await navigate(alice.token);
   await expect(title).toHaveText('Customer Care');
+  // Exercise the real header and composer across both responsive breakpoints.
+  for(const width of [280, 390, 800]) {
+    await page.locator('iframe').evaluate((el, width) => el.style.width = width + 'px', width);
+    for(const theme of ['light', 'dark']) {
+      await page.emulateMedia({colorScheme: theme});
+      for(const rtl of [false, true]) {
+        await frame.locator('html').evaluate((el, rtl) => { el.dir = rtl ? 'rtl' : 'ltr'; el.classList.toggle('is-rtl', rtl); }, rtl);
+        await expect(frame.locator('.chat.active .topbar .sidebar-close-button')).toBeHidden();
+        await expect(frame.locator('.chat.active .topbar .chat-info')).toHaveCSS('padding-inline-start', '0px');
+        await expect(frame.locator('.chat.active .topbar')).toHaveCSS('--topbar-close-active-size', '0px');
+        const input = frame.getByRole('textbox', {name: 'Message'});
+        for(const typed of [false, true]) {
+          await input.fill(typed ? 'Hello from the composer' : '');
+          await page.waitForTimeout(350);
+          if(process.env.WIDGET_LAYOUT_SCREENSHOTS) await page.locator('iframe').screenshot({path: `${artifacts}/${width}-${theme}-${rtl ? 'rtl' : 'ltr'}-${typed ? 'typed' : 'idle'}.png`});
+        }
+        await input.fill('');
+      }
+    }
+  }
+  await frame.locator('html').evaluate(el => { el.dir = 'ltr'; el.classList.remove('is-rtl'); });
+  await page.emulateMedia({colorScheme: 'light'});
+  await page.locator('iframe').evaluate(el => el.style.width = '390px');
+
   await frame.locator('#column-center .chat.active .attach-file').click();
   const attachmentMenu = frame.getByRole('menu').filter({has: frame.getByRole('menuitem', {name: 'Document', exact: true})});
   await expect(attachmentMenu).toBeVisible();
