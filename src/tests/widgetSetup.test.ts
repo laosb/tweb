@@ -1,4 +1,5 @@
 import {readFileSync} from 'node:fs';
+import {widgetRevision} from '@/widget/revision';
 import {readConfig} from '@/widget/config';
 import {generateWidgetIndex, themeDeclarations, themeStylesheet} from '@/widget/setup';
 
@@ -61,4 +62,13 @@ it('scopes colors to light or dark mode and shares the shape of the bubbles', ()
   // A blank dark value keeps the client's own dark theme rather than the light color.
   expect(themeStylesheet({'accent-color': '#235347'})).not.toContain(':root.night');
   expect(themeStylesheet({})).toBe('');
+});
+
+it.each(['a'.repeat(40), 'b'.repeat(40) + '-dirty'])('preserves build revision %s through repeated setup', (revision) => {
+  const built = template.replace('</head>', `<meta name="blah-widget-revision" content="${revision}"></head>`);
+  const first = generateWidgetIndex(built, config, {});
+  const second = generateWidgetIndex(first, {...config, apiId: 456}, {'accent-color': '#123456'});
+  const doc = new DOMParser().parseFromString(second, 'text/html');
+  expect(widgetRevision(doc)).toBe(revision);
+  expect(doc.querySelectorAll('meta[name="blah-widget-revision"]')).toHaveLength(1);
 });

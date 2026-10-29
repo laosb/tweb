@@ -20,6 +20,10 @@ import {objectStorage} from '../tests/widget/objectStorage.mjs';
 // The full client takes a few seconds to restore after a reload.
 const expect = baseExpect.configure({timeout: 20_000});
 const repo = fileURLToPath(new URL('../', import.meta.url));
+const transport = process.env.WIDGET_TEST_TRANSPORT || 'auto';
+assert(['auto', 'http', 'ws'].includes(transport));
+const transportQuery = transport === 'http' ? 'http=1' : transport === 'ws' ? 'noMultipleTransports=1' : '';
+let httpRequests = 0;
 const widgetDist = process.env.WIDGET_DIST || repo + '/dist/widget';
 const browserName = process.env.WIDGET_BROWSER || 'chromium';
 assert(['chromium', 'webkit'].includes(browserName), 'WIDGET_BROWSER must be chromium or webkit');
@@ -32,6 +36,7 @@ const proxy = httpProxy.createProxyServer({ws: true});
 let child, browser, edge;
 const storage = await objectStorage();
 const errors = [], logs = [], mediaErrors = [];
+const optionalFixtureErrors = ['METHOD_NOT_FOUND', 'METHOD_NOT_IMPLEMENTED'];
 let serverLog = '';
 const freePort = async() => {
   const server = tcpServer().listen(0, '127.0.0.1');
@@ -89,7 +94,8 @@ try {
   await startDC();
 
   if(!process.env.WIDGET_SKIP_BUILD) await build({configFile: repo + '/vite.widget.config.ts', logLevel: 'warn'});
-  await build({configFile: repo + '/vite.widget.config.ts', logLevel: 'warn', build: {
+  await build({configFile: repo + '/vite.widget.config.ts', logLevel: 'warn',
+    ...(transport === 'http' ? {define: {'import.meta.env.VITE_MTPROTO_HAS_WS': 'false', 'import.meta.env.VITE_MTPROTO_HTTP': 'true', 'import.meta.env.VITE_MTPROTO_AUTO': 'false'}} : {}), build: {
     outDir: dir + '/driver', lib: {entry: repo + '/tests/widget/driver.ts', formats: ['es'], fileName: () => 'driver.js'}
   }});
   execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', dir + '/tls.key',
@@ -108,6 +114,7 @@ try {
     const path = decodeURIComponent(new URL(req.url, 'https://localhost').pathname);
     // The authorizer races HTTP and WebSocket; serve both transport endpoints.
     if(['POST', 'OPTIONS'].includes(req.method) && /^\/apiw?1?(?:_test)?$/.test(path)) {
+      if(req.method === 'POST') ++httpRequests;
       proxy.web(req, res, {target: 'http://127.0.0.1:' + port});
       return;
     }
@@ -117,7 +124,7 @@ try {
       if(path === '/favicon.ico') {
         res.writeHead(204); res.end(); return;
       } else if(path === '/host') {
-        body = '<!doctype html><html lang="en"><head><title>Widget host</title></head><body><iframe title="Customer support" name="customer-feedback" src="' + origin + '/" style="border:0;width:390px;height:640px"></iframe></body></html>';
+        body = '<!doctype html><html lang="en"><head><title>Widget host</title></head><body><iframe title="Customer support" name="customer-feedback" src="' + origin + '/?' + transportQuery + '" style="border:0;width:390px;height:640px"></iframe></body></html>';
         type = 'text/html';
       } else if(path === '/' || path === '/index.html') {
         body = pins(template);
@@ -152,7 +159,21 @@ try {
   context.setDefaultTimeout(35_000);
   // The full client also calls Telegram methods a Blah DC does not implement; those
   // rejections are expected, any other uncaught error is not.
-  await context.addInitScript(() => addEventListener('unhandledrejection', (event) => console.log('REJECTION ' + (event.reason?.type || event.reason?.stack || event.reason))));
+  await context.addInitScript(({optionalErrors, transportQuery, origin}) => {
+    // Account logout discards query parameters. Reapply this run's chosen transport
+    // before startup on each document, including the otherwise tokenless entry.
+    if(location.origin === origin && transportQuery) {
+      const url = new URL(location.href);
+      for(const [key, value] of new URLSearchParams(transportQuery)) url.searchParams.set(key, value);
+      history.replaceState(null, '', url);
+    }
+    addEventListener('unhandledrejection', (event) => {
+      console.log('REJECTION ' + (event.reason?.type || event.reason?.stack || event.reason));
+      // Keep unsupported optional DC methods in the log, without Chromium's untyped
+      // 'Object' pageerror obscuring actual UI errors in the menu checks below.
+      if(optionalErrors.includes(event.reason?.type)) event.preventDefault();
+    });
+  }, {optionalErrors: optionalFixtureErrors, transportQuery, origin});
   const page = await context.newPage(), urls = [];
   page.on('crash', () => logs.push('PAGE_CRASH'));
   page.on('pageerror', (err) => errors.push({message: err.message, stack: err.stack}));
@@ -179,20 +200,27 @@ try {
   await expect(status).toContainText('requires a customer token');
   const navigate = async(token, reload = false) => {
     await Promise.all([widgetFrame().waitForNavigation(), page.locator('iframe').evaluate((iframe, url) => { iframe.src = url; },
-      origin + '/?debug=1&test=1' + (reload ? '&reload=1' : '') + '#token=' + encodeURIComponent(token))]);
+      origin + '/?debug=1&test=1&' + transportQuery + (reload ? '&reload=1' : '') + '#token=' + encodeURIComponent(token))]);
   };
   const driver = await context.newPage();
   const driverErrors = [];
   driver.on('pageerror', (err) => driverErrors.push(err.message));
   driver.on('console', msg => logs.push('DRIVER ' + msg.text()));
   driver.on('console', (msg) => driverErrors.push(msg.text()));
-  await driver.goto(origin + '/driver');
+  await driver.goto(origin + '/driver?' + transportQuery);
   await driver.waitForFunction(() => !!window.widgetTestDriver).catch((error) => { throw new Error(driverErrors.join('\n') || error.message); });
   await driver.evaluate(async({config, token}) => window.widgetTestDriver.connect(config, token).catch(error => { throw new Error(JSON.stringify(error, Object.getOwnPropertyNames(error || {}))); }), {config, token: support.token});
 
   await page.bringToFront();
   await navigate(alice.token);
   await expect(title).toHaveText('Customer Care');
+  const slots = await widgetFrame().evaluate(() => [1, 2, 3, 4].map(slot => {
+    const account = JSON.parse(localStorage.getItem('account' + slot) || '{}');
+    return {slot, authorized: !!account.userId, hasAuthKey: Object.keys(account).some(key => /_auth_key$/.test(key) && account[key])};
+  }));
+  assert.deepEqual(slots.map(slot => slot.hasAuthKey), [true, false, false, false]);
+  console.log('Account slots (no keys logged):', JSON.stringify(slots));
+
   // Exercise the real header and composer across both responsive breakpoints.
   for(const width of [280, 390, 800]) {
     await page.locator('iframe').evaluate((el, width) => el.style.width = width + 'px', width);
@@ -422,11 +450,14 @@ try {
   await expect(alert).toContainText('no longer valid');
   await expect(frame.locator('#page-chats')).toBeHidden();
   const rejections = logs.filter((line) => line.startsWith('REJECTION ')).map((line) => line.slice(10));
-  assert.deepEqual(rejections.filter((type) => !['METHOD_NOT_FOUND', 'METHOD_NOT_IMPLEMENTED'].includes(type)), []);
+  assert.deepEqual(rejections.filter((type) => !optionalFixtureErrors.includes(type)), []);
   assert.deepEqual(mediaErrors, []);
-  assert.deepEqual(errors.filter(({message}) => !['Object', '[object Object]', 'Unhandled Promise Rejection: [object Object]'].includes(message)), []);
+  assert.deepEqual(errors, []);
   for(const {token} of customers) assert(!logs.join('\n').includes(token), 'tokens must not appear in console logs');
-  assert.deepEqual([...paths], ['/exact/socket?widget=1']);
+  assert.deepEqual([...paths], transport === 'http' ? [] : ['/exact/socket?widget=1']);
+  if(transport === 'http') assert(httpRequests > 0);
+  if(transport === 'ws') assert.equal(httpRequests, 0);
+  console.log('Transport verified:', transport, httpRequests, 'HTTP requests');
   // The pins come from index.html: the widget never loads the BlahDiem runtime.
   assert(!urls.some((url) => url.includes('/assets/img/emoji/')));
   // Everything the client asks for ships in the release.
