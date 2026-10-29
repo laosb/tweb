@@ -1,3 +1,8 @@
+// A timed-out bootstrap may still finish underneath the status. Only a reload retries it.
+body.blah-widget.widget-starting #page-chats {
+  visibility: hidden !important;
+}
+
 // One conversation in an iframe: no chat list, profile column or chat-level actions.
 body.blah-widget {
   #column-left,
