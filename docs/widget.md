@@ -268,3 +268,14 @@ fixture; Chromium generates VP9 WebM, since the test browsers differ in codec su
 The client's opt-in `?a11y=1` keyboard layer currently leaves the
 composer without a usable editor, so the fixture runs without it. Screen-reader and
 physical touch testing remain manual.
+
+Startup is bounded to 45 seconds, including opening the support conversation. If the DC
+cannot be reached or startup fails, the widget shows an error and **Reconnect**, which
+reloads the page. A timeout keeps the token and session intact; it does not sign out.
+
+Each build carries its full Git commit in the `blah-widget-revision` meta tag and
+`build.json` (`revision`, `version`, `builtAt` in UTC); local uncommitted changes add
+`-dirty`. Startup logs `Blah widget <revision>` once. Setup displays the revision and
+preserves it in the downloaded index. Keep this meta when configuring deployment.
+The release includes `build.json` both beside and inside the archive, with its checksum
+in `SHA256SUMS`.

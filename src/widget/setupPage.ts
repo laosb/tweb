@@ -2,6 +2,9 @@ import {ObjectURLScope} from '@helpers/objectUrlScope';
 import {discoverWidgetDC, generateWidgetIndex, themeDeclarations, themeFields, themeStylesheet, type WidgetTheme} from '@/widget/setup';
 import widgetCSS from '@/widget/preview.css?inline';
 import '@/widget/setupStyle.css';
+import {widgetRevision} from '@/widget/revision';
+
+document.querySelector('#build-revision').textContent = widgetRevision();
 
 const domain = document.querySelector<HTMLInputElement>('#dc-domain');
 const verify = document.querySelector<HTMLButtonElement>('#verify');
@@ -120,6 +123,7 @@ document.querySelector('#configuration-form').addEventListener('submit', async(e
     const response = await fetch(new URL('index.html', location.href), {cache: 'no-store', credentials: 'omit', redirect: 'error'});
     if(!response.ok) throw new Error('Could not load the widget index.html: HTTP ' + response.status);
     const template = await response.text();
+    document.querySelector('#build-revision').textContent = widgetRevision(new DOMParser().parseFromString(template, 'text/html'));
     if(verified !== selected) throw new Error('The DC changed. Verify it before downloading.');
     if(!document.querySelector<HTMLFormElement>('#configuration-form').reportValidity()) {
       throw new Error('Correct the highlighted field before downloading.');
