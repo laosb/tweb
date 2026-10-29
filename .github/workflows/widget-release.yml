@@ -39,6 +39,8 @@ jobs:
         run: pnpm build:widget
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
+      - name: Verify bounded startup in Chromium
+        run: node scripts/test-widget-startup.mjs
       - name: Verify setup and the generated entry in Chromium
         run: node scripts/test-widget-setup.mjs
       - name: Package the compiled widget and setup
@@ -49,12 +51,14 @@ jobs:
           cp LICENSE dist/widget/LICENSE
           cp docs/widget.md dist/widget/README.md
           tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -czf feedback-widget.tar.gz -C dist/widget .
-          sha256sum feedback-widget.tar.gz > SHA256SUMS
+          cp dist/widget/build.json build.json
+          sha256sum feedback-widget.tar.gz build.json > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: feedback-widget
           path: |
             feedback-widget.tar.gz
+            build.json
             SHA256SUMS
           if-no-files-found: error
 
@@ -100,12 +104,12 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             # Four-character prefixes can collide. Never replace another commit's assets.
             test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA"
-            gh release upload "$RELEASE_TAG" feedback-widget.tar.gz SHA256SUMS --clobber
+            gh release upload "$RELEASE_TAG" feedback-widget.tar.gz build.json SHA256SUMS --clobber
           else
             if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
               test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA"
             fi
-            gh release create "$RELEASE_TAG" feedback-widget.tar.gz SHA256SUMS \
+            gh release create "$RELEASE_TAG" feedback-widget.tar.gz build.json SHA256SUMS \
               --target "$GITHUB_SHA" --title "$RELEASE_TAG" \
               --notes-file "$RUNNER_TEMP/widget-release-notes.md"
           fi
@@ -144,7 +148,7 @@ jobs:
           release_dir="$RUNNER_TEMP/widget-release"
           mkdir -p "$release_dir" .cloudflare/widget
           gh release download "$RELEASE_TAG" --dir "$release_dir" \
-            --pattern feedback-widget.tar.gz --pattern SHA256SUMS
+            --pattern feedback-widget.tar.gz --pattern build.json --pattern SHA256SUMS
           (cd "$release_dir" && sha256sum -c SHA256SUMS)
           tar -xzf "$release_dir/feedback-widget.tar.gz" -C .cloudflare/widget
           test -s .cloudflare/widget/index.html

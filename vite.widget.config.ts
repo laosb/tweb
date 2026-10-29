@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 import {relative, resolve} from 'node:path';
 import {defineConfig, mergeConfig} from 'vite';
 import upstream from './vite.config';
+import widgetBuildRevision from './scripts/widget-build-revision';
 // @ts-ignore no type declarations
 import keepAsset from './keepAsset.js';
 
@@ -136,7 +137,7 @@ export default mergeConfig(upstream, defineConfig({
   mode: 'widget',
   root: resolve(__dirname, 'widget'),
   envDir: __dirname,
-  plugins: [{
+  plugins: [widgetBuildRevision(__dirname), {
     name: 'widget-entries',
     // The e2e fixture also builds its support-side driver with this config, as a library.
     config: (config) => config.build?.lib ? {} : {build: {rolldownOptions: {
