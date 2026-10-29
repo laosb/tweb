@@ -9,6 +9,16 @@ body.blah-widget {
     display: none !important;
   }
 
+  // The back button is absent at every iframe width, including mobile layouts.
+  .chat .topbar {
+    --topbar-close-active-size: 0px;
+    --topbar-avatar-close-gap: 0px;
+
+    .chat-info {
+      padding-inline-start: 0;
+    }
+  }
+
   // Keep the outgoing gradient's stretched pieces inside the iframe's message viewport.
   .bubbles {
     overflow: clip;
