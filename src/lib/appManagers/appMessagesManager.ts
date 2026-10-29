@@ -836,7 +836,6 @@ export class AppMessagesManager extends AppManager {
     this.clear(true);
 
     this.rootScope.addEventListener('app_config', this.setStreamedMessageDraftTtl);
-    Promise.resolve(this.apiManager.getAppConfig()).then(this.setStreamedMessageDraftTtl, noop);
 
     this.repayRequestHandler = new RepayRequestHandler({
       rootScope: this.rootScope
