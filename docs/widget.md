@@ -8,6 +8,10 @@ voice or round messages, message multi-select, contact sharing, sticker or GIF
 pickers, inline bots, custom emoji or attach-menu apps; links to other chats and
 profiles do not navigate. Code blocks show without syntax highlighting, and a poll
 shows only its question.
+Outgoing messages show sending, sent or failed, never read (double checks); message
+menus omit read dates and seen-by lists. The header shows only the support name,
+without a status/subtitle or typing indicator, and does not start the status line's
+presence refresh or listeners. Message read acknowledgements otherwise stay unchanged.
 The widget follows the system's light or dark appearance.
 
 ## Build and configure
@@ -252,7 +256,9 @@ OS dependencies. Run the same checks in WebKit with `WIDGET_BROWSER=webkit`;
 The harness seeds disposable managed accounts, runs the production widget
 inside a cross-origin iframe and uses real encrypted WebSockets. It checks customer-first
 messaging, attachment-menu opening on click, photo-first contact, video/file uploads and byte-for-byte downloads,
-a support reply, reload, the single-chat and no-multi-select restrictions, account
+a support reply, read outgoing text/media/albums retaining single checks before and after
+reload, a centered header without a status line in LTR/RTL, no read-date menu items,
+the single-chat and no-multi-select restrictions, account
 replacement/logout across page loads and fragment changes, revoked/missing/invalid
 tokens, CSS customization in light and dark mode, narrow layout and Axe, and that no
 request leaves the widget origin. Its second-client driver is built only into a

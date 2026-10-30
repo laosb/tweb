@@ -17,6 +17,9 @@ let transport: WidgetTransport;
     });
   },
   history,
+  async read(id: number) {
+    return transport.call('messages.readHistory', {peer: await customer(id), max_id: 0});
+  },
   async mediaBytes(id: number, caption: string) {
     const resultHistory = await history(id);
     if(resultHistory._ === 'messages.messagesNotModified') throw new Error('Missing history');
