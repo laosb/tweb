@@ -40,3 +40,28 @@ it('passes the widget platform through both manager RPCs', async() => {
   expect(invoke).toHaveBeenNthCalledWith(1, 'langpack.getLangPack', {lang_code: 'zh-hans', lang_pack: 'webk_bfb'}, {override: true});
   expect(invoke).toHaveBeenNthCalledWith(2, 'langpack.getLanguage', {lang_code: 'zh-hans', lang_pack: 'webk_bfb'});
 });
+
+it('selects the widget difference platform without changing the ordinary default', async() => {
+  const manager = new AppLangPackManager();
+  const invoke = vi.fn().mockResolvedValue({});
+  Object.assign(manager, {apiManager: {invokeApi: invoke}});
+  await manager.getDifference('ar', 7, 'webk_bfb');
+  await manager.getDifference('de', 4);
+  expect(invoke).toHaveBeenNthCalledWith(1, 'langpack.getDifference', {lang_code: 'ar', from_version: 7, lang_pack: 'webk_bfb'});
+  expect(invoke).toHaveBeenNthCalledWith(2, 'langpack.getDifference', {lang_code: 'de', from_version: 4, lang_pack: App.langPack});
+});
+
+it('allows fresh full packs and metadata without changing existing cached calls', async() => {
+  const manager = new AppLangPackManager();
+  const fresh = vi.fn().mockResolvedValue({}), cached = vi.fn().mockResolvedValue({});
+  Object.assign(manager, {apiManager: {invokeApiSingle: fresh, invokeApiCacheable: cached}});
+  await manager.getLangPack('ar', 'webk_bfb', 'no-store');
+  await manager.getLanguage('ar', 'webk_bfb', 'no-store');
+  expect(fresh).toHaveBeenNthCalledWith(1, 'langpack.getLangPack', {lang_code: 'ar', lang_pack: 'webk_bfb'});
+  expect(fresh).toHaveBeenNthCalledWith(2, 'langpack.getLanguage', {lang_code: 'ar', lang_pack: 'webk_bfb'});
+  expect(cached).not.toHaveBeenCalled();
+  await manager.getLangPack('de', 'web');
+  await manager.getLanguage('de', 'web');
+  expect(cached).toHaveBeenNthCalledWith(1, 'langpack.getLangPack', {lang_code: 'de', lang_pack: 'web'}, {override: undefined});
+  expect(cached).toHaveBeenNthCalledWith(2, 'langpack.getLanguage', {lang_code: 'de', lang_pack: 'web'});
+});

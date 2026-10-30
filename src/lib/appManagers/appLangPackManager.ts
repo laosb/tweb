@@ -14,7 +14,10 @@ export class AppLangPackManager extends AppManager {
     });
   }
 
-  public getLangPack(langCode: string, langPack: string, ignoreCache?: boolean) {
+  public getLangPack(langCode: string, langPack: string, ignoreCache?: boolean | 'no-store') {
+    if(ignoreCache === 'no-store') {
+      return this.apiManager.invokeApiSingle('langpack.getLangPack', {lang_code: langCode, lang_pack: langPack});
+    }
     return this.apiManager.invokeApiCacheable('langpack.getLangPack', {
       lang_code: langCode,
       lang_pack: langPack
@@ -22,7 +25,10 @@ export class AppLangPackManager extends AppManager {
   }
 
   /** The language itself: its name and, `pFlags.rtl`, whether it is written right to left. */
-  public getLanguage(langCode: string, langPack: string) {
+  public getLanguage(langCode: string, langPack: string, cache?: 'no-store') {
+    if(cache === 'no-store') {
+      return this.apiManager.invokeApiSingle('langpack.getLanguage', {lang_code: langCode, lang_pack: langPack});
+    }
     return this.apiManager.invokeApiCacheable('langpack.getLanguage', {
       lang_code: langCode,
       lang_pack: langPack
@@ -44,11 +50,11 @@ export class AppLangPackManager extends AppManager {
     });
   }
 
-  public getDifference(langCode: string, fromVersion: number) {
+  public getDifference(langCode: string, fromVersion: number, langPack = App.langPack) {
     return this.apiManager.invokeApi('langpack.getDifference', {
       lang_code: langCode,
       from_version: fromVersion,
-      lang_pack: App.langPack
+      lang_pack: langPack
     });
   }
 }

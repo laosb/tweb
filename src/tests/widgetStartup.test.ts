@@ -27,7 +27,7 @@ vi.mock('@/pages/bootstrapIm', () => ({bootstrapIm: mocks.bootstrap}));
 import {startWidget} from '@/widget/index';
 import blah from '@config/blah';
 import rootScope from '@lib/rootScope';
-import {applyWidgetEnglish} from '@/widget/langPack';
+import {applyWidgetLanguage} from '@/widget/langPack';
 
 const signedIn = {_: 'authStateSignedIn'} as const;
 const deferred = () => {
@@ -49,7 +49,7 @@ beforeEach(async() => {
   mocks.restrict.mockReturnValue({setInnerPeer: mocks.open, chat: {bubbles: {scrollable: {container: document.createElement('div')}}}});
   vi.spyOn(rootScope, 'dispatchEvent').mockImplementation(() => {});
   blah.widget.lang = undefined;
-  await applyWidgetEnglish();
+  await applyWidgetLanguage();
   vi.spyOn(console, 'info').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -134,7 +134,7 @@ it.each(['reject', 'pending'] as const)('opens support despite a %s language pac
   const started = startWidget(signedIn);
   await vi.advanceTimersByTimeAsync(5_000);
   await started;
-  expect(mocks.pack).toHaveBeenCalledWith('zh-hans', 'webk_bfb', true);
+  expect(mocks.pack).toHaveBeenCalledWith('zh-hans', 'webk_bfb', 'no-store');
   expect(mocks.open).toHaveBeenCalledWith({peerId: 456});
   expect(document.querySelector('#widget').childElementCount).toBe(0);
   expect(document.body.classList.contains('widget-starting')).toBe(false);
