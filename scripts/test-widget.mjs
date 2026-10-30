@@ -368,6 +368,13 @@ try {
   await expect(bubble('A customer can ask for help first.')).toBeVisible();
   await assertSent();
   assert(new URL(widgetFrame().url()).hash.startsWith('#token='), 'opening the chat keeps the token in the fragment');
+  await expect(frame.locator('.toggle-emoticons, .emoji-dropdown')).toHaveCount(0);
+  const emojiProbe = frame.getByRole('textbox', {name: 'Message'});
+  await emojiProbe.fill(':smile');
+  await emojiProbe.press('End');
+  await page.waitForTimeout(400); // cover debounced autocomplete, including the no-dictionary DC
+  await expect(frame.locator('.emoji-helper')).toHaveCount(0);
+  await emojiProbe.fill('');
 
   await bubble('Widget video regression').scrollIntoViewIfNeeded();
   await expect.poll(() => bubble('Widget video regression').locator('video').evaluate(v => v.readyState)).toBeGreaterThanOrEqual(2);
@@ -385,6 +392,12 @@ try {
     await expect(contextMenu.getByText('Select', {exact: true})).toHaveCount(0);
     await expect(contextMenu.getByText(/seen|read time|read date/i)).toHaveCount(0);
     assert.equal(await widgetFrame().evaluate(() => window.appImManager.chat.contextMenu.buttons.some(button => button.localName === 'views')), false);
+    // The fixture has only six reactions. Exercise the overflow branch too,
+    // without changing the quick row or sending anything to the server.
+    await widgetFrame().evaluate(async() => {
+      await window.appImManager.chat.contextMenu.reactionsMenu.render([], true);
+    });
+    await expect(contextMenu.locator('.btn-menu-reactions-more')).toHaveCount(0);
     const strip = contextMenu.locator('.btn-menu-reactions-reaction');
     await expect.poll(async() => (await strip.evaluateAll(elements => elements.map(e => e.getAttribute('aria-label'))))
       .map(label => ({'Thumbs Up': '👍', 'Thumbs Down': '👎', 'Red Heart': '❤', 'HUNDRED POINTS SYMBOL': '💯', 'ROLLING ON THE FLOOR LAUGHING': '🤣', 'EYES': '👀'}[label] || label)))

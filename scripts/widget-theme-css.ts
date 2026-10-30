@@ -14,11 +14,24 @@ export function widgetThemeDeclaration(declaration: Declaration) {
   if(declaration.prop === '--cropper-color' && /^#f0db56$/i.test(declaration.value)) {
     declaration.value = 'var(--widget-accent-color, #F0DB56)';
   }
+  const file = declaration.source?.input.file || '';
+  const selector = declaration.parent.type === 'rule' ? declaration.parent.selector : '';
+  // Sass bundles the partial into style.scss before Vite calls PostCSS.
+  const bubble = /(?:^|[\\/])_chatBubble\.scss$/.test(file) || /[\\/]scss[\\/]style\.scss$/.test(file) && /\.bubble(?:[\s.:#]|$)/.test(selector);
+  if(bubble && /^--border-(?:start|end)-(?:start|end)-radius$/.test(declaration.prop)) {
+    if(declaration.value === '15px') declaration.value = 'var(--widget-bubble-corner-radius, 15px)';
+    else if(declaration.value === '5px') declaration.value = 'min(5px, var(--widget-bubble-corner-radius, 5px))';
+    return;
+  }
   if(!/^border(?:-(?:top|bottom)-(?:left|right)|-(?:start|end)-(?:start|end))?-radius$/.test(declaration.prop)) return;
   const value = declaration.value;
   if(/widget-|^(?:0(?:px|rem|%)?|inherit|initial|unset|revert)$/.test(value)) return;
-  const selector = declaration.parent.type === 'rule' ? declaration.parent.selector : '';
-  const file = declaration.source?.input.file || '';
+  // Bubble-edge media consumes the same corners, including upstream's square joins.
+  if(bubble && /^var\(--border-(?:start|end)-(?:start|end)-radius\)$/.test(value)) return;
+  if(bubble && /attachment/.test(selector) && /has-plain-media-tail/.test(selector) && value === '15px') {
+    declaration.value = 'var(--widget-bubble-corner-radius, 15px)';
+    return;
+  }
   let group = 'button'; // Small controls, code labels, dividers and their hover shapes.
   if(/avatar/i.test(selector)) group = 'avatar';
   else if(/chat-input-wrapper|btn-send\b/.test(selector)) group = 'composer';
