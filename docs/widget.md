@@ -154,14 +154,41 @@ Scope dark-mode values with `:root.night`, the class the client sets in dark mod
 }
 ```
 
-The other variables are `--widget-surface-color` and `--widget-text-color` for the
-composer, `--widget-chat-background-image` and `-size`, the incoming
-bubble and text colors, and `--widget-incoming-bubble-radius` and
-`--widget-outgoing-bubble-radius` to override the shared radius. Unset variables keep
-the client's light or dark theme. The chat has no wallpaper: it sits on
-`--widget-chat-background-color`, or the theme's plain background color when unset, with
-the optional image drawn over it (`cover` unless a size is set). Service-message pills
-take their tint from that color. Maintain readable contrast for each pair in both modes.
+Every variable is optional. Unset values keep the client's current light/dark look.
+Colors accept CSS colors; corners accept CSS lengths (including `calc()` and `%`).
+Set scheme-specific values under `:root:not(.night)` and `:root.night`; setup emits
+corners and image size once for both schemes. Overrides update without reloading.
+
+| Variable (`--widget-` prefix) | Covers | Setup scope |
+| --- | --- | --- |
+| `surface-color` | Composer, surfaces and translucent menus | Per scheme |
+| `text-color` | Composer and interface text | Per scheme |
+| `chat-background-color` | Chat backdrop; derived service/date tint | Per scheme |
+| `chat-background-image` | Optional backdrop image | Per scheme |
+| `chat-background-size` | Backdrop sizing (default `cover`) | Shared |
+| `accent-color` | Links, active icons/buttons, controls, focus, progress, selection and reply-jump tint, including overlays | Per scheme |
+| `incoming-bubble-color`, `incoming-text-color` | Support bubble fill and text | Per scheme |
+| `outgoing-bubble-color`, `outgoing-text-color` | Customer bubble fill and text | Per scheme |
+| `outgoing-accent-color` | Customer links, reply accents, files, time/status and selection | Per scheme |
+| `danger-color` | Failed status, errors and destructive actions | Per scheme |
+| `support-sender-color` | Sender names, initials avatars and peer-colored replies/quotes | Per scheme |
+| `bubble-radius` | Shared bubble corners; removes tails | Shared |
+| `incoming-bubble-radius`, `outgoing-bubble-radius` | Override shared bubble corners by direction | Shared |
+| `composer-radius` | Input bar and send button | Shared |
+| `popup-radius` | Dialogs and editor panels | Shared |
+| `menu-radius` | Menus, tooltips, toasts, emoji/autocomplete and viewer controls | Shared |
+| `button-radius` | Buttons, fields, checkboxes and small control corners | Shared |
+| `media-radius` | Bubble media, thumbnails, file icons, replies/quotes and media previews | Shared |
+| `avatar-radius` | Avatars | Shared |
+| `pill-radius` | Date/service pills, go-down/unread badges, reactions, tracks and scrollbar thumbs | Shared |
+| `inset-top`, `inset-right`, `inset-bottom`, `inset-left` | Host UI clearance (see below) | Shared |
+
+The chat has no wallpaper unless an image is supplied. Service/date colors remain
+derived from the chat background. Intrinsic circles (radio dots, spinner rings,
+round icon/playback buttons and slider knobs) stay round; send, go-down and avatars
+have explicit overrides. Content colors in photos, system emoji and the media
+editor's paint palette are unchanged. Maintain readable contrast in both schemes.
+Setup keeps the additional controls under **More colors and corners**.
 
 Text uses fonts installed on the customer's system: Roboto where present, otherwise
 the system interface font. The release ships no webfonts. To use your own, declare it
@@ -178,6 +205,31 @@ override wins over the client's stylesheet:
   --font-monospace: ui-monospace, monospace;
 }
 ```
+
+### UI insets
+
+Hosts can set `--widget-inset-top`, `--widget-inset-right`,
+`--widget-inset-bottom` and `--widget-inset-left` on the widget document's `:root`.
+These are physical sides, including in RTL, and accept CSS lengths. Each defaults
+to `env(safe-area-inset-<side>, 0px)`; unset in an iframe, they are zero.
+Chat controls, history at rest, viewer controls and status content clear them;
+backgrounds, media and the scroller stay edge to edge, with the scroll fades
+extended across the insets. Changes take effect without reloading.
+
+A native host that handles safe areas itself can supply its own values, for example
+from a WKWebView (values below are CSS pixels):
+
+```swift
+webView.evaluateJavaScript("""
+  for (const [side, px] of Object.entries({top: 44, right: 0, bottom: 34, left: 0})) {
+    document.documentElement.style.setProperty('--widget-inset-' + side, px + 'px');
+  }
+""")
+```
+
+The host should drop the bottom inset itself when its keyboard covers that area,
+and restore it when the keyboard closes. Set all four to `0px` if the native view
+already excludes every safe area.
 
 ## Maintain and verify
 
@@ -245,6 +297,7 @@ rebasing, adapt the wrapped entry points in `restrictions.ts` and
 ```sh
 pnpm test:widget
 pnpm run typecheck
+pnpm lint
 pnpm exec vite build --config vite.widget.config.ts
 node scripts/test-widget-setup.mjs
 BLAH_SERVER_REPO=/path/to/Teleblah node scripts/test-widget.mjs
@@ -269,10 +322,21 @@ the single-chat and no-multi-select restrictions, account
 replacement/logout across page loads and fragment changes, revoked/missing/invalid
 tokens, CSS customization in light and dark mode, narrow layout and Axe, and that no
 request leaves the widget origin. Its second-client driver is built only into a
-temporary directory. Its local S3 fixture holds disposable media bytes; upload
+temporary directory. Inset checks cover live changes and removal, resting history
+and bottom anchoring, LTR/RTL, full-frame backgrounds/scrollers, composer and
+viewer geometry, send-media popups and light/dark screenshots. Its local S3 fixture
+holds disposable media bytes; upload
 authorization, finalization and downloads run through the real DC. Set
 `TMPDIR` and `WIDGET_TEST_ARTIFACTS` to keep temporary files and failure logs in a
 chosen run directory; `WIDGET_SKIP_BUILD=1` tests an already built widget.
+Theme checks set distinct light/dark sentinels, sweep visible colors and corners
+(including pseudo-elements) in chat, menus, send-media and the viewer, and verify
+that removing overrides restores defaults. Failures name the element and property;
+`theme-coverage.json` and default/sentinel screenshots accompany the run. Setup
+checks keyboard disclosure/validation, all exported fields and the sample styles.
+The widget-only CSS build maps fixed corners with upstream defaults as fallbacks;
+keep `scripts/widget-theme-css.ts` and the documented circle exceptions aligned
+when adding a new surface.
 Add `WIDGET_DIST=/path/to/extracted/archive`
 to test the hosted release itself. Both browsers exercise the popup Send button
 inside a cross-origin iframe, including a captionless first photo, and capture

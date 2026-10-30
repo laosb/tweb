@@ -25,9 +25,9 @@ function updatePreview() {
     <meta name="viewport" content="width=device-width, initial-scale=1"><title>Support preview</title>
     <style>${widgetCSS}\n${themeStylesheet(theme)}</style></head><body>
     <main class="widget">
-      <div class="widget-history"><ol class="widget-messages">
+      <div class="widget-history"><div class="widget-date">Today</div><ol class="widget-messages">
         <li class="widget-message"><div class="widget-avatar" aria-hidden="true">C</div><div class="widget-bubble"><div class="widget-sender" dir="auto">Customer support</div><p class="widget-text">Hello! How can we help you today?</p><time class="widget-time">10:24</time></div></li>
-        <li class="widget-message widget-outgoing"><div class="widget-bubble"><p class="widget-text">I have a question about my order.</p><time class="widget-time">10:25</time></div></li>
+        <li class="widget-message widget-outgoing"><div class="widget-bubble"><p class="widget-text">I have a question about <a href="#">my order</a>.</p><time class="widget-time">10:25</time></div></li>
         <li class="widget-message"><div class="widget-avatar" aria-hidden="true">C</div><div class="widget-bubble"><div class="widget-sender" dir="auto">Customer support</div><p class="widget-text">Of course. Let's take a look together.</p><time class="widget-time">10:25</time></div></li>
       </ol></div>
       <div class="widget-composer"><textarea aria-label="Sample message" placeholder="Write a message…" disabled></textarea>
@@ -36,7 +36,16 @@ function updatePreview() {
     </main></body></html>`;
 }
 
-for(const {name, label: text, property, schemes} of themeFields) {
+const more = document.createElement('details');
+more.className = 'setup-more';
+const summary = document.createElement('summary');
+summary.textContent = 'More colors and corners';
+const moreFields = document.createElement('div');
+moreFields.className = 'setup-fields';
+more.append(summary, moreFields);
+fields.append(more);
+
+for(const [index, {name, label: text, property, schemes}] of themeFields.entries()) {
   for(const scheme of schemes ? ['light', 'dark'] as const : [undefined]) {
     const key = (scheme === 'dark' ? `${name}:dark` : name) as keyof WidgetTheme;
     const label = document.createElement('label');
@@ -61,7 +70,8 @@ for(const {name, label: text, property, schemes} of themeFields) {
       }
     });
     label.append(input);
-    fields.append(label);
+    if(index < 13) fields.insertBefore(label, more);
+    else moreFields.append(label);
   }
 }
 
@@ -110,6 +120,10 @@ document.querySelector('#dc-form').addEventListener('submit', async(event) => {
     if(current === revision) verify.disabled = false;
   }
 });
+
+document.querySelector('#configuration-form').addEventListener('invalid', (event) => {
+  if(more.contains(event.target as Node)) more.open = true;
+}, true);
 
 document.querySelector('#configuration-form').addEventListener('submit', async(event) => {
   event.preventDefault();

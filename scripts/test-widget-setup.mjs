@@ -10,6 +10,7 @@ import AxeBuilder from '@axe-core/playwright';
 import {loadEnv} from 'vite';
 import {blahDiemRuntimeURL} from './blah-config.mjs';
 import {cbor} from '../tests/blah/cbor.mjs';
+import {themeSentinels} from '../tests/widget/theme.mjs';
 import {makeDCProfile} from '../tests/blah/dcProfile.mjs';
 
 const dist = fileURLToPath(new URL('../dist/widget/', import.meta.url));
@@ -76,6 +77,19 @@ try {
   const verify = page.getByRole('button', {name: 'Verify DC'});
   const dcStatus = page.locator('#dc-status');
   const preview = page.frameLocator('#preview');
+  const more = page.locator('.setup-more');
+  const summary = more.locator('summary');
+  await expect(summary).toHaveText('More colors and corners');
+  await expect(more).not.toHaveAttribute('open');
+  await expect(page.locator('input[name="outgoing-accent-color"]')).toBeHidden();
+  await summary.focus();
+  await page.keyboard.press('Enter');
+  await expect(more).toHaveAttribute('open');
+  await page.keyboard.press('Tab');
+  await expect(page.locator('input[name="outgoing-accent-color"]')).toBeFocused();
+  await summary.focus();
+  await page.keyboard.press('Space');
+  await expect(more).not.toHaveAttribute('open');
   await expect(download).toBeDisabled();
   await expect(preview.getByText('Hello! How can we help you today?')).toBeVisible();
   await domain.fill('https://DC.Example.ORG/');
@@ -163,15 +177,54 @@ try {
   await expect(verify).toBeFocused();
   await page.keyboard.press('Shift+Tab');
   await expect(domain).toBeFocused();
+  await summary.click();
+  await expect(more).toHaveAttribute('open');
   // The inert styling preview forbids scripts; Axe cannot inject into that sandbox.
   const axe = await new AxeBuilder({page}).exclude('#preview').withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   assert.deepEqual(axe.violations, []);
   const artifacts = process.env.WIDGET_TEST_ARTIFACTS || fileURLToPath(new URL('../tmp/widget/', import.meta.url));
   await mkdir(artifacts, {recursive: true});
-  await page.screenshot({path: artifacts + '/setup.png', fullPage: true});
+  for(const mode of ['defaults', 'sentinels']) {
+    if(mode === 'sentinels') {
+      for(const [name, values] of Object.entries(themeSentinels)) {
+        await page.locator(`input[name="${name}"]`).fill(values[0]);
+        const dark = page.locator(`input[name="${name}:dark"]`);
+        if(await dark.count()) await dark.fill(values[1]);
+      }
+      const themedIndex = await saveIndex();
+      for(const [name, values] of Object.entries(themeSentinels)) assert(themedIndex.includes(`--widget-${name}: ${values[0]};`), name + ' exported');
+      await expect(preview.locator('.widget-composer textarea')).toHaveCSS('border-radius', '11.125px');
+      await expect(preview.locator('.widget-send')).toHaveCSS('border-radius', '11.125px');
+      await expect(preview.locator('.widget-avatar').first()).toHaveCSS('border-radius', '3.125px');
+      await expect(preview.locator('.widget-date')).toHaveCSS('border-radius', '5.125px');
+    }
+    for(const scheme of ['light', 'dark']) {
+      await page.getByLabel('Dark mode').setChecked(scheme === 'dark');
+      if(mode === 'sentinels') {
+        await expect(preview.locator('.widget-sender').first()).toHaveCSS('color', scheme === 'light' ? 'rgb(99, 37, 191)' : 'rgb(172, 131, 255)');
+        await expect(preview.locator('.widget-avatar').first()).toHaveCSS('background-color', scheme === 'light' ? 'rgb(99, 37, 191)' : 'rgb(172, 131, 255)');
+        await expect(preview.locator('.widget-send')).toHaveCSS('background-color', scheme === 'light' ? 'rgb(206, 20, 124)' : 'rgb(255, 82, 193)');
+      }
+      await page.screenshot({path: `${artifacts}/theme-${mode}-${scheme}-setup.png`, fullPage: true});
+    }
+  }
+  // Invalid hidden fields reveal themselves before native form validation focuses them.
+  const extraRadius = page.locator('input[name="popup-radius"]');
+  await extraRadius.fill('bad radius');
+  await summary.click();
+  await download.click();
+  await expect(more).toHaveAttribute('open');
+  await expect(extraRadius).toBeFocused();
+  await page.getByRole('button', {name: 'Reset styling'}).click();
+  for(const input of await more.locator('input').all()) await expect(input).toHaveValue('');
+  await page.getByLabel('Dark mode').uncheck();
   await page.setViewportSize({width: 320, height: 720});
   assert(await page.locator('body').evaluate(body => body.scrollWidth <= body.clientWidth));
   await expect(preview.locator('.widget-sender').first()).toBeVisible();
+  await page.locator('html').evaluate(html => html.dir = 'rtl');
+  assert(await page.locator('body').evaluate(body => body.scrollWidth <= body.clientWidth));
+  await page.screenshot({path: artifacts + '/theme-setup-narrow-rtl.png', fullPage: true});
+  await page.locator('html').evaluate(html => html.dir = 'ltr');
 
   // Invalid signatures, wrong domains, expiry, HTTP failures and insecure-only
   // profiles must all revoke the previous valid configuration.
