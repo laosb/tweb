@@ -10,6 +10,7 @@ import {ChatType} from '@components/chat/chatType';
 import ChatRecording from '@components/chat/recording/chatRecording';
 import emoticonsDropdown from '@components/emoticonsDropdown';
 import EmojiTab from '@components/emoticonsDropdown/tabs/emoji';
+import {restrictChatStatus} from '@/widget/statusRestrictions';
 import {restrictMessageSelection} from '@/widget/selectionRestrictions';
 
 // Kept out of the support conversation.
@@ -34,6 +35,7 @@ export function restrictToSupport(supportPeerId: PeerId) {
   if(!('tabsToRender' in emoticonsDropdown)) throw new Error('WIDGET_RESTRICTION_TARGET_MISSING: tabsToRender');
 
   restrictMessageSelection();
+  restrictChatStatus();
 
   // Every way into another chat, a profile or the chat list ends in these two.
   const isSupportChat = (options: {peerId?: PeerId, type?: ChatType}) => {
