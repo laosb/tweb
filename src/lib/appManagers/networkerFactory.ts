@@ -12,6 +12,8 @@ import {AppManager} from '@appManagers/manager';
 import AccountController from '@lib/accounts/accountController';
 import bytesToHex from '@helpers/bytes/bytesToHex';
 import {getEnvironment} from '@environment/utils';
+import blah from '@config/blah';
+import {WIDGET_LANG_PACK} from '@/widget/config';
 
 export class NetworkerFactory extends AppManager {
   private networkers: MTPNetworker[] = [];
@@ -56,8 +58,8 @@ export class NetworkerFactory extends AppManager {
         systemVersion: navigator.platform || 'Unknown Platform',
         version: App.version + (App.isMainDomain ? ' ' + App.suffix : ''),
         systemLangCode: navigator.language || 'en',
-        langPack: App.langPack,
-        langCode: this.language
+        langPack: blah?.widget ? WIDGET_LANG_PACK : App.langPack,
+        langCode: blah?.widget ? (blah.widget.lang || 'en') : this.language
       }),
       getBaseDcId: () => this.apiManager.getBaseDcId(),
       createLogger: this.createLogger.bind(this)

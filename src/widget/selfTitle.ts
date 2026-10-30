@@ -1,5 +1,6 @@
 import PeerTitle from '@components/peerTitle';
 import rootScope from '@lib/rootScope';
+import {i18n} from '@lib/langPack';
 
 // Identity labels only: never rewrite message text, usernames, topics or explicit titles.
 export function useWidgetSelfTitle() {
@@ -11,6 +12,6 @@ export function useWidgetSelfTitle() {
     if(options.peerId !== rootScope.myId || !rootScope.myId || options.dialog ||
       options.username || options.threadId || options.asAllChats || options.fromName !== undefined) return;
     // Keep badges, the original node and its peer_title_edit registration.
-    (this.element.querySelector('.peer-title-inner') || this.element).replaceChildren('Me');
+    (this.element.querySelector('.peer-title-inner') || this.element).replaceChildren(i18n('BfbMe'));
   };
 }

@@ -6,6 +6,7 @@ import {IS_BETA, MOUNT_CLASS_TO} from '@config/debug';
 import Modes from '@config/modes';
 import {HelpCountry, LangPackDifference, LangPackString} from '@layer';
 import App from '@config/app';
+import blah from '@config/blah';
 import rootScope from '@lib/rootScope';
 import {IS_MOBILE} from '@environment/userAgent';
 import deepEqual from '@helpers/object/deepEqual';
@@ -154,7 +155,7 @@ namespace I18n {
     if(langCode) root.lang = langCode;
   }
 
-  function setLangCode(langCode: string) {
+  export function setLangCode(langCode: string) {
     lastRequestedLangCode = langCode;
     lastRequestedNormalizedLangCode = langCode.split('-')[0];
     setLangCodeNormalized(lastRequestedNormalizedLangCode.split('-')[0] as any);
@@ -973,9 +974,11 @@ export async function checkLangPackForUpdates() {
 }
 
 // Listen for events from rootScope to handle server updates
-rootScope.addEventListener('langpack_update', handleUpdateLangPack);
-rootScope.addEventListener('langpack_update_too_long', handleUpdateLangPackTooLong);
-rootScope.addEventListener('state_cleared', handleStateCleared);
+if(!blah?.widget) {
+  rootScope.addEventListener('langpack_update', handleUpdateLangPack);
+  rootScope.addEventListener('langpack_update_too_long', handleUpdateLangPackTooLong);
+  rootScope.addEventListener('state_cleared', handleStateCleared);
+}
 
 MOUNT_CLASS_TO && (MOUNT_CLASS_TO.I18n = I18n);
 

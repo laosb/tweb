@@ -4,14 +4,19 @@ import deferredPromise from '@helpers/cancellablePromise';
 
 const mocks = vi.hoisted(() => ({
   authorize: vi.fn(), support: vi.fn(), bootstrap: vi.fn(), open: vi.fn(), logout: vi.fn(),
-  account: vi.fn(), save: vi.fn(), restrict: vi.fn(), theme: vi.fn()
+  account: vi.fn(), save: vi.fn(), restrict: vi.fn(), theme: vi.fn(), pack: vi.fn(), language: vi.fn()
 }));
-vi.mock('@config/blah', () => ({default: {widget: {param: true}}}));
-vi.mock('@lib/rootScope', () => ({default: {managers: {
-  appAccountManager: {importManagedAccountAuthorization: mocks.authorize},
-  appUsersManager: {saveApiUser: mocks.save},
-  apiManager: {logOut: mocks.logout, invokeApi: mocks.support}
-}}}));
+vi.mock('@config/blah', () => ({default: {widget: {param: 'pins', lang: undefined as string}}}));
+vi.mock('@lib/rootScope', async(importOriginal) => {
+  const {default: rootScope} = await importOriginal<typeof import('@lib/rootScope')>();
+  Object.assign(rootScope, {managers: {
+    appAccountManager: {importManagedAccountAuthorization: mocks.authorize},
+    appUsersManager: {saveApiUser: mocks.save},
+    apiManager: {logOut: mocks.logout, invokeApi: mocks.support},
+    appLangPackManager: {getLangPack: mocks.pack, getLanguage: mocks.language}
+  }});
+  return {default: rootScope};
+});
 vi.mock('@lib/accounts/bindManagersToAccount', () => ({bindManagersToSession: (managers: unknown) => managers}));
 vi.mock('@lib/accounts/accountController', () => ({default: {get: mocks.account}}));
 vi.mock('@lib/accounts/getCurrentAccount', () => ({getCurrentAccount: () => 1}));
@@ -20,13 +25,16 @@ vi.mock('@/widget/restrictions', () => ({restrictToSupport: mocks.restrict}));
 vi.mock('@/widget/theme', () => ({applyWidgetTheme: mocks.theme}));
 vi.mock('@/pages/bootstrapIm', () => ({bootstrapIm: mocks.bootstrap}));
 import {startWidget} from '@/widget/index';
+import blah from '@config/blah';
+import rootScope from '@lib/rootScope';
+import {applyWidgetEnglish} from '@/widget/langPack';
 
 const signedIn = {_: 'authStateSignedIn'} as const;
 const deferred = () => {
   const promise = deferredPromise<void>();
   return {promise, resolve: () => promise.resolve(), reject: (error: unknown) => promise.reject(error)};
 };
-beforeEach(() => {
+beforeEach(async() => {
   vi.useFakeTimers();
   vi.resetAllMocks();
   document.body.className = '';
@@ -39,6 +47,9 @@ beforeEach(() => {
   mocks.bootstrap.mockResolvedValue(undefined);
   mocks.open.mockResolvedValue(undefined);
   mocks.restrict.mockReturnValue({setInnerPeer: mocks.open, chat: {bubbles: {scrollable: {container: document.createElement('div')}}}});
+  vi.spyOn(rootScope, 'dispatchEvent').mockImplementation(() => {});
+  blah.widget.lang = undefined;
+  await applyWidgetEnglish();
   vi.spyOn(console, 'info').mockImplementation(() => {});
 });
 afterEach(() => {
@@ -114,4 +125,31 @@ it.each([
   expect(document.querySelector('[role="alert"]').textContent).toBe('Support is currently unavailable.');
   expect(mocks.restrict).not.toHaveBeenCalled();
   expect(mocks.open).not.toHaveBeenCalled();
+});
+
+it.each(['reject', 'pending'] as const)('opens support despite a %s language pack', async(mode) => {
+  blah.widget.lang = 'zh-hans';
+  mocks.pack.mockImplementation(() => mode === 'reject' ? Promise.reject({type: 'LANG_PACK_INVALID'}) : new Promise(() => {}));
+  mocks.language.mockResolvedValue({lang_code: 'zh-hans', pFlags: {}});
+  const started = startWidget(signedIn);
+  await vi.advanceTimersByTimeAsync(5_000);
+  await started;
+  expect(mocks.pack).toHaveBeenCalledWith('zh-hans', 'webk_bfb', true);
+  expect(mocks.open).toHaveBeenCalledWith({peerId: 456});
+  expect(document.querySelector('#widget').childElementCount).toBe(0);
+  expect(document.body.classList.contains('widget-starting')).toBe(false);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('renders startup errors and the retry button in the fetched language', async() => {
+  blah.widget.lang = 'de';
+  mocks.pack.mockResolvedValue({lang_code: 'de', strings: [
+    {_: 'langPackString', key: 'BfbConnectionFailed', value: 'Verbindung fehlgeschlagen.'},
+    {_: 'langPackString', key: 'BfbReconnect', value: 'Erneut verbinden'}
+  ]});
+  mocks.language.mockResolvedValue({lang_code: 'de', pFlags: {}});
+  mocks.support.mockRejectedValue(new Error('offline'));
+  await startWidget(signedIn);
+  expect(document.querySelector('[role="alert"]').textContent).toBe('Verbindung fehlgeschlagen.');
+  expect(document.querySelector('#widget button').textContent).toBe('Erneut verbinden');
 });

@@ -6,11 +6,23 @@ export type WidgetConfig = {
   url: string,
   rsaKey: {modulus: string, exponent: string},
   apiId: number,
-  apiHash: string
+  apiHash: string,
+  lang?: string
 };
 
 /** Workers have no document; the page hands them its validated pins in their URL. */
 export const WIDGET_CONFIG_QUERY_PARAM = 'blahWidget';
+export const WIDGET_LANG_PACK = 'webk_bfb';
+
+export function normalizeWidgetLanguage(value: string): string | undefined {
+  const lang = value?.toLowerCase().replace(/_/g, '-');
+  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(lang || '') ? lang : undefined;
+}
+
+export function readWidgetLanguage(search: string): string | undefined {
+  const values = new URLSearchParams(search).getAll('lang');
+  return values.length === 1 ? normalizeWidgetLanguage(values[0]) : undefined;
+}
 
 export function validateConfig(config: WidgetConfig): WidgetConfig {
   const url = new URL(config.url);
@@ -23,12 +35,14 @@ export function validateConfig(config: WidgetConfig): WidgetConfig {
     !/^[\da-f]{32}$/i.test(config.apiHash)) {
     throw new Error('WIDGET_CONFIG_INVALID');
   }
+  const lang = normalizeWidgetLanguage(config.lang);
   return {
     dcId: config.dcId,
     url: url.href,
     rsaKey: {modulus: config.rsaKey.modulus.toLowerCase(), exponent: config.rsaKey.exponent.toLowerCase()},
     apiId: config.apiId,
-    apiHash: config.apiHash
+    apiHash: config.apiHash,
+    ...(lang ? {lang} : {})
   };
 }
 
@@ -48,13 +62,13 @@ export function widgetBlahConfig(): BlahConfig {
   let config: WidgetConfig;
   try {
     config = typeof(document) !== 'undefined' ?
-      readConfig() :
+      {...readConfig(), lang: readWidgetLanguage(location.search)} :
       validateConfig(JSON.parse(new URLSearchParams(self.location.search).get(WIDGET_CONFIG_QUERY_PARAM)));
   } catch{
     return {widget: {}, defaultDcId: 1, dcs: []};
   }
   return {
-    widget: {param: JSON.stringify(config)},
+    widget: {param: JSON.stringify(config), lang: config.lang},
     app: {id: config.apiId, hash: config.apiHash},
     defaultDcId: config.dcId,
     dcs: [{id: config.dcId, url: config.url, rsaKey: config.rsaKey}]
