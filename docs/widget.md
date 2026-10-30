@@ -9,9 +9,12 @@ pickers, inline bots, custom emoji or attach-menu apps; links to other chats and
 profiles do not navigate. Code blocks show without syntax highlighting, and a poll
 shows only its question.
 Outgoing messages show sending, sent or failed, never read (double checks); message
-menus omit read dates and seen-by lists. The header shows only the support name,
-without a status/subtitle or typing indicator, and does not start the status line's
-presence refresh or listeners. Message read acknowledgements otherwise stay unchanged.
+menus omit read dates and seen-by lists. The history fills the frame without a
+chat header, pinned bar, search or floating audio player. Support replies use the native group layout: an avatar beside each group and a
+sender name where upstream shows one (not on photo/video/album bubbles);
+your messages keep their private-chat appearance. The media viewer omits forwarding
+and labels your media “Me”. There are no presence or typing indicators.
+Message read acknowledgements otherwise stay unchanged.
 The widget follows the system's light or dark appearance.
 
 ## Build and configure
@@ -152,7 +155,7 @@ Scope dark-mode values with `:root.night`, the class the client sets in dark mod
 ```
 
 The other variables are `--widget-surface-color` and `--widget-text-color` for the
-header and composer, `--widget-chat-background-image` and `-size`, the incoming
+composer, `--widget-chat-background-image` and `-size`, the incoming
 bubble and text colors, and `--widget-incoming-bubble-radius` and
 `--widget-outgoing-bubble-radius` to override the shared radius. Unset variables keep
 the client's light or dark theme. The chat has no wallpaper: it sits on
@@ -195,7 +198,10 @@ over to [`src/widget/index.ts`](../src/widget/index.ts) in place of the auth flo
 signs in with the token and opens the support chat.
 [`src/widget/restrictions.ts`](../src/widget/restrictions.ts) narrows the client by
 wrapping a few upstream entry points rather than editing them, and fails at startup if
-one is renamed. These restrictions also disable message multi-select through the
+one is renamed. `chatRestrictions.ts` detaches the empty topbar after chat construction
+and removes sender links' navigation and focus attributes, including on peer-title
+updates; native group rendering decides where sender names appear. The media viewer's
+self-author text is the widget-owned “Me”. These restrictions also disable message multi-select through the
 selection controller and remove its menu items, covering pointer, touch, keyboard
 and report-selection entry points while keeping hover reactions.
 
@@ -257,7 +263,8 @@ The harness seeds disposable managed accounts, runs the production widget
 inside a cross-origin iframe and uses real encrypted WebSockets. It checks customer-first
 messaging, attachment-menu opening on click, photo-first contact, video/file uploads and byte-for-byte downloads,
 a support reply, read outgoing text/media/albums retaining single checks before and after
-reload, a centered header without a status line in LTR/RTL, no read-date menu items,
+reload, no chat header or reserved space in LTR/RTL, group-style support senders,
+private media-viewer controls and authors, no read-date menu items,
 the single-chat and no-multi-select restrictions, account
 replacement/logout across page loads and fragment changes, revoked/missing/invalid
 tokens, CSS customization in light and dark mode, narrow layout and Axe, and that no
