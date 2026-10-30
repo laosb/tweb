@@ -8,6 +8,34 @@ function corner(selector: string, value: string, prop = 'border-radius', file = 
 }
 
 describe('widget compiled corners', () => {
+  it('maps upstream bubble corners without flattening tails or grouped joins', () => {
+    const from = '/src/scss/partials/_chatBubble.scss';
+    for(const file of [from, '/src/scss/style.scss']) {
+      for(const [value, expected] of [['15px', 'var(--widget-bubble-corner-radius, 15px)'], ['5px', 'min(5px, var(--widget-bubble-corner-radius, 5px))'], ['0', '0']]) {
+        for(const important of [false, true]) {
+          const declaration = {prop: '--border-start-start-radius', value, important, parent: {type: 'rule', selector: '.bubble.is-in'}, source: {input: {file}}};
+          widgetThemeDeclaration(declaration);
+          expect(declaration.value).toBe(expected);
+          expect(declaration.important).toBe(important);
+          widgetThemeDeclaration(declaration);
+          expect(declaration.value).toBe(expected);
+          expect(corner('.bubble', value, declaration.prop, '/other.scss')).toBe(value);
+        }
+      }
+    }
+    expect(corner('.other', '15px', '--border-start-start-radius', '/src/scss/style.scss')).toBe('15px');
+    for(const side of ['start', 'end']) {
+      const prop = `border-end-${side}-radius`;
+      const selector = '.bubble.has-plain-media-tail .attachment';
+      const value = corner(selector, '15px', prop, from);
+      expect(value).toBe('var(--widget-bubble-corner-radius, 15px)');
+      expect(corner(selector, value, prop, from)).toBe(value);
+      expect(corner(selector, '15px', prop, '/other.scss')).toBe('var(--widget-media-radius, 15px)');
+      expect(corner('.bubble .attachment', `var(--${prop})`, prop, from)).toBe(`var(--${prop})`);
+    }
+    expect(corner('.bubble', '7px', '--border-start-start-radius', from)).toBe('7px');
+  });
+
   it('wraps fixed UI hues with an exact original fallback', () => {
     expect(corner('.input-field', '#26962f', 'color')).toBe('var(--widget-accent-color, #26962F)');
     expect(corner('.cropper', '#F0DB56', '--cropper-color')).toBe('var(--widget-accent-color, #F0DB56)');
