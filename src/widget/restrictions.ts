@@ -10,6 +10,7 @@ import ChatRecording from '@components/chat/recording/chatRecording';
 import {ChatReactionsMenu} from '@components/chat/reactionsMenu';
 import {restrictChatPresentation} from '@/widget/chatRestrictions';
 import {applyWidgetInsets} from '@/widget/insets';
+import {useWidgetSelfTitle} from '@/widget/selfTitle';
 import {restrictMediaViewer} from '@/widget/mediaViewerRestrictions';
 import {restrictChatStatus} from '@/widget/statusRestrictions';
 import {restrictMessageSelection} from '@/widget/selectionRestrictions';
@@ -38,6 +39,7 @@ export function restrictToSupport(supportPeerId: PeerId) {
   restrictMessageSelection();
   restrictChatStatus();
   restrictChatPresentation();
+  useWidgetSelfTitle();
   applyWidgetInsets();
   restrictMediaViewer();
 
