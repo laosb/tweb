@@ -189,6 +189,16 @@ try {
   const widgetFrame = () => page.frames().find((frame) => frame.parentFrame());
   const status = frame.locator('#widget [role="status"]'), alert = frame.locator('#widget [role="alert"]');
   const title = frame.locator('#column-center .chat .topbar .peer-title');
+  const header = frame.locator('.chat.active .topbar');
+  const assertHeader = async() => {
+    await expect(header.locator('.person > .content > .bottom, .info')).toHaveCount(0);
+    const centered = await header.evaluate(el => {
+      const title = el.querySelector('.user-title').getBoundingClientRect();
+      const person = el.querySelector('.person').getBoundingClientRect();
+      return Math.abs((title.top + title.bottom - person.top - person.bottom) / 2);
+    });
+    expect(centered).toBeLessThanOrEqual(2);
+  };
   const bubble = (text) => frame.locator('#column-center .bubble[data-mid]').filter({hasText: text});
   const send = async(text) => {
     await frame.getByRole('textbox', {name: 'Message'}).click();
@@ -228,6 +238,7 @@ try {
       await page.emulateMedia({colorScheme: theme});
       for(const rtl of [false, true]) {
         await frame.locator('html').evaluate((el, rtl) => { el.dir = rtl ? 'rtl' : 'ltr'; el.classList.toggle('is-rtl', rtl); }, rtl);
+        await assertHeader();
         await expect(frame.locator('.chat.active .topbar .sidebar-close-button')).toBeHidden();
         await expect(frame.locator('.chat.active .topbar .chat-info')).toHaveCSS('padding-inline-start', '0px');
         await expect(frame.locator('.chat.active .topbar')).toHaveCSS('--topbar-close-active-size', '0px');
@@ -266,7 +277,7 @@ try {
   const sendFiles = async(files, caption, type, asDocument = false) => {
     const [picker] = await Promise.all([page.waitForEvent('filechooser'),
       widgetFrame().evaluate(document => window.appImManager.chat.input.onAttachClick(document, !document, !document), asDocument)]);
-    console.log('Sending media:', files.name);
+    console.log('Sending media:', Array.isArray(files) ? files.map(file => file.name).join(', ') : files.name);
     await picker.setFiles(files);
     await expect(frame.locator('.popup-new-media')).toBeVisible();
     await frame.locator('.popup-new-media [contenteditable="true"]').fill(caption);
@@ -283,6 +294,11 @@ try {
     '', 'messageMediaPhoto');
   await sendFiles({name: 'widget-photo.png', mimeType: 'image/png', buffer: Buffer.from(photo, 'base64')},
     'Widget photo regression', 'messageMediaPhoto');
+  await sendFiles([
+    {name: 'album-one.png', mimeType: 'image/png', buffer: Buffer.from(photo, 'base64')},
+    {name: 'album-two.png', mimeType: 'image/png', buffer: Buffer.from(photo, 'base64')}
+  ], 'Widget album regression', 'messageMediaPhoto');
+  await expect(bubble('Widget album regression').locator('.album-item')).toHaveCount(2);
   const largePhoto = await widgetFrame().evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 3200; canvas.height = 2400;
@@ -317,8 +333,30 @@ try {
   await send('Thanks 👋');
   await expect(bubble('Thanks 👋').locator('.emoji-native')).toHaveCount(1);
   await expect(bubble('Thanks 👋').locator('img.emoji')).toHaveCount(0);
+  await driver.evaluate(id => window.widgetTestDriver.read(id), alice.id);
+  // Wait for the actual server read cursor, so a sent icon alone cannot pass early.
+  await expect.poll(() => widgetFrame().evaluate(() => {
+    const chat = window.appImManager.chat;
+    return chat.getHistoryStorage().readOutboxMaxId >= Number(
+      [...document.querySelectorAll('.bubble[data-mid]')].find(el => el.textContent.includes('Thanks 👋')).dataset.mid);
+  })).toBe(true);
+  const assertSent = async() => {
+    for(const text of ['A customer can ask for help first.', 'Thanks 👋', 'Widget photo regression', 'Widget video regression', 'Widget file regression', 'Widget album regression']) {
+      await expect(bubble(text)).toHaveClass(/is-sent/);
+      await expect(bubble(text)).not.toHaveClass(/is-read/);
+      await expect(bubble(text).locator('.time-inner > .time-sending-status')).toHaveCount(1);
+      await expect(bubble(text).locator('.time-inner > .time-sending-status')).toHaveClass(/sending-status-is-sent/);
+      await expect(bubble(text).locator('.time-inner > .time-sending-status')).toHaveAttribute('aria-hidden', 'true');
+    }
+    await expect(frame.locator('.bubble.is-read, .bubble .sending-status-is-read, .bubble [aria-label*="read" i]')).toHaveCount(0);
+    await assertHeader();
+  };
+  await assertSent();
+  await bubble('Thanks 👋').scrollIntoViewIfNeeded();
+  await page.locator('iframe').screenshot({path: artifacts + '/read-outgoing-single-check.png'});
   await Promise.all([widgetFrame().waitForNavigation(), widgetFrame().evaluate(() => location.reload())]);
   await expect(bubble('A customer can ask for help first.')).toBeVisible();
+  await assertSent();
   assert(new URL(widgetFrame().url()).hash.startsWith('#token='), 'opening the chat keeps the token in the fragment');
 
   await bubble('Widget video regression').scrollIntoViewIfNeeded();
@@ -335,10 +373,12 @@ try {
     await expect(contextMenu).toBeVisible();
     await expect(contextMenu.getByText('Reply', {exact: true})).toBeVisible();
     await expect(contextMenu.getByText('Select', {exact: true})).toHaveCount(0);
+    await expect(contextMenu.getByText(/seen|read time|read date/i)).toHaveCount(0);
+    assert.equal(await widgetFrame().evaluate(() => window.appImManager.chat.contextMenu.buttons.some(button => button.localName === 'views')), false);
     const strip = contextMenu.locator('.btn-menu-reactions-reaction');
     await expect.poll(async() => (await strip.evaluateAll(elements => elements.map(e => e.getAttribute('aria-label'))))
-      .map(label => ({'Thumbs Up': '👍', 'Thumbs Down': '👎', 'Red Heart': '❤'}[label] || label)))
-      .toEqual(['👍', '👎', '❤']);
+      .map(label => ({'Thumbs Up': '👍', 'Thumbs Down': '👎', 'Red Heart': '❤', 'HUNDRED POINTS SYMBOL': '💯', 'ROLLING ON THE FLOOR LAUGHING': '🤣', 'EYES': '👀'}[label] || label)))
+      .toEqual(['👍', '👎', '❤', '💯', '🤣', '👀']);
     for(let i = 0; i < 3; ++i) await expect(strip.nth(i).locator('.btn-menu-reactions-reaction-select canvas')).toBeVisible({timeout: 30_000});
     if(process.env.BLAH_MENU_SCREENSHOTS) {
       await page.waitForTimeout(600);
@@ -469,7 +509,7 @@ try {
   assert.deepEqual(urls.filter((url) => /\.(woff2?|ttf|otf)\b/.test(url) && !url.includes('/assets/fonts/tgico.ttf')), []);
   const local = [origin, origin.replace('127.0.0.1', 'localhost'), 'blob:', 'data:'];
   assert.deepEqual(urls.filter((url) => !local.some((prefix) => url.startsWith(prefix))), []);
-  console.log('Widget browser checks passed: real token auth, captionless photo-first contact, resized photos, video/file upload and download, decoded video after reload, LTR/RTL selection disabled, send/reply, reload, single-chat restrictions, token switch/logout across loads and hash changes, revoked/missing/invalid tokens, cross-origin iframe layout, light/dark theme variables, no BlahDiem.');
+  console.log('Widget browser checks passed: real token auth, single checks after server reads and reload (text/media/albums), centered header without subtitle, no read-date menu, captionless photo-first contact, resized photos, video/file upload and download, decoded video after reload, LTR/RTL selection disabled, send/reply, reload, single-chat restrictions, token switch/logout across loads and hash changes, revoked/missing/invalid tokens, cross-origin iframe layout, light/dark theme variables, no BlahDiem.');
 } catch(error) {
   await writeFile(artifacts + '/server.log', serverLog);
   await browser?.contexts()[0]?.pages()[0]?.screenshot({path: artifacts + '/failure.png'}).catch(() => {});
