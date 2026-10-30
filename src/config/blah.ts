@@ -7,7 +7,7 @@ export type BlahConfig = {
   profileDigest?: string,
   home?: {domain: string, identity: string, generation: string},
   /** The support widget build: pins from its own document, `param` absent when they are invalid. */
-  widget?: {param?: string},
+  widget?: {param?: string, lang?: string},
   /** Application credentials that are not built in, i.e. the widget's. */
   app?: {id: number, hash: string},
   defaultDcId: number,
