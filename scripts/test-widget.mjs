@@ -557,7 +557,25 @@ try {
     await expect(viewer.getByRole('button', {name: 'Forward', exact: true})).toHaveCount(0);
     expect(await widgetFrame().evaluate(() => window.appMediaViewer.buttons.forward.isConnected)).toBe(false);
     await expect(viewer.locator('.media-viewer-userpic')).toHaveCount(1);
+    const panel = await viewer.locator('.media-viewer-topbar').evaluate(el => {
+      const box = el.getBoundingClientRect(), paint = getComputedStyle(el, '::before');
+      const author = el.querySelector('.media-viewer-author').getBoundingClientRect();
+      return {top: box.top + parseFloat(paint.top), left: box.left + parseFloat(paint.left),
+        right: box.right - parseFloat(paint.right), width: innerWidth,
+        height: parseFloat(paint.height), contentTop: author.top, background: paint.backgroundColor};
+    });
+    assert.equal(panel.top, 0, 'topbar painted box reaches the top edge');
+    assert.equal(panel.left, 0, 'topbar painted box reaches the left edge');
+    assert.equal(panel.right, panel.width, 'topbar painted box reaches the right edge');
+    assert(panel.height >= 100, 'topbar painted box grows by the top inset');
+    assert(panel.contentTop >= 44, 'author remains below the top inset');
+    if(panel.width === 280) assert.notEqual(panel.background, 'rgba(0, 0, 0, 0)');
   };
+  await widgetFrame().evaluate(() => {
+    for(const [side, value] of Object.entries({top: 44, right: 12, left: 20})) {
+      document.documentElement.style.setProperty('--widget-inset-' + side, value + 'px');
+    }
+  });
   for(const [width, rtl] of [[800, false], [280, false], [280, true]]) {
     await widgetFrame().evaluate(rtl => window.I18n.forceRTL(rtl), rtl);
     await page.locator('iframe').evaluate((el, width) => el.style.width = width + 'px', width);
@@ -605,6 +623,9 @@ try {
   }
   await page.locator('iframe').evaluate(el => el.style.width = '390px');
   await widgetFrame().evaluate(() => window.I18n.forceRTL(false));
+  await widgetFrame().evaluate(() => {
+    for(const side of ['top', 'right', 'left']) document.documentElement.style.removeProperty('--widget-inset-' + side);
+  });
   await checkInsets({page, frame: widgetFrame(), artifacts, showMessage, messageMids, photo});
   await sendFiles({name: 'theme-audio.mp3', mimeType: 'audio/mpeg', buffer: await readFile(repo + '/src/tests/fixtures/ephemeralBot/media/audio.mp3')},
     'Widget audio regression', 'messageMediaDocument', true);
