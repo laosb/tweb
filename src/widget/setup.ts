@@ -15,7 +15,17 @@ export const themeFields = [
   {name: 'incoming-bubble-radius', label: 'Support bubble radius', property: 'border-radius', schemes: false},
   {name: 'outgoing-bubble-radius', label: 'Customer bubble radius', property: 'border-radius', schemes: false},
   {name: 'chat-background-image', label: 'Background image', property: 'background-image', schemes: true},
-  {name: 'chat-background-size', label: 'Background image size', property: 'background-size', schemes: false}
+  {name: 'chat-background-size', label: 'Background image size', property: 'background-size', schemes: false},
+  {name: 'outgoing-accent-color', label: 'Customer bubble accent', property: 'color', schemes: true},
+  {name: 'danger-color', label: 'Errors and destructive actions', property: 'color', schemes: true},
+  {name: 'support-sender-color', label: 'Support sender', property: 'color', schemes: true},
+  {name: 'composer-radius', label: 'Composer and send radius', property: 'border-radius', schemes: false},
+  {name: 'popup-radius', label: 'Popup radius', property: 'border-radius', schemes: false},
+  {name: 'menu-radius', label: 'Menu and tooltip radius', property: 'border-radius', schemes: false},
+  {name: 'button-radius', label: 'Button and control radius', property: 'border-radius', schemes: false},
+  {name: 'media-radius', label: 'Media and quote radius', property: 'border-radius', schemes: false},
+  {name: 'avatar-radius', label: 'Avatar radius', property: 'border-radius', schemes: false},
+  {name: 'pill-radius', label: 'Pill radius', property: 'border-radius', schemes: false}
 ] as const;
 
 type ThemeFieldName = typeof themeFields[number]['name'];

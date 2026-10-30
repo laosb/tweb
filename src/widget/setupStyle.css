@@ -41,3 +41,8 @@ dd { margin: 4px 0 0; overflow-wrap: anywhere; font-family: monospace; font-size
 }
 .setup-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-weight: 500; }
 .setup-toggle input { width: auto; }
+
+.setup-more { grid-column: 1 / -1; min-width: 0; }
+.setup-more summary { cursor: pointer; padding-block: 12px; font-weight: 600; }
+.setup-more summary:focus-visible { outline: 3px solid #285cc4; outline-offset: 3px; border-radius: 4px; }
+.setup-more[open] summary { margin-bottom: 12px; }
