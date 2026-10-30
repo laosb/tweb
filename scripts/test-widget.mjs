@@ -16,6 +16,8 @@ import AxeBuilder from '@axe-core/playwright';
 import httpProxy from 'http-proxy';
 import {cbor} from '../tests/blah/cbor.mjs';
 import {objectStorage} from '../tests/widget/objectStorage.mjs';
+import {checkTheme, checkStatusTheme} from '../tests/widget/theme.mjs';
+import {checkInsets, checkStatusInsets} from '../tests/widget/insets.mjs';
 
 // The full client takes a few seconds to restore after a reload.
 const expect = baseExpect.configure({timeout: 20_000});
@@ -215,6 +217,7 @@ try {
     messageMids.set(text, Number(await bubble(text).getAttribute('data-mid')));
   };
   await expect(status).toContainText('requires a customer token');
+  await checkStatusInsets(widgetFrame());
   let navigation = 0;
   const navigate = async(token, reload = false) => {
     await Promise.all([widgetFrame().waitForNavigation(), page.locator('iframe').evaluate((iframe, url) => { iframe.src = url; },
@@ -581,6 +584,7 @@ try {
       await expect.poll(() => widgetFrame().evaluate(() => window.appMediaViewer.target.mid)).toBe(mid);
       await assertViewer(name);
       await page.waitForTimeout(400);
+      await widgetFrame().evaluate(() => window.appMediaViewer.setMoverAnimationPromise);
       await page.keyboard.press('Escape');
       // active clears at the start of closing; wait for the actual teardown.
       await expect(frame.locator('.media-viewer-whole')).toHaveCount(0);
@@ -588,11 +592,30 @@ try {
   }
   await page.locator('iframe').evaluate(el => el.style.width = '390px');
   await widgetFrame().evaluate(() => window.I18n.forceRTL(false));
+  await checkInsets({page, frame: widgetFrame(), artifacts, showMessage, messageMids, photo});
+  await sendFiles({name: 'theme-audio.mp3', mimeType: 'audio/mpeg', buffer: await readFile(repo + '/src/tests/fixtures/ephemeralBot/media/audio.mp3')},
+    'Widget audio regression', 'messageMediaDocument', true);
+  await send('Customer link https://example.test');
+  const themeSupportText = 'Theme support link https://example.test and @support';
+  await driver.evaluate(({id, text}) => window.widgetTestDriver.reply(id, text, [
+    {_: 'messageEntityUrl', offset: text.indexOf('https:'), length: 'https://example.test'.length},
+    {_: 'messageEntityMention', offset: text.indexOf('@support'), length: 8}
+  ]), {id: alice.id, text: themeSupportText});
+  await expect(bubble(themeSupportText)).toBeVisible();
+  messageMids.set('Theme support link', Number(await bubble(themeSupportText).getAttribute('data-mid')));
+  await driver.evaluate(id => window.widgetTestDriver.echoMedia(id, 'Widget photo regression', 'Theme media https://example.test', false,
+    [{_: 'messageEntityUrl', offset: 12, length: 'https://example.test'.length}]), alice.id);
+  await expect(bubble('Theme media')).toBeVisible();
+  messageMids.set('Theme media', Number(await bubble('Theme media').getAttribute('data-mid')));
+  await checkTheme({page, frame: widgetFrame(), artifacts, showMessage, messageMids, photo});
   // CSS variables live in the iframe document, including on a host-served theme.
   await frame.locator('html').evaluate((html) => {
     html.style.setProperty('--widget-chat-background-color', 'rgb(240, 248, 255)');
     html.style.setProperty('--widget-bubble-radius', '4px');
     html.style.setProperty('--widget-outgoing-bubble-color', 'rgb(30, 80, 120)');
+    // This contrast audit uses a dark custom fill, so pair it with readable text/status.
+    html.style.setProperty('--widget-outgoing-text-color', 'white');
+    html.style.setProperty('--widget-outgoing-accent-color', 'white');
   });
   await expect(frame.locator('.blah-widget-background')).toHaveCSS('background-color', 'rgb(240, 248, 255)');
   await showMessage(messageMids.get('A customer can ask for help first.'));
@@ -651,6 +674,7 @@ try {
   await navigate(alice.id + ':' + 'invalid_token_12345678901234567890');
   await expect(alert).toContainText('no longer valid');
   await expect(frame.locator('#page-chats')).toBeHidden();
+  await checkStatusTheme({page, frame: widgetFrame(), artifacts});
   const rejections = logs.filter((line) => line.startsWith('REJECTION ')).map((line) => line.slice(10));
   assert.deepEqual(rejections.filter((type) => !optionalFixtureErrors.includes(type)), []);
   assert.deepEqual(mediaErrors, []);

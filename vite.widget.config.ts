@@ -4,6 +4,7 @@ import {relative, resolve} from 'node:path';
 import {defineConfig, mergeConfig} from 'vite';
 import upstream from './vite.config';
 import widgetBuildRevision from './scripts/widget-build-revision';
+import {widgetThemeDeclaration} from './scripts/widget-theme-css';
 // @ts-ignore no type declarations
 import keepAsset from './keepAsset.js';
 
@@ -223,7 +224,8 @@ export default mergeConfig(upstream, defineConfig({
   ]},
   css: {postcss: {plugins: [{
     // System fonts only, like emoji; a host adds a webfont in its index.html (docs/widget.md).
-    postcssPlugin: 'widget-system-fonts',
+    postcssPlugin: 'widget-system-fonts-and-corners',
+    Declaration: widgetThemeDeclaration,
     AtRule: {'font-face': (rule) => {
       if(!/font-family:\s*["']?tgico\b/.test(rule.toString())) rule.remove();
     }}

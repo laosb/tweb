@@ -17,7 +17,7 @@ let transport: WidgetTransport;
     });
   },
   history,
-  async echoMedia(id: number, caption: string, text: string, album = false) {
+  async echoMedia(id: number, caption: string, text: string, album = false, entities?: MessageEntity[]) {
     const result = await history(id);
     if(result._ === 'messages.messagesNotModified') throw new Error('Missing history');
     const message = result.messages.find(message => message._ === 'message' && message.message === caption);
@@ -35,7 +35,7 @@ let transport: WidgetTransport;
     if(album) return transport.call('messages.sendMultiMedia', {peer, multi_media: [0, 1].map(index => ({
       _: 'inputSingleMedia', media, random_id: String(Date.now() + index), message: index ? '' : text
     }))});
-    return transport.call('messages.sendMedia', {peer, media, message: text, random_id: String(Date.now())});
+    return transport.call('messages.sendMedia', {peer, media, message: text, entities, random_id: String(Date.now())});
   },
   async pinLatest(id: number) {
     const result = await history(id);
