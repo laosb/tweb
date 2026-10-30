@@ -1,6 +1,5 @@
 import type {ChatRights} from '@appManagers/appChatsManager';
 import appImManager from '@lib/appImManager';
-import rootScope from '@lib/rootScope';
 import appNavigationController from '@components/appNavigationController';
 import appSidebarRight from '@components/sidebarRight';
 import AppSharedMediaTab from '@components/sidebarRight/tabs/sharedMediaTab';
@@ -8,8 +7,7 @@ import Chat from '@components/chat/chat';
 import ChatInput from '@components/chat/input';
 import {ChatType} from '@components/chat/chatType';
 import ChatRecording from '@components/chat/recording/chatRecording';
-import emoticonsDropdown from '@components/emoticonsDropdown';
-import EmojiTab from '@components/emoticonsDropdown/tabs/emoji';
+import {ChatReactionsMenu} from '@components/chat/reactionsMenu';
 import {restrictChatPresentation} from '@/widget/chatRestrictions';
 import {applyWidgetInsets} from '@/widget/insets';
 import {restrictMediaViewer} from '@/widget/mediaViewerRestrictions';
@@ -30,12 +28,12 @@ export function restrictToSupport(supportPeerId: PeerId) {
   const targets = [
     [appImManager, 'setPeer'], [appImManager, 'setInnerPeer'], [appNavigationController, 'overrideHash'],
     [appSidebarRight, 'toggleSidebar'], [AppSharedMediaTab.prototype, 'setPeer'], [Chat.prototype, 'canSend'], [chatInput, 'constructPeerHelpers'],
+    [ChatReactionsMenu.prototype, 'init'], [chatInput, 'checkInlineAutocomplete'],
     [ChatRecording.prototype, 'hasVoiceRecorder'], [ChatRecording.prototype, 'hasAnyRecorder']
   ] as const;
   for(const [object, key] of targets) {
     if(typeof((object as any)[key]) !== 'function') throw new Error('WIDGET_RESTRICTION_TARGET_MISSING: ' + key);
   }
-  if(!('tabsToRender' in emoticonsDropdown)) throw new Error('WIDGET_RESTRICTION_TARGET_MISSING: tabsToRender');
 
   restrictMessageSelection();
   restrictChatStatus();
@@ -75,6 +73,8 @@ export function restrictToSupport(supportPeerId: PeerId) {
   // Photos, videos and files only.
   const constructPeerHelpers = chatInput.constructPeerHelpers;
   chatInput.constructPeerHelpers = function(this: any) {
+    if(!this.excludeParts) throw new Error('WIDGET_RESTRICTION_TARGET_MISSING: excludeParts');
+    this.excludeParts.emoticons = true;
     const result = constructPeerHelpers.call(this);
     for(const button of this.attachMenuButtons as {icon: string, verify: () => boolean}[]) {
       if(!ATTACH_ICONS.has(button.icon)) button.verify = () => false;
@@ -82,8 +82,16 @@ export function restrictToSupport(supportPeerId: PeerId) {
     return result;
   };
 
-  // Unicode emoji only: no sticker or GIF tabs and no custom emoji packs.
-  (emoticonsDropdown as any).tabsToRender = [new EmojiTab({managers: rootScope.managers, noPacks: true})];
+  // The helper stubs do not search or render; do not start inline bot lookups either.
+  chatInput.checkInlineAutocomplete = (): undefined => undefined;
+
+  // Keep the quick row, without an entry into the omitted expanded picker.
+  const initReactions = ChatReactionsMenu.prototype.init;
+  ChatReactionsMenu.prototype.init = function(...args) {
+    if(!('noMoreButton' in this)) throw new Error('WIDGET_RESTRICTION_TARGET_MISSING: noMoreButton');
+    (this as any).noMoreButton = true;
+    return initReactions.apply(this, args);
+  };
 
   return appImManager;
 }
