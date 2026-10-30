@@ -26,7 +26,7 @@ function updatePreview() {
     <style>${widgetCSS}\n${themeStylesheet(theme)}</style></head><body>
     <main class="widget">
       <header class="widget-header"><div class="widget-avatar" aria-hidden="true">B</div>
-        <h1>Customer support</h1><span class="widget-subtitle">We're here to help</span></header>
+        <h1>Customer support</h1></header>
       <div class="widget-history"><ol class="widget-messages">
         <li class="widget-message"><div class="widget-bubble"><p class="widget-text">Hello! How can we help you today?</p><time class="widget-time">10:24</time></div></li>
         <li class="widget-message widget-outgoing"><div class="widget-bubble"><p class="widget-text">I have a question about my order.</p><time class="widget-time">10:25</time></div></li>
