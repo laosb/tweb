@@ -126,10 +126,7 @@ export async function checkInsets({page, frame, artifacts, showMessage, messageM
   await inside(composer, native, 'edit composer stack');
   await frame.evaluate(() => window.appImManager.chat.input.clearHelper());
   await frame.getByRole('textbox', {name: 'Message'}).fill('');
-  await frame.locator('.chat.active .toggle-emoticons').click();
-  await page.waitForTimeout(400);
-  await inside(frame.locator('.emoji-dropdown.active'), native, 'emoji dropdown');
-  await frame.locator('.chat.active .toggle-emoticons').click();
+  await expect(frame.locator('.toggle-emoticons, .emoji-dropdown')).toHaveCount(0);
   await frame.locator('.chat.active .attach-file').click();
   const attachmentMenu = frame.getByRole('menu').filter({has: frame.getByRole('menuitem', {name: 'Document', exact: true})});
   await inside(attachmentMenu, native, 'attach menu');

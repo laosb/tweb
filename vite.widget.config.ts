@@ -30,6 +30,12 @@ const WIDGET_OMITTED_PUBLIC = [
 // code, workers and libraries stay out of the release.
 const omitted = (name: string) => resolve(__dirname, 'src/widget/omitted', name);
 const WIDGET_REPLACED: Record<string, string> = {
+  'src/components/emoticonsDropdown/index.ts': omitted('emoticonsDropdown.ts'),
+  'src/components/emoticonsDropdown/tabs/emoji.ts': omitted('emojiTab.ts'),
+  'src/components/chat/emojiHelper.ts': omitted('autocompleteHelper.ts'),
+  'src/components/chat/stickersHelper.ts': omitted('autocompleteHelper.ts'),
+  'src/components/chat/inlineHelper.ts': omitted('autocompleteHelper.ts'),
+  'src/components/emojiDropdownButton.ts': omitted('emojiDropdownButton.ts'),
   'src/vendor/prism.ts': omitted('prism.ts'),
   'src/codeLanguageDetector.ts': omitted('codeLanguageDetector.ts'),
   'src/lib/tinyld/detect.ts': omitted('languageDetector.ts'),
@@ -47,6 +53,12 @@ const WIDGET_REPLACED: Record<string, string> = {
 // in-app browser, payments, Stars, Premium, boosts and the AI editor. Each builds with every
 // export a function that does nothing, which leaves the rest of the feature out.
 const WIDGET_INERT = [
+  'src/components/emoticonsDropdown/search.tsx',
+  'src/components/emoticonsDropdown/tabs/SuperStickerRenderer.ts', // only unused sticker options in text menus remain
+  'src/components/popups/createPoll/stickersDropdown.ts', // eager export in hotReloadGuardValue
+  'src/components/popups/sendGift.tsx', // the remaining consumer of sticker grid rendering
+  'src/components/mediaEditor/tabs/stickersTab.tsx',
+  'src/components/sidebarLeft/emojiStatusPicker.tsx',
   'src/components/peerProfile.tsx', // hidden profile column, including Blah identity rows
   'src/components/stories/viewer.tsx',
   'src/components/stories/list.tsx',
@@ -198,6 +210,11 @@ export default mergeConfig(upstream, defineConfig({
     buildEnd() {
       // A rename upstream must not silently ship a feature again, nor empty a module in use.
       const ids = new Set(this.getModuleIds());
+      const pickerModules = [...ids].map((id) => relative(__dirname, id)).filter((path) =>
+        path.startsWith('src/components/emoticonsDropdown/') &&
+        path !== 'src/components/emoticonsDropdown/constants.ts' &&
+        !WIDGET_REPLACED[path] && !WIDGET_INERT.includes(path));
+      if(pickerModules.length) this.error('widget picker code is reachable: ' + pickerModules.join(', '));
       const missing = [...Object.keys(WIDGET_REPLACED), ...WIDGET_INERT].filter((path) => !ids.has(resolve(__dirname, path)));
       if(missing.length) this.error('no longer in the build: ' + missing.join(', '));
       const eager = [...omittedLazily].filter((id) => ids.has(id)).map((id) => relative(__dirname, id));
@@ -226,6 +243,13 @@ export default mergeConfig(upstream, defineConfig({
     // System fonts only, like emoji; a host adds a webfont in its index.html (docs/widget.md).
     postcssPlugin: 'widget-system-fonts-and-corners',
     Declaration: widgetThemeDeclaration,
+    Rule: (rule) => {
+      // Shared SCSS still includes these removed panels. Preserve selectors used by
+      // message rendering and the remaining mention/command autocomplete helpers.
+      const selectors = rule.selectors.filter((selector) => !/\.(?:emoji-dropdown|emoji-tone-picker|emoticons|emoji-helper|stickers-helper|inline-helper|toggle-emoticons|btn-menu-reactions-more|media-editor__stickers)\b/.test(selector));
+      if(!selectors.length) rule.remove();
+      else if(selectors.length !== rule.selectors.length) rule.selectors = selectors;
+    },
     AtRule: {'font-face': (rule) => {
       if(!/font-family:\s*["']?tgico\b/.test(rule.toString())) rule.remove();
     }}
