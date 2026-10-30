@@ -4,10 +4,11 @@ The `feedback-widget` branch ships one conversation with the configured DC suppo
 account, rendered by the full client's own chat page. Customers get its message
 bubbles, history, replies, editing and media viewer, and can send text, system emoji,
 photos, videos and files. There are no chat lists, profiles, account settings, calls,
-voice or round messages, message multi-select, contact sharing, sticker or GIF
-pickers, inline bots, custom emoji or attach-menu apps; links to other chats and
-profiles do not navigate. Code blocks show without syntax highlighting, and a poll
-shows only its question.
+voice or round messages, message multi-select, contact sharing, emoji buttons or
+panels, emoji autocomplete, sticker or GIF pickers (including the media editor),
+inline bots, custom emoji or attach-menu apps; links to other chats and profiles
+do not navigate. Code blocks show without syntax highlighting, and a poll
+shows only its question. Quick reactions remain; their expanded picker is omitted.
 Outgoing messages show sending, sent or failed, never read (double checks); message
 menus omit read dates and seen-by lists. The history fills the frame without a
 chat header, pinned bar, search or floating audio player. Support replies use the native group layout: an avatar beside each group and a
@@ -172,13 +173,13 @@ corners and image size once for both schemes. Overrides update without reloading
 | `outgoing-accent-color` | Customer links, reply accents, files, time/status and selection | Per scheme |
 | `danger-color` | Failed status, errors and destructive actions | Per scheme |
 | `support-sender-color` | Sender names, initials avatars and peer-colored replies/quotes | Per scheme |
-| `bubble-radius` | Shared bubble corners; removes tails | Shared |
+| `bubble-radius` | Shared bubble corners; tails, grouped inner corners and bubble media follow | Shared |
 | `incoming-bubble-radius`, `outgoing-bubble-radius` | Override shared bubble corners by direction | Shared |
 | `composer-radius` | Input bar and send button | Shared |
 | `popup-radius` | Dialogs and editor panels | Shared |
-| `menu-radius` | Menus, tooltips, toasts, emoji/autocomplete and viewer controls | Shared |
+| `menu-radius` | Menus, tooltips, toasts, autocomplete and viewer controls | Shared |
 | `button-radius` | Buttons, fields, checkboxes and small control corners | Shared |
-| `media-radius` | Bubble media, thumbnails, file icons, replies/quotes and media previews | Shared |
+| `media-radius` | Thumbnails, file icons, replies/quotes and media previews | Shared |
 | `avatar-radius` | Avatars | Shared |
 | `pill-radius` | Date/service pills, go-down/unread badges, reactions, tracks and scrollbar thumbs | Shared |
 | `inset-top`, `inset-right`, `inset-bottom`, `inset-left` | Host UI clearance (see below) | Shared |
@@ -241,7 +242,8 @@ background color, and pins the URL modes. To keep the
 release small, the config also leaves out what a customer cannot use there: the
 client's screens outside the chat; stories, calls, mini apps, payments, Stars, Premium,
 boosts and the AI editor, whose entry modules build as no-ops; public files for hidden
-features, app icons and manifests; and the modules it replaces with
+features, app icons and manifests; emoji panels, autocomplete and the media editor
+sticker tab; and the modules it replaces with
 [`src/widget/omitted/`](../src/widget/omitted/). The build fails if one of those modules
 is renamed upstream or an omitted screen becomes an eager import. To keep the file count
 low, the client builds as one script and stylesheet, the media editor as one more loaded

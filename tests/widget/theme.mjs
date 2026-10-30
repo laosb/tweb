@@ -42,6 +42,12 @@ export async function checkTheme({page, frame, artifacts, showMessage, messageMi
     await frame.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await page.waitForTimeout(350);
   };
+  const assertTail = async(direction, radius) => {
+    const message = frame.locator(`.bubble.can-have-tail.is-group-last${direction === 'outgoing' ? '.is-out' : ':not(.is-out)'}`).first();
+    await expect(message.locator('.bubble-tail').first()).toHaveCSS('display', 'block');
+    await expect(message.locator('.bubble-content')).toHaveCSS(`border-bottom-${direction === 'outgoing' ? 'right' : 'left'}-radius`, '0px');
+    await expect(message.locator('.bubble-content')).toHaveCSS(`border-bottom-${direction === 'outgoing' ? 'left' : 'right'}-radius`, radius);
+  };
   const sweep = async(label) => {
     const result = await frame.evaluate(({sentinels, circles}) => {
       const probe = document.createElement('span');
@@ -119,6 +125,10 @@ export async function checkTheme({page, frame, artifacts, showMessage, messageMi
         for(const corner of ['top-left', 'top-right', 'bottom-right', 'bottom-left']) {
           const value = css.getPropertyValue(`border-${corner}-radius`);
           if(!parseFloat(value) || value.split(' ').every(v => radii.has(v))) continue;
+          // Group joins stay small; album outer corners subtract the 1px gap.
+          const bubbleContent = el.closest('.bubble-content');
+          if(el.closest('.bubble') && value === '5px' && bubbleContent && getComputedStyle(bubbleContent).getPropertyValue(`border-${corner}-radius`) === value) continue;
+          if(el.matches('.album-item, .album-item-media') && ['5px', ...radii].some(radius => parseFloat(value) === parseFloat(radius) - 1)) continue;
           if(el.matches(circles) && (value === '50%' || value === '100%' || parseFloat(value) >= Math.min(el.clientWidth, el.clientHeight) / 2)) continue;
           const message = `${selector(el)}${suffix}: border-${corner}-radius: ${value}`;
           if(!seen.has(message)) { seen.add(message); issues.push(message); }
@@ -214,7 +224,7 @@ export async function checkTheme({page, frame, artifacts, showMessage, messageMi
         for(const [direction, caption] of [['incoming', 'Theme support link'], ['outgoing', 'Customer link https://example.test']]) {
           await showMessage(messageMids.get(caption));
           const message = frame.locator(`.bubble[data-mid="${messageMids.get(caption)}"]`);
-          await expect(message.locator('.bubble-content')).toHaveCSS('border-radius', themeSentinels[direction + '-bubble-radius'][schemeIndex]);
+          await assertTail(direction, themeSentinels[direction + '-bubble-radius'][schemeIndex]);
           await assertColor(message.locator('.bubble-content'), 'background-color', direction + '-bubble-color', schemeIndex);
           await assertColor(message.locator('.message').last(), 'color', direction + '-text-color', schemeIndex);
           await assertColor(message.locator('.message a').first(), 'color', direction === 'outgoing' ? 'outgoing-accent-color' : 'accent-color', schemeIndex);
@@ -224,20 +234,40 @@ export async function checkTheme({page, frame, artifacts, showMessage, messageMi
         await frame.evaluate(() => {
           for(const direction of ['incoming', 'outgoing']) document.documentElement.style.setProperty(`--widget-${direction}-bubble-radius`, 'initial');
         });
-        await expect(frame.locator('.bubble.is-out .bubble-content').first()).toHaveCSS('border-radius', themeSentinels['bubble-radius'][schemeIndex]);
+        for(const direction of ['incoming', 'outgoing']) await assertTail(direction, themeSentinels['bubble-radius'][schemeIndex]);
         await frame.evaluate(() => {
           for(const direction of ['incoming', 'outgoing']) document.documentElement.style.removeProperty(`--widget-${direction}-bubble-radius`);
         });
+        for(const caption of ['Support photo', 'Theme media', 'Support album']) {
+          await showMessage(messageMids.get(caption));
+          const corners = await frame.locator(`.bubble[data-mid="${messageMids.get(caption)}"]`).evaluate(el => {
+            const content = getComputedStyle(el.querySelector('.bubble-content'));
+            const attachment = el.querySelector('.attachment');
+            const media = getComputedStyle(attachment);
+            // Captions and sender names square the adjoining media edges upstream.
+            const actual = [], expected = [];
+            for(const corner of ['start-start', 'start-end', 'end-start', 'end-end']) {
+              const property = `border-${corner}-radius`;
+              const joined = corner.startsWith('start-') ? attachment.classList.contains('no-brt') || el.classList.contains('must-have-name') : attachment.classList.contains('no-brb');
+              actual.push(media.getPropertyValue(property));
+              expected.push(joined ? '0px' : content.getPropertyValue(property));
+            }
+            const item = el.querySelector('.album-item[style*="border-start-end-radius"]');
+            return {actual, expected, album: item && parseFloat(getComputedStyle(item).borderStartEndRadius), outer: parseFloat(media.borderStartEndRadius)};
+          });
+          assert.deepEqual(corners.actual, corners.expected, caption + ' media corners');
+          if(caption === 'Support album') {
+            assert.ok(corners.album > parseFloat(themeSentinels['media-radius'][schemeIndex]), 'album outer corner follows bubble');
+            assert.equal(corners.album, corners.outer - 1, 'album corner subtracts upstream spacing');
+          }
+        }
         await showMessage(textMid);
         await expect(bubble('Support quoted reply').locator('.quote-like').first()).toHaveCSS('border-radius', themeSentinels['media-radius'][schemeIndex]);
         await expect(frame.locator('.is-date .bubble-content').filter({visible: true}).first()).toHaveCSS('border-radius', themeSentinels['pill-radius'][schemeIndex]);
         const selection = await frame.getByRole('textbox', {name: 'Message'}).evaluate(el => getComputedStyle(el, '::selection').backgroundColor);
         assert.equal(selection, schemeIndex ? 'rgba(255, 82, 193, 0.4)' : 'rgba(206, 20, 124, 0.4)', 'native text selection follows accent');
         await sweep(scheme + '-chat');
-        await frame.locator('.chat.active .toggle-emoticons').click();
-        await settle();
-        await sweep(scheme + '-emoji');
-        await frame.locator('.chat.active .toggle-emoticons').click();
+        await expect(frame.locator('.toggle-emoticons, .emoji-dropdown')).toHaveCount(0);
         const input = frame.getByRole('textbox', {name: 'Message'});
         await input.fill('Theme formatting');
         await input.press('Control+a');
@@ -247,16 +277,10 @@ export async function checkTheme({page, frame, artifacts, showMessage, messageMi
         await screenshot(`sentinels-${scheme}-formatting`);
         await close();
         await input.fill('');
-        // The debug DC has no emoji keyword dictionary; use Unicode results with the
-        // real autocomplete renderer, without adding network fixtures or CSS replicas.
-        await frame.evaluate(async() => {
-          const helper = window.appImManager.chat.input.emojiHelper;
-          await helper.render([{emoji: '😀'}, {emoji: '🙂'}], false, helper.getMiddleware());
-        });
-        await expect(frame.locator('.emoji-helper')).toBeVisible();
+        await input.fill(':smile');
         await settle();
-        await sweep(scheme + '-autocomplete');
-        await frame.evaluate(() => window.appImManager.chat.input.autocompleteHelperController.hideOtherHelpers());
+        await expect(frame.locator('.emoji-helper')).toHaveCount(0);
+        await input.fill('');
         for(const caption of ['Support file', 'Widget file regression', 'Widget album regression', 'Widget audio regression', 'Theme support link', 'Customer link https://example.test']) {
           await showMessage(messageMids.get(caption));
           await settle();
@@ -325,6 +349,7 @@ export async function checkTheme({page, frame, artifacts, showMessage, messageMi
         await popup.locator('.popup-item-media').first().hover({position: {x: 5, y: 5}});
         await frame.locator('.popup-item-media-action-menu > .tgico').first().click();
         await expect(frame.locator('.media-editor__overlay')).toBeVisible();
+        await expect(frame.locator('#media-editor-tab-stickers')).toHaveCSS('display', 'none');
         await settle();
         await sweep(scheme + '-editor');
         await screenshot(`sentinels-${scheme}-editor`);
