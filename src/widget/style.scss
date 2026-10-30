@@ -18,6 +18,15 @@ body.blah-widget.widget-starting #page-chats {
 
 // One conversation in an iframe: no chat list, profile column or chat-level actions.
 body.blah-widget {
+  // Bubble radius drives upstream's corner variables so tails and bubble media follow it.
+  .bubble {
+    --widget-bubble-corner-radius: var(--widget-incoming-bubble-radius, var(--widget-bubble-radius));
+  }
+
+  .bubble.is-out {
+    --widget-bubble-corner-radius: var(--widget-outgoing-bubble-radius, var(--widget-bubble-radius));
+  }
+
   #column-left,
   #column-right,
   .sidebar-left-overlay,
@@ -62,8 +71,10 @@ body.blah-widget {
     inset-inline-end: var(--widget-inset-inline-end);
   }
 
-  .emoji-dropdown {
-    max-height: min(var(--height), calc(100vh - var(--widget-inset-top) - var(--widget-inset-bottom) - var(--message-input-collapsed-height, 48px) - 1.5rem));
+  // Its content is omitted from the lazy media editor chunk too.
+  .media-editor__tabs-item:has(#media-editor-tab-stickers),
+  #media-editor-tab-stickers {
+    display: none;
   }
 
   .autocomplete-helper {
