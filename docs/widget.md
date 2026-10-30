@@ -139,9 +139,10 @@ The embedding page chooses the language with `?lang=zh-hans` before the token fr
 for example `index.html?lang=zh-hans#token=...`. Codes are lowercased and underscores
 become hyphens. The widget requests the `webk_bfb` pack from its DC's configured
 [language-pack repository](https://docs.blahim.com/guides/language-packs/).
-Missing strings fall back to bundled English. Without a valid `lang`, or if the pack
-cannot be loaded within five seconds, the widget starts in English. Each load follows
-the URL, regardless of a previously used language.
+Missing strings fall back to bundled English. A cached pack matching `lang` and the
+current bundled strings applies before rendering and catches up with server differences
+within five seconds; otherwise the widget starts in English and, when `lang` is valid,
+tries a full fetch within the same deadline.
 
 ## Theme with CSS variables
 
