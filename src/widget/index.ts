@@ -9,37 +9,39 @@ import {readToken} from '@/widget/config';
 import {restrictToSupport} from '@/widget/restrictions';
 import {applyWidgetTheme} from '@/widget/theme';
 import {widgetRevision} from '@/widget/revision';
+import I18n, {LangPackKey} from '@lib/langPack';
+import {loadWidgetLanguage} from '@/widget/langPack';
 import '@/widget/style.scss';
 
 const AUTH_ERRORS = new Set(['ACCESS_TOKEN_INVALID', 'ACCESS_TOKEN_EXPIRED', 'AUTH_KEY_UNREGISTERED', 'MANAGED_ACCOUNT_REQUIRED']);
 
-function errorText(code: string) {
+function errorText(code: string): LangPackKey {
   if(AUTH_ERRORS.has(code) || code?.startsWith('USER_MIGRATE_')) {
-    return 'This customer token is no longer valid. Please reopen support from the application.';
+    return 'BfbTokenInvalid';
   }
-  if(code === 'STARTUP_TIMEOUT') return 'Connecting to support took too long. Please check your connection and reconnect.';
-  if(code === 'SUPPORT_UNAVAILABLE') return 'Support is currently unavailable.';
-  return 'Could not connect to support. Please try again.';
+  if(code === 'STARTUP_TIMEOUT') return 'BfbConnectingTimeout';
+  if(code === 'SUPPORT_UNAVAILABLE') return 'BfbSupportUnavailable';
+  return 'BfbConnectionFailed';
 }
 
 /** The only UI before the chat opens: a status line, or an error with a retry. Never a login form. */
-function showStatus(text: string, error?: boolean) {
+function showStatus(key: LangPackKey, error?: boolean) {
   const container = document.getElementById('widget');
   const message = document.createElement('p');
-  message.textContent = text;
+  I18n._i18n(message, key);
   message.setAttribute('role', error ? 'alert' : 'status');
   container.replaceChildren(message);
   if(error) {
     const retry = document.createElement('button');
     retry.type = 'button';
-    retry.textContent = 'Reconnect';
+    I18n._i18n(retry, 'BfbReconnect');
     retry.addEventListener('click', () => location.reload());
     container.append(retry);
   }
 }
 
 function logOut() {
-  showStatus('Signing out…');
+  showStatus('BfbSigningOut');
   return rootScope.managers.apiManager.logOut();
 }
 
@@ -64,17 +66,18 @@ export async function startWidget(authState: AuthState) {
   };
 
   const managers = bindManagersToSession(rootScope.managers);
+  const language = loadWidgetLanguage();
   const signedIn = authState._ === 'authStateSignedIn';
   if(!blah.widget.param) {
-    showStatus('Support has not been configured.');
+    showStatus('BfbNotConfigured');
     return;
   }
   if(!token) {
     if(signedIn) await logOut();
-    else showStatus('This support chat requires a customer token.');
+    else showStatus('BfbTokenRequired');
     return;
   }
-  showStatus('Connecting to support…');
+  showStatus('BfbConnecting');
   // Keep partially constructed chat UI hidden and unfocusable until every stage succeeds.
   const chats = document.getElementById('page-chats');
   chats.inert = true;
@@ -89,6 +92,8 @@ export async function startWidget(authState: AuthState) {
   });
   try {
     await Promise.race([timeout, (async() => {
+      await language;
+      attempt.signal.throwIfAborted();
       // `<user id>:<secret>`: another account's session goes before this one signs in.
       const {userId} = await AccountController.get(getCurrentAccount());
       attempt.signal.throwIfAborted();

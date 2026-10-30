@@ -1,4 +1,4 @@
-import {readConfig, readToken, validateConfig, widgetBlahConfig, WIDGET_CONFIG_QUERY_PARAM, type WidgetConfig} from '@/widget/config';
+import {readConfig, readToken, readWidgetLanguage, validateConfig, widgetBlahConfig, WIDGET_CONFIG_QUERY_PARAM, type WidgetConfig} from '@/widget/config';
 
 export const config: WidgetConfig = {
   dcId: 1, url: 'wss://support.example/exact/path?route=widget',
@@ -56,5 +56,41 @@ it('requires one unambiguous, well-formed token in the fragment', () => {
   expect(readToken('#token=' + encodeURIComponent(token))).toBe(token);
   for(const hash of ['', '#', '#token=', '#token=x', '#token=' + token + '&token=' + token, '#token=%E0%A4%A']) {
     expect(readToken(hash)).toBeUndefined();
+  }
+});
+
+it.each([
+  ['?lang=zh-Hans', 'zh-hans'], ['?lang=PT_BR', 'pt-br'], ['?lang=en', 'en'],
+  ['?lang=es-419', 'es-419'], ['?lang=abc-123-def', 'abc-123-def'],
+  ['', undefined], ['?lang=', undefined], ['?lang=-en', undefined],
+  ['?lang=en--us', undefined], ['?lang=en%20', undefined], ['?lang=en/x', undefined],
+  ['?lang=en&lang=fr', undefined], ['?lang=%E0%A4%A', undefined]
+])('parses the embedding page language %s', (search, expected) => {
+  expect(readWidgetLanguage(search)).toBe(expected);
+});
+
+it('hands the authoritative normalized language to workers with the pins', () => {
+  setMeta(config);
+  history.replaceState(null, '', '?lang=ZH_HANT');
+  try {
+    const {widget} = widgetBlahConfig();
+    expect(widget.lang).toBe('zh-hant');
+    const workerConfig = validateConfig(JSON.parse(widget.param));
+    expect(workerConfig.lang).toBe('zh-hant');
+    expect(validateConfig({...workerConfig, lang: 'bad/lang'}).lang).toBeUndefined();
+  } finally {
+    history.replaceState(null, '', '/');
+  }
+});
+
+it('reads the language from worker pins without a document', () => {
+  const params = new URLSearchParams({[WIDGET_CONFIG_QUERY_PARAM]: JSON.stringify({...config, lang: 'PT_BR'}), lang: 'de'});
+  history.replaceState(null, '', '?' + params);
+  vi.stubGlobal('document', undefined);
+  try {
+    expect(widgetBlahConfig().widget.lang).toBe('pt-br');
+  } finally {
+    vi.unstubAllGlobals();
+    history.replaceState(null, '', '/');
   }
 });

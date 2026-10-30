@@ -552,7 +552,7 @@ async function startApplication() {
     setUnreadMessagesText();
   };
 
-  const langPack = await I18n.getCacheLangPackAndApply();
+  const langPack = await (blah?.widget ? (await import('@/widget/langPack')).applyWidgetEnglish() : I18n.getCacheLangPackAndApply());
   console.timeLog(TIME_LABEL, 'await I18n.getCacheLangPack()');
   const [appSettings] = useAppSettings();
   I18n.setTimeFormat(appSettings.timeFormat);
@@ -587,7 +587,7 @@ async function startApplication() {
 
   // * handle multi-tab language change (will occur extra time in the original tab though)
   rootScope.addEventListener('language_change', (langCode) => {
-    I18n.getLangPackAndApply(langCode);
+    if(!blah?.widget) I18n.getLangPackAndApply(langCode);
   });
 
   /**
