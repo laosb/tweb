@@ -1,7 +1,13 @@
 import PeerTitle from '@components/peerTitle';
 import {useWidgetSelfTitle} from '@/widget/selfTitle';
+import I18n from '@lib/langPack';
+import rootScope from '@lib/rootScope';
 
-vi.mock('@lib/rootScope', () => ({default: {myId: 1}}));
+beforeAll(async() => {
+  vi.spyOn(rootScope, 'dispatchEvent').mockImplementation(() => {});
+  await I18n.getCacheLangPackAndApply();
+  rootScope.myId = 1 as PeerId;
+});
 vi.mock('@components/peerTitle', () => ({default: class {
   public element = document.createElement('span');
   public options = {};
