@@ -8,20 +8,14 @@ body.blah-widget {
   #column-left,
   #column-right,
   .sidebar-left-overlay,
-  .chat .topbar .sidebar-close-button,
-  .chat .topbar .chat-utils,
   .chat-input .toggle-send-gift {
     display: none !important;
   }
 
-  // The back button is absent at every iframe width, including mobile layouts.
-  .chat .topbar {
-    --topbar-close-active-size: 0px;
-    --topbar-avatar-close-gap: 0px;
-
-    .chat-info {
-      padding-inline-start: 0;
-    }
+  // History and sticky dates start at the iframe's top; the composer keeps its inset.
+  .chat {
+    --chat-topbar-height: 0px;
+    --chat-padding-top: 0px;
   }
 
   // Keep the outgoing gradient's stretched pieces inside the iframe's message viewport.

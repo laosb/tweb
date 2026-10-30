@@ -188,16 +188,22 @@ try {
   const frame = page.frameLocator('iframe');
   const widgetFrame = () => page.frames().find((frame) => frame.parentFrame());
   const status = frame.locator('#widget [role="status"]'), alert = frame.locator('#widget [role="alert"]');
-  const title = frame.locator('#column-center .chat .topbar .peer-title');
-  const header = frame.locator('.chat.active .topbar');
   const assertHeader = async() => {
-    await expect(header.locator('.person > .content > .bottom, .info')).toHaveCount(0);
-    const centered = await header.evaluate(el => {
-      const title = el.querySelector('.user-title').getBoundingClientRect();
-      const person = el.querySelector('.person').getBoundingClientRect();
-      return Math.abs((title.top + title.bottom - person.top - person.bottom) / 2);
+    await expect(frame.getByRole('textbox', {name: 'Message'})).toBeVisible();
+    await expect(frame.locator('.chat.active .topbar, .topbar-floating-plates, .pinned-audio')).toHaveCount(0);
+    const layout = await widgetFrame().evaluate(() => {
+      const chat = window.appImManager.chat;
+      return {detached: !chat.topbar.container.isConnected, children: chat.topbar.container.childElementCount,
+        padding: chat.chatPaddingTop[0](), css: getComputedStyle(chat.container).getPropertyValue('--chat-padding-top').trim(),
+        top: chat.bubbles.container.getBoundingClientRect().top,
+        status: !!chat.topbar.status, plates: !!chat.topbar.plates};
     });
-    expect(centered).toBeLessThanOrEqual(2);
+    expect(layout).toEqual({detached: true, children: 0, padding: 0, css: '0px', top: 0, status: false, plates: false});
+  };
+  const messageMids = new Map();
+  const showMessage = async(mid) => {
+    await expect(frame.getByRole('textbox', {name: 'Message'})).toBeVisible();
+    await widgetFrame().evaluate(mid => window.appImManager.setPeer({peerId: window.appImManager.chat.peerId, lastMsgId: mid}), mid);
   };
   const bubble = (text) => frame.locator('#column-center .bubble[data-mid]').filter({hasText: text});
   const send = async(text) => {
@@ -206,11 +212,13 @@ try {
     await page.keyboard.press('Enter');
     await expect(bubble(text)).toBeVisible();
     await expect(bubble(text)).not.toHaveClass(/is-outgoing|is-error/);
+    messageMids.set(text, Number(await bubble(text).getAttribute('data-mid')));
   };
   await expect(status).toContainText('requires a customer token');
+  let navigation = 0;
   const navigate = async(token, reload = false) => {
     await Promise.all([widgetFrame().waitForNavigation(), page.locator('iframe').evaluate((iframe, url) => { iframe.src = url; },
-      origin + '/?debug=1&test=1&' + transportQuery + (reload ? '&reload=1' : '') + '#token=' + encodeURIComponent(token))]);
+      origin + '/?debug=1&test=1&' + transportQuery + '&navigation=' + (++navigation) + (reload ? '&reload=1' : '') + '#token=' + encodeURIComponent(token))]);
   };
   const driver = await context.newPage();
   const driverErrors = [];
@@ -223,7 +231,7 @@ try {
 
   await page.bringToFront();
   await navigate(alice.token);
-  await expect(title).toHaveText('Customer Care');
+  await assertHeader();
   const slots = await widgetFrame().evaluate(() => [1, 2, 3, 4].map(slot => {
     const account = JSON.parse(localStorage.getItem('account' + slot) || '{}');
     return {slot, authorized: !!account.userId, hasAuthKey: Object.keys(account).some(key => /_auth_key$/.test(key) && account[key])};
@@ -231,7 +239,7 @@ try {
   assert.deepEqual(slots.map(slot => slot.hasAuthKey), [true, false, false, false]);
   console.log('Account slots (no keys logged):', JSON.stringify(slots));
 
-  // Exercise the real header and composer across both responsive breakpoints.
+  // Exercise the header-free history and composer across both responsive breakpoints.
   for(const width of [280, 390, 800]) {
     await page.locator('iframe').evaluate((el, width) => el.style.width = width + 'px', width);
     for(const theme of ['light', 'dark']) {
@@ -239,9 +247,6 @@ try {
       for(const rtl of [false, true]) {
         await frame.locator('html').evaluate((el, rtl) => { el.dir = rtl ? 'rtl' : 'ltr'; el.classList.toggle('is-rtl', rtl); }, rtl);
         await assertHeader();
-        await expect(frame.locator('.chat.active .topbar .sidebar-close-button')).toBeHidden();
-        await expect(frame.locator('.chat.active .topbar .chat-info')).toHaveCSS('padding-inline-start', '0px');
-        await expect(frame.locator('.chat.active .topbar')).toHaveCSS('--topbar-close-active-size', '0px');
         const input = frame.getByRole('textbox', {name: 'Message'});
         for(const typed of [false, true]) {
           await input.fill(typed ? 'Hello from the composer' : '');
@@ -259,8 +264,7 @@ try {
   await frame.locator('#column-center .chat.active .attach-file').click();
   const attachmentMenu = frame.getByRole('menu').filter({has: frame.getByRole('menuitem', {name: 'Document', exact: true})});
   await expect(attachmentMenu).toBeVisible();
-  const titleBox = await title.boundingBox();
-  await page.mouse.click(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2);
+  await page.keyboard.press('Escape');
   await expect(attachmentMenu).not.toBeVisible();
   console.log('PASS attachment menu opens on click and closes');
   // Exercise the real file picker handler and popup Send button, independently of
@@ -288,6 +292,9 @@ try {
       expect(history.messages?.filter(message => message.message === caption && message.media?._ === type)).toHaveLength(1);
     }).toPass({timeout: 20_000});
     if(caption) await expect(bubble(caption)).not.toHaveClass(/is-outgoing|is-error/);
+    const sent = caption ? bubble(caption) : frame.locator('.bubble.is-out').filter({has: frame.locator('img.media-photo')}).first();
+    await expect(sent).not.toHaveClass(/is-outgoing|is-error/);
+    messageMids.set(caption, Number(await sent.getAttribute('data-mid')));
     console.log('Media delivered:', caption);
   };
   await sendFiles({name: 'first-photo.png', mimeType: 'image/png', buffer: Buffer.from(photo, 'base64')},
@@ -411,6 +418,9 @@ try {
     await expect(frame.locator('.selection-wrapper, .bubble-select-checkbox')).toHaveCount(0);
   }
   await widgetFrame().evaluate(() => window.I18n.forceRTL(false));
+  // Selection gestures can leave an edit helper; retire it before the sender fixtures.
+  await widgetFrame().evaluate(() => window.appImManager.chat.input.clearHelper());
+  await frame.getByRole('textbox', {name: 'Message'}).fill('');
 
   // Only this conversation, with only text, emoji, photos and files.
   await expect(frame.locator('#column-left')).toBeHidden();
@@ -419,12 +429,165 @@ try {
   await frame.getByRole('button', {name: 'Attach'}).click();
   await expect(frame.locator('.btn-menu .btn-menu-item').filter({visible: true})).toHaveText([/Photo or Video/, /Document/]);
   await page.keyboard.press('Escape');
-  await title.click();
   await expect(frame.locator('#column-right')).toBeHidden();
-  await expect(title).toHaveText('Customer Care');
+  await assertHeader();
 
   await driver.evaluate(async(id) => window.widgetTestDriver.reply(id, 'Thanks! We can help.'), alice.id);
   await expect(bubble('Thanks! We can help.')).toBeVisible();
+  await driver.evaluate(id => window.widgetTestDriver.reply(id, 'A second support message.'), alice.id);
+  await expect(bubble('A second support message.')).toBeVisible();
+  const assertSenders = async() => {
+    const first = bubble('Thanks! We can help.');
+    const second = bubble('A second support message.');
+    await expect(first).toHaveClass(/is-group-first/);
+    await expect(first.locator('.name .peer-title').first()).toHaveText('Customer Care');
+    await expect(first.locator('.name').first()).toBeVisible();
+    await expect(first.locator('.name a[href], .name [tabindex], .name [role=link]')).toHaveCount(0);
+    await expect(second.locator('.name').first()).toBeHidden();
+    const group = first.locator('xpath=..');
+    await expect(group.locator('.bubbles-group-avatar')).toHaveCount(1);
+    await expect(group.locator('.bubbles-group-avatar')).toBeVisible();
+    await expect(frame.locator('.bubble.is-out .name')).toHaveCount(0);
+    await expect(frame.locator('.bubbles-group').filter({has: frame.locator('.bubble.is-out')}).locator('.bubbles-group-avatar')).toHaveCount(0);
+    await assertHeader();
+  };
+  await assertSenders();
+  await widgetFrame().evaluate(peerId => window.rootScope.dispatchEvent('peer_title_edit', {peerId}), support.id);
+  await assertSenders();
+  await expect(bubble('Thanks! We can help.').getByRole('link', {name: 'Customer Care'})).toHaveCount(0);
+  for(const target of [bubble('Thanks! We can help.').locator('.name .peer-title').first(),
+    bubble('Thanks! We can help.').locator('xpath=..').locator('.bubbles-group-avatar')]) {
+    await target.dispatchEvent('keydown', {key: 'Enter'});
+    await target.dispatchEvent('mousedown');
+    await target.click({modifiers: ['Control']});
+    await target.click();
+    await expect(frame.locator('#column-right')).toBeHidden();
+    await expect(frame.locator('.popup')).toHaveCount(0);
+    await expect.poll(() => widgetFrame().evaluate(() => window.appImManager.chat.peerId)).toBe(support.id);
+  }
+  for(const width of [390, 280]) {
+    await page.locator('iframe').evaluate((el, width) => el.style.width = width + 'px', width);
+    for(const theme of ['light', 'dark']) {
+      await page.emulateMedia({colorScheme: theme});
+      await expect(frame.locator('html')).toHaveClass(theme === 'dark' ? /night/ : /^(?!.*night)/);
+      for(const rtl of [false, true]) {
+        await widgetFrame().evaluate(rtl => window.I18n.forceRTL(rtl), rtl);
+        await widgetFrame().evaluate(() => window.appImManager.chat.bubbles.scrollToEnd());
+        await assertSenders();
+        assert(await frame.locator('body').evaluate(el => el.scrollWidth <= el.clientWidth));
+        await page.waitForTimeout(1500);
+        await page.locator('iframe').screenshot({path: `${artifacts}/chat-${width}-${theme}-${rtl ? 'rtl' : 'ltr'}.png`});
+      }
+    }
+  }
+  await widgetFrame().evaluate(() => window.I18n.forceRTL(false));
+  await page.emulateMedia({colorScheme: 'light'});
+  await page.locator('iframe').evaluate(el => el.style.width = '390px');
+  await Promise.all([widgetFrame().waitForNavigation(), widgetFrame().evaluate(() => location.reload())]);
+  await assertSenders();
+
+  // The support driver reuses media it received, keeping the real server/upload path.
+  for(const [caption, text, album] of [
+    ['Widget photo regression', 'Support photo', false],
+    ['Widget file regression', 'Support file', false],
+    ['Widget video regression', 'Support video', false],
+    ['Widget photo regression', 'Support album', true]
+  ]) {
+    await send('Please show ' + text);
+    await driver.evaluate(({id, caption, text, album}) => window.widgetTestDriver.echoMedia(id, caption, text, album),
+      {id: alice.id, caption, text, album});
+    const incoming = bubble(text).filter({hasNot: frame.locator('.time-sending-status')});
+    await expect(incoming).toBeVisible();
+    messageMids.set(text, Number(await incoming.getAttribute('data-mid')));
+    if(text === 'Support file') await expect(incoming.locator('.name .peer-title').first()).toHaveText('Customer Care');
+    else await expect(incoming.locator('.name')).toHaveCount(0);
+    await expect(incoming.locator('xpath=..').locator('.bubbles-group-avatar')).toBeVisible();
+  }
+  await driver.evaluate(id => window.widgetTestDriver.quotedReply(id, 'Support quoted reply'), alice.id);
+  await expect(bubble('Support quoted reply').locator('.reply')).toBeVisible();
+  await driver.evaluate(id => window.widgetTestDriver.pinLatest(id), alice.id);
+  await expect(frame.locator('.bubble.service').filter({hasText: /pinned/i})).toBeVisible();
+  await assertHeader();
+
+  await Promise.all([widgetFrame().waitForNavigation(), widgetFrame().evaluate(() => location.reload())]);
+  for(const caption of ['Support photo', 'Support file', 'Support video', 'Support album']) {
+    const incoming = bubble(caption).filter({hasNot: frame.locator('.time-sending-status')});
+    if(caption === 'Support file') await expect(incoming.locator('.name .peer-title').first()).toHaveText('Customer Care');
+    else await expect(incoming.locator('.name')).toHaveCount(0);
+    await expect(incoming.locator('xpath=..').locator('.bubbles-group-avatar')).toHaveCount(1);
+  }
+  await expect(frame.locator('.bubble.service').filter({hasText: /pinned/i})).toBeVisible();
+  await assertHeader();
+
+  await showMessage(messageMids.get('Support photo'));
+  const supportPhoto = frame.locator(`.bubble[data-mid="${messageMids.get('Support photo')}"]`);
+  for(const width of [390, 280]) {
+    await page.locator('iframe').evaluate((el, width) => el.style.width = width + 'px', width);
+    for(const theme of ['light', 'dark']) {
+      await page.emulateMedia({colorScheme: theme});
+      await expect(frame.locator('html')).toHaveClass(theme === 'dark' ? /night/ : /^(?!.*night)/);
+      await supportPhoto.scrollIntoViewIfNeeded();
+      await expect(supportPhoto.locator('xpath=..').locator('.bubbles-group-avatar')).toBeVisible();
+      await page.waitForTimeout(1500);
+      await page.locator('iframe').screenshot({path: `${artifacts}/chat-photo-${width}-${theme}.png`});
+    }
+  }
+  await page.emulateMedia({colorScheme: 'light'});
+
+  const viewer = frame.locator('.media-viewer-whole.active');
+  const assertViewer = async(name) => {
+    await expect(viewer).toBeVisible();
+    await expect(viewer.locator('.media-viewer-name')).toHaveText(name);
+    await expect(viewer.getByRole('button', {name: 'Forward', exact: true})).toHaveCount(0);
+    expect(await widgetFrame().evaluate(() => window.appMediaViewer.buttons.forward.isConnected)).toBe(false);
+    await expect(viewer.locator('.media-viewer-userpic')).toHaveCount(1);
+  };
+  for(const [width, rtl] of [[800, false], [280, false], [280, true]]) {
+    await widgetFrame().evaluate(rtl => window.I18n.forceRTL(rtl), rtl);
+    await page.locator('iframe').evaluate((el, width) => el.style.width = width + 'px', width);
+    for(const [caption, name] of [['', 'Me'], ['Widget photo regression', 'Me'], ['Widget album regression', 'Me'], ['Support photo', 'Customer Care']]) {
+      // History is virtualized after the larger support fixtures and reload.
+      await showMessage(messageMids.get(caption));
+      const photoBubble = caption ? bubble(caption).filter({has: frame.locator('img.media-photo')}) :
+        frame.locator('.bubble.is-out').filter({has: frame.locator('img.media-photo')}).first();
+      await photoBubble.locator('img.media-photo').last().click();
+      await assertViewer(name);
+      await widgetFrame().evaluate(() => window.appMediaViewer.setMoverAnimationPromise);
+      await page.waitForTimeout(300);
+      if(caption === 'Widget photo regression') {
+        await expect(viewer.locator('.media-viewer-caption')).toContainText(caption);
+        await page.locator('iframe').screenshot({path: `${artifacts}/viewer-customer-${width}-${rtl ? 'rtl' : 'ltr'}.png`});
+      }
+      if(width === 280) {
+        await viewer.getByRole('button', {name: 'More', exact: true}).click();
+        const menu = frame.getByRole('menu').filter({visible: true});
+        await expect(menu).toBeVisible();
+        await expect(menu.getByRole('menuitem', {name: /forward|share/i})).toHaveCount(0);
+        await page.keyboard.press('Escape');
+      }
+      if(width === 800) {
+        await widgetFrame().evaluate(() => window.appMediaViewer.buttons.zoomin.dataset.widgetTestZoom = '');
+        await viewer.locator('[data-widget-test-zoom]').click();
+        await expect.poll(() => widgetFrame().evaluate(() => window.appMediaViewer.isZooming)).toBe(true);
+        await viewer.locator('[data-widget-test-zoom]').click();
+        await expect.poll(() => widgetFrame().evaluate(() => window.appMediaViewer.isZooming)).toBe(false);
+      }
+      const mid = await widgetFrame().evaluate(() => window.appMediaViewer.target.mid);
+      await page.waitForTimeout(400);
+      await page.keyboard.press(!!caption !== rtl ? 'ArrowLeft' : 'ArrowRight');
+      await expect.poll(() => widgetFrame().evaluate(() => window.appMediaViewer.target.mid)).not.toBe(mid);
+      await page.waitForTimeout(400);
+      await page.keyboard.press(!!caption !== rtl ? 'ArrowRight' : 'ArrowLeft');
+      await expect.poll(() => widgetFrame().evaluate(() => window.appMediaViewer.target.mid)).toBe(mid);
+      await assertViewer(name);
+      await page.waitForTimeout(400);
+      await page.keyboard.press('Escape');
+      // active clears at the start of closing; wait for the actual teardown.
+      await expect(frame.locator('.media-viewer-whole')).toHaveCount(0);
+    }
+  }
+  await page.locator('iframe').evaluate(el => el.style.width = '390px');
+  await widgetFrame().evaluate(() => window.I18n.forceRTL(false));
   // CSS variables live in the iframe document, including on a host-served theme.
   await frame.locator('html').evaluate((html) => {
     html.style.setProperty('--widget-chat-background-color', 'rgb(240, 248, 255)');
@@ -432,6 +595,7 @@ try {
     html.style.setProperty('--widget-outgoing-bubble-color', 'rgb(30, 80, 120)');
   });
   await expect(frame.locator('.blah-widget-background')).toHaveCSS('background-color', 'rgb(240, 248, 255)');
+  await showMessage(messageMids.get('A customer can ask for help first.'));
   const outgoing = bubble('A customer can ask for help first.').locator('.bubble-content');
   await expect(outgoing).toHaveCSS('border-top-left-radius', '4px');
   await expect(outgoing).toHaveCSS('background-color', 'rgb(30, 80, 120)');
@@ -452,8 +616,6 @@ try {
     '<style>:root.night { --widget-incoming-bubble-color: rgb(20, 40, 60); }</style>'));
   await page.emulateMedia({colorScheme: 'dark'});
   await expect(frame.locator('html')).toHaveClass(/\bnight\b/);
-  await expect.poll(() => frame.locator('#column-center .chat .topbar').evaluate((el) => getComputedStyle(el).backgroundColor))
-  .not.toBe('rgb(255, 255, 255)');
   await expect(bubble('Thanks! We can help.').locator('.bubble-content')).toHaveCSS('background-color', 'rgb(20, 40, 60)');
   await page.screenshot({path: artifacts + '/iframe-dark.png'});
   await page.emulateMedia({colorScheme: 'light'});
@@ -462,7 +624,7 @@ try {
 
   // A new document must retire the saved authorization before switching users.
   await navigate(bob.token, true);
-  await expect(title).toHaveText('Customer Care');
+  await assertHeader();
   await expect(bubble('A customer can ask for help first.')).toHaveCount(0);
   const database = new DatabaseSync(dir + '/data.sqlite');
   await expect.poll(() => database.prepare('SELECT count(*) AS n FROM authorizations WHERE user_id = ?').get(alice.id).n).toBe(0);
@@ -470,7 +632,7 @@ try {
   await send('A separate customer.');
   // Changing just the hash uses the same transition while the document lives.
   await Promise.all([widgetFrame().waitForNavigation(), widgetFrame().evaluate((token) => { location.hash = 'token=' + encodeURIComponent(token); }, alice.token)]);
-  await expect(bubble('A customer can ask for help first.')).toBeVisible();
+  await expect(bubble('📊 How did we do?')).toBeVisible();
   await expect(bubble('A separate customer.')).toHaveCount(0);
   await expect.poll(() => database.prepare('SELECT count(*) AS n FROM authorizations WHERE user_id = ?').get(bob.id).n).toBe(0);
   await Promise.all([widgetFrame().waitForNavigation(), widgetFrame().evaluate(() => { location.hash = ''; })]);
@@ -478,7 +640,7 @@ try {
   await expect.poll(() => database.prepare('SELECT count(*) AS n FROM authorizations WHERE user_id = ?').get(alice.id).n).toBe(0);
   // Revoking a token must also refuse a reload with its previously valid key.
   await navigate(alice.token);
-  await expect(bubble('A customer can ask for help first.')).toBeVisible();
+  await expect(bubble('📊 How did we do?')).toBeVisible();
   database.prepare('UPDATE users SET bot_token_hash = ? WHERE id = ?')
     .run(createHash('sha256').update(randomBytes(32)).digest('hex'), alice.id);
   await Promise.all([widgetFrame().waitForNavigation(), widgetFrame().evaluate(() => location.reload())]);
@@ -509,7 +671,7 @@ try {
   assert.deepEqual(urls.filter((url) => /\.(woff2?|ttf|otf)\b/.test(url) && !url.includes('/assets/fonts/tgico.ttf')), []);
   const local = [origin, origin.replace('127.0.0.1', 'localhost'), 'blob:', 'data:'];
   assert.deepEqual(urls.filter((url) => !local.some((prefix) => url.startsWith(prefix))), []);
-  console.log('Widget browser checks passed: real token auth, single checks after server reads and reload (text/media/albums), centered header without subtitle, no read-date menu, captionless photo-first contact, resized photos, video/file upload and download, decoded video after reload, LTR/RTL selection disabled, send/reply, reload, single-chat restrictions, token switch/logout across loads and hash changes, revoked/missing/invalid tokens, cross-origin iframe layout, light/dark theme variables, no BlahDiem.');
+  console.log('Widget browser checks passed: real token auth, single checks after server reads and reload (text/media/albums), header-free history, group-style support senders, private viewer authors and actions, no read-date menu, captionless photo-first contact, resized photos, video/file upload and download, decoded video after reload, LTR/RTL selection disabled, send/reply, reload, single-chat restrictions, token switch/logout across loads and hash changes, revoked/missing/invalid tokens, cross-origin iframe layout, light/dark theme variables, no BlahDiem.');
 } catch(error) {
   await writeFile(artifacts + '/server.log', serverLog);
   await browser?.contexts()[0]?.pages()[0]?.screenshot({path: artifacts + '/failure.png'}).catch(() => {});
