@@ -10,6 +10,8 @@ import {ChatType} from '@components/chat/chatType';
 import ChatRecording from '@components/chat/recording/chatRecording';
 import emoticonsDropdown from '@components/emoticonsDropdown';
 import EmojiTab from '@components/emoticonsDropdown/tabs/emoji';
+import {restrictChatPresentation} from '@/widget/chatRestrictions';
+import {restrictMediaViewer} from '@/widget/mediaViewerRestrictions';
 import {restrictChatStatus} from '@/widget/statusRestrictions';
 import {restrictMessageSelection} from '@/widget/selectionRestrictions';
 
@@ -36,6 +38,8 @@ export function restrictToSupport(supportPeerId: PeerId) {
 
   restrictMessageSelection();
   restrictChatStatus();
+  restrictChatPresentation();
+  restrictMediaViewer();
 
   // Every way into another chat, a profile or the chat list ends in these two.
   const isSupportChat = (options: {peerId?: PeerId, type?: ChatType}) => {

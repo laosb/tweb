@@ -3,8 +3,8 @@ import {validateConfig, type WidgetConfig} from '@/widget/config';
 
 // `schemes` fields take a light and a dark value; the others apply to both.
 export const themeFields = [
-  {name: 'surface-color', label: 'Header and composer', property: 'color', schemes: true},
-  {name: 'text-color', label: 'Header text', property: 'color', schemes: true},
+  {name: 'surface-color', label: 'Composer surface', property: 'color', schemes: true},
+  {name: 'text-color', label: 'Composer text', property: 'color', schemes: true},
   {name: 'chat-background-color', label: 'Chat background', property: 'color', schemes: true},
   {name: 'accent-color', label: 'Accent', property: 'color', schemes: true},
   {name: 'incoming-bubble-color', label: 'Support bubble', property: 'color', schemes: true},
