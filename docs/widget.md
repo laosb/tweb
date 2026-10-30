@@ -23,13 +23,14 @@ Download the latest [widget archive](https://feedback-widget.blahim.com/feedback
 and [SHA256SUMS](https://feedback-widget.blahim.com/SHA256SUMS), or use a dated tweb GitHub release,
 verify it with `sha256sum -c SHA256SUMS`, and extract the archive. It contains the
 compiled client, the original unconfigured `index.html`, `setup.html` and the
-static files they load. The [hosted setup page](https://feedback-widget.blahim.com/setup.html) configures
-the latest archive; use the setup page inside a dated archive for that version.
-No build is needed to configure a release:
+static files they load. The widget itself needs no BlahDiem: it reads its pins from
+`index.html` and never contacts the CDN. No build is needed to configure a release:
 
-1. Serve the extracted folder on an HTTPS origin allowed by the BlahDiem CDN and
-   open `setup.html`. Use HTTP on localhost only with a CDN that allows that origin;
-   opening the files directly with `file://` is not supported.
+1. Open the [hosted setup page](https://feedback-widget.blahim.com/setup.html) to
+   configure the latest release. For a dated release, serve the archive's
+   `setup.html` and its files on an HTTPS origin allowed by the BlahDiem CDN.
+   Only setup needs that allowance. HTTP on localhost also requires CDN allowance;
+   `file://` is not supported. Alternatively, set the documented meta tags below by hand.
 2. Enter the DC's profile domain and select **Verify DC**. BlahDiem verifies its
    signed public profile, including the domain and validity, before setup selects
    its TLS WebSocket endpoint and RSA public key. The profile publisher must allow
@@ -40,15 +41,14 @@ No build is needed to configure a release:
    Blank values keep the client's defaults; the preview sends no messages and
    needs no account.
 5. Select **Download index.html** and replace the extracted entry with that file.
-   Keep the release's other files beside it, then serve the widget over HTTPS.
+   Keep the release's other files beside it, then serve the widget on any suitable
+   HTTPS origin; no BlahDiem CDN allowance is needed.
    Repeat setup when deployment pins change; the running widget does not refresh them.
 
 Setup uses the same pinned CDN release and `BLAH_DIEM_CDN_HOST` build override as
 the [Blah client](blah.md#update-and-verify-the-wasm-adapter). The default CDN allows
 HTTPS `*.blahim.com` origins. A custom CDN must allow the setup origin for both its
-JavaScript and WASM. Only setup loads the runtime: the running widget takes its
-DC and application pins from its `index.html` and never contacts the CDN, so it can be
-hosted on any suitable HTTPS origin. For GitHub builds, set the `BLAH_DIEM_CDN_HOST`
+JavaScript and WASM. For GitHub builds, set the `BLAH_DIEM_CDN_HOST`
 repository variable to use your own CDN hostname.
 
 To build from source:
