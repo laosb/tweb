@@ -552,7 +552,7 @@ async function startApplication() {
     setUnreadMessagesText();
   };
 
-  const langPack = await (blah?.widget ? (await import('@/widget/langPack')).applyWidgetEnglish() : I18n.getCacheLangPackAndApply());
+  const langPack = await (blah?.widget ? (await import('@/widget/langPack')).applyWidgetLanguage() : I18n.getCacheLangPackAndApply());
   console.timeLog(TIME_LABEL, 'await I18n.getCacheLangPack()');
   const [appSettings] = useAppSettings();
   I18n.setTimeFormat(appSettings.timeFormat);
