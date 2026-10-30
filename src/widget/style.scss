@@ -1,3 +1,5 @@
+@use "../scss/mixins/respondTo" as *;
+
 :where(:root) {
   --widget-inset-top: env(safe-area-inset-top, 0px);
   --widget-inset-right: env(safe-area-inset-right, 0px);
@@ -90,6 +92,42 @@ body.blah-widget {
     top: var(--widget-inset-top);
     left: var(--widget-inset-left);
     right: var(--widget-inset-right);
+    isolation: isolate;
+
+    // Extend the painted panel, keeping upstream's content and switcher geometry.
+    &::before {
+      content: '';
+      position: absolute;
+      top: calc(-1 * var(--widget-inset-top));
+      left: calc(-1 * var(--widget-inset-left));
+      right: calc(-1 * var(--widget-inset-right));
+      bottom: 0;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    @include respond-to(handhelds) {
+      background: none;
+
+      &::before {
+        background: var(--mv-panel-background-handhelds);
+      }
+    }
+  }
+
+  @include respond-to(handhelds) {
+    .media-viewer-topbar-left,
+    .media-viewer-author,
+    .media-viewer-author-right {
+      min-width: 0;
+    }
+
+    .media-viewer-name,
+    .media-viewer-date {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
 
   .media-viewer-caption,
