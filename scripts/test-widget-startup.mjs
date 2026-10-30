@@ -33,7 +33,9 @@ export const managers = {
 `;
 const stubs = {
   '@config/blah': 'export default {widget: {param: true}};',
-  '@lib/rootScope': 'import {managers} from "fixture-state"; export default {managers};',
+  // The real scope (its events serve the language pack) with fixture managers and no worker to forward events to.
+  '@lib/rootScope': `import {managers} from "fixture-state"; import rootScope from "./src/lib/rootScope";
+    rootScope.managers = managers; rootScope.dispatchEvent = rootScope.dispatchEventSingle; export default rootScope;`,
   '@lib/accounts/accountController': 'export default {get: async() => ({userId: 123})};',
   '@lib/accounts/getCurrentAccount': 'export const getCurrentAccount = () => 1;',
   '@components/appNavigationController': 'export default {reload: () => location.reload()};',
@@ -48,11 +50,12 @@ const stubs = {
 };
 const bundle = await build({
   stdin: {contents: `import '@helpers/peerIdPolyfill'; import {startWidget} from '@/widget/index';
-    import {fixture} from 'fixture-state'; fixture.done = startWidget({_: 'authStateSignedIn'});`,
-  resolveDir: repo, loader: 'ts'}, bundle: true, write: false, format: 'esm',
+    import {applyWidgetLanguage} from '@/widget/langPack'; import {fixture} from 'fixture-state';
+    fixture.done = applyWidgetLanguage().then(() => startWidget({_: 'authStateSignedIn'}));`,
+  resolveDir: repo, loader: 'ts'}, bundle: true, write: false, format: 'esm', define: {'import.meta.env': '{}'},
   plugins: [{name: 'startup-fixture', setup(plugin) {
     plugin.onResolve({filter: /.*/}, args => args.path in stubs ? {path: args.path, namespace: 'fixture'} : undefined);
-    plugin.onLoad({filter: /.*/, namespace: 'fixture'}, args => ({contents: stubs[args.path], loader: 'ts'}));
+    plugin.onLoad({filter: /.*/, namespace: 'fixture'}, args => ({contents: stubs[args.path], loader: 'ts', resolveDir: repo}));
     plugin.onLoad({filter: /\.scss$/}, () => ({contents: '', loader: 'js'}));
   }}]
 });
