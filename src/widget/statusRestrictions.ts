@@ -10,7 +10,7 @@ export function restrictChatStatus() {
   const topbar = ChatTopbar.prototype as any;
   const targets = [
     [bubbles, 'setBubbleSendingStatus'], [contextMenu, 'setButtons'],
-    [topbar, 'createStatus'], [topbar, 'construct']
+    [topbar, 'createStatus']
   ] as const;
   for(const [object, key] of targets) {
     if(typeof(object[key]) !== 'function') throw new Error('WIDGET_RESTRICTION_TARGET_MISSING: ' + key);
@@ -34,11 +34,4 @@ export function restrictChatStatus() {
 
   // No presence requests, refresh timer or typing/user-update listeners for this line.
   topbar.createStatus = (): undefined => undefined;
-  const construct = topbar.construct;
-  topbar.construct = function() {
-    const result = construct.call(this);
-    // Keep the detached subtitle for upstream cleanup; remove its entire layout row.
-    this.container.querySelector('.person > .content > .bottom')?.remove();
-    return result;
-  };
 }

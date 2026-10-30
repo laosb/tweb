@@ -38,6 +38,7 @@ const WIDGET_REPLACED: Record<string, string> = {
   'src/lib/calls/conferenceInvitesController.ts': omitted('callsController.ts'),
   'src/lib/calls/rtmpCallsController.ts': omitted('callsController.ts'),
   'src/components/topbarCall.tsx': omitted('topbarCall.ts'),
+  'src/components/chat/audio.tsx': omitted('chatAudio.ts'),
   'src/components/chat/bubbles/chatBackground.tsx': omitted('chatBackground.ts'),
   'src/helpers/math/loadTemml.ts': omitted('loadTemml.ts')
 };

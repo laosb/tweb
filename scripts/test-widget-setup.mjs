@@ -92,6 +92,10 @@ try {
   await page.getByLabel('Customer bubble (dark)', {exact: true}).fill('#8fd3c1');
   await page.getByLabel('Bubble radius', {exact: true}).fill('8px');
   await page.getByLabel('Chat background (light)', {exact: true}).fill('#f6f2ec');
+  await expect(preview.locator('.widget-header, header')).toHaveCount(0);
+  await expect(preview.locator('.widget-sender')).toHaveText(['Customer support', 'Customer support']);
+  await expect(preview.locator('.widget-avatar')).toHaveCount(2);
+  await expect(preview.locator('.widget-outgoing .widget-avatar, .widget-outgoing .widget-sender')).toHaveCount(0);
   await expect(preview.locator('.widget-outgoing .widget-bubble')).toHaveCSS('background-color', 'rgb(35, 83, 71)');
   await expect(preview.locator('.widget-outgoing .widget-bubble')).toHaveCSS('border-radius', '8px');
   await expect(preview.locator('.widget-history')).toHaveCSS('background-color', 'rgb(246, 242, 236)');
@@ -167,7 +171,7 @@ try {
   await page.screenshot({path: artifacts + '/setup.png', fullPage: true});
   await page.setViewportSize({width: 320, height: 720});
   assert(await page.locator('body').evaluate(body => body.scrollWidth <= body.clientWidth));
-  await expect(preview.getByRole('heading', {name: 'Customer support'})).toBeVisible();
+  await expect(preview.locator('.widget-sender').first()).toBeVisible();
 
   // Invalid signatures, wrong domains, expiry, HTTP failures and insecure-only
   // profiles must all revoke the previous valid configuration.
