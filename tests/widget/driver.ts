@@ -17,6 +17,37 @@ let transport: WidgetTransport;
     });
   },
   history,
+  async echoMedia(id: number, caption: string, text: string, album = false) {
+    const result = await history(id);
+    if(result._ === 'messages.messagesNotModified') throw new Error('Missing history');
+    const message = result.messages.find(message => message._ === 'message' && message.message === caption);
+    if(message?._ !== 'message') throw new Error('Missing media message');
+    const source = message.media;
+    const media = source?._ === 'messageMediaPhoto' && source.photo?._ === 'photo' ? {
+      _: 'inputMediaPhoto' as const, pFlags: {}, id: {_: 'inputPhoto' as const, id: source.photo.id,
+        access_hash: source.photo.access_hash, file_reference: source.photo.file_reference}
+    } : source?._ === 'messageMediaDocument' && source.document?._ === 'document' ? {
+      _: 'inputMediaDocument' as const, pFlags: {}, id: {_: 'inputDocument' as const, id: source.document.id,
+        access_hash: source.document.access_hash, file_reference: source.document.file_reference}
+    } : undefined;
+    if(!media) throw new Error('Missing reusable media');
+    const peer = await customer(id);
+    if(album) return transport.call('messages.sendMultiMedia', {peer, multi_media: [0, 1].map(index => ({
+      _: 'inputSingleMedia', media, random_id: String(Date.now() + index), message: index ? '' : text
+    }))});
+    return transport.call('messages.sendMedia', {peer, media, message: text, random_id: String(Date.now())});
+  },
+  async pinLatest(id: number) {
+    const result = await history(id);
+    if(result._ === 'messages.messagesNotModified') throw new Error('Missing history');
+    return transport.call('messages.updatePinnedMessage', {peer: await customer(id), id: result.messages[0].id});
+  },
+  async quotedReply(id: number, text: string) {
+    const result = await history(id);
+    if(result._ === 'messages.messagesNotModified') throw new Error('Missing history');
+    return transport.call('messages.sendMessage', {peer: await customer(id), message: text,
+      reply_to: {_: 'inputReplyToMessage', reply_to_msg_id: result.messages[0].id}, random_id: String(Date.now())});
+  },
   async read(id: number) {
     return transport.call('messages.readHistory', {peer: await customer(id), max_id: 0});
   },

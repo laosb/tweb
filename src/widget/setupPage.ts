@@ -25,12 +25,10 @@ function updatePreview() {
     <meta name="viewport" content="width=device-width, initial-scale=1"><title>Support preview</title>
     <style>${widgetCSS}\n${themeStylesheet(theme)}</style></head><body>
     <main class="widget">
-      <header class="widget-header"><div class="widget-avatar" aria-hidden="true">B</div>
-        <h1>Customer support</h1></header>
       <div class="widget-history"><ol class="widget-messages">
-        <li class="widget-message"><div class="widget-bubble"><p class="widget-text">Hello! How can we help you today?</p><time class="widget-time">10:24</time></div></li>
+        <li class="widget-message"><div class="widget-avatar" aria-hidden="true">C</div><div class="widget-bubble"><div class="widget-sender" dir="auto">Customer support</div><p class="widget-text">Hello! How can we help you today?</p><time class="widget-time">10:24</time></div></li>
         <li class="widget-message widget-outgoing"><div class="widget-bubble"><p class="widget-text">I have a question about my order.</p><time class="widget-time">10:25</time></div></li>
-        <li class="widget-message"><div class="widget-bubble"><p class="widget-text">Of course. Let's take a look together.</p><time class="widget-time">10:25</time></div></li>
+        <li class="widget-message"><div class="widget-avatar" aria-hidden="true">C</div><div class="widget-bubble"><div class="widget-sender" dir="auto">Customer support</div><p class="widget-text">Of course. Let's take a look together.</p><time class="widget-time">10:25</time></div></li>
       </ol></div>
       <div class="widget-composer"><textarea aria-label="Sample message" placeholder="Write a message…" disabled></textarea>
         <div class="widget-actions"><button disabled>Attach file</button><span class="widget-limit">Up to 20 MB</span><button class="widget-send" disabled>Send</button></div>

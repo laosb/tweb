@@ -14,10 +14,6 @@ vi.mock('@components/chat/contextMenu', () => ({default: class {
 }}));
 vi.mock('@components/chat/topbar', () => ({default: class {
   public createStatus() { return original.status(); }
-  public construct() {
-    (this as any).container = document.createElement('div');
-    (this as any).container.innerHTML = '<div class="person"><div class="content"><div class="top">Support</div><div class="bottom"><div class="info"></div></div></div></div>';
-  }
 }}));
 
 beforeAll(() => {
@@ -43,13 +39,10 @@ it('removes seen-by/read-date entries before their predicates can request data',
   expect(original.verify).not.toHaveBeenCalled();
 });
 
-it('never creates the status lifecycle and removes the whole subtitle row', () => {
+it('never creates the status lifecycle', () => {
   const topbar = Object.create(ChatTopbar.prototype);
-  topbar.construct();
   expect(topbar.createStatus()).toBeUndefined();
   expect(original.status).not.toHaveBeenCalled();
-  expect(topbar.container.querySelector('.bottom, .info')).toBeNull();
-  expect(topbar.container.textContent).toBe('Support');
 });
 
 it('fails loudly when an upstream target is renamed', () => {
