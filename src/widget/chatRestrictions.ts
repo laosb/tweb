@@ -3,6 +3,7 @@ import ChatTopbar from '@components/chat/topbar';
 import ChatBubbles from '@components/chat/bubbles';
 import PeerTitle from '@components/peerTitle';
 import cancelEvent from '@helpers/dom/cancelEvent';
+import {getWidgetInsetTop} from '@/widget/insets';
 
 // The widget entry installs these before Chat.init. Keep the topbar object for
 // cleanup and upstream references, but build no controls, plates or listeners.
@@ -79,8 +80,9 @@ export function restrictChatPresentation() {
   const recomputePaddings = chat.recomputePaddings;
   chat.recomputePaddings = function() {
     recomputePaddings.call(this);
-    this.chatPaddingTop[1](0);
-    if(this.bubbles?.paddingTop) this.bubbles.paddingTop.style.height = '0px';
+    const top = getWidgetInsetTop(this);
+    this.chatPaddingTop[1](top);
+    if(this.bubbles?.paddingTop) this.bubbles.paddingTop.style.height = top + 'px';
     this.bubbles?.updateStickyIntersectorRootMargin?.();
   };
 }
