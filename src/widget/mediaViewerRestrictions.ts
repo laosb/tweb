@@ -1,10 +1,9 @@
 import AppMediaViewer from '@components/mediaViewer';
-import rootScope from '@lib/rootScope';
 import type {ButtonMenuItemOptionsVerifiable} from '@components/buttonMenu';
 
 export function restrictMediaViewer() {
   const viewer = AppMediaViewer.prototype as any;
-  for(const key of ['setMessageActionVisibility', 'setBtnMenuToggle', 'setAuthorInfo']) {
+  for(const key of ['setMessageActionVisibility', 'setBtnMenuToggle']) {
     if(typeof(viewer[key]) !== 'function') throw new Error('WIDGET_RESTRICTION_TARGET_MISSING: ' + key);
   }
   const setMessageActionVisibility = viewer.setMessageActionVisibility;
@@ -18,15 +17,5 @@ export function restrictMediaViewer() {
   viewer.setBtnMenuToggle = function(buttons: ButtonMenuItemOptionsVerifiable[], menuOnly: ButtonMenuItemOptionsVerifiable[] = []) {
     const allowed = (button: ButtonMenuItemOptionsVerifiable) => !['forward', 'user', 'flag'].includes(button.icon);
     return setBtnMenuToggle.call(this, buttons.filter(allowed), menuOnly.filter(allowed));
-  };
-  const setAuthorInfo = viewer.setAuthorInfo;
-  viewer.setAuthorInfo = function(...args: unknown[]) {
-    const self = args[0] === rootScope.myId;
-    const promise = setAuthorInfo.apply(this, args);
-    const avatar = this.author.avatarEl;
-    return promise.then(() => {
-      // Match the base viewer's stale-title guard when next/prev races a title load.
-      if(self && this.author.avatarEl === avatar) this.author.nameEl.replaceChildren('Me');
-    });
   };
 }
