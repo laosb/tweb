@@ -4,13 +4,19 @@ The `feedback-widget` branch ships one conversation with the configured DC suppo
 account, rendered by the full client's own chat page. Customers get its message
 bubbles, history, replies, editing and media viewer, and can send text, system emoji,
 photos, videos and files. There are no chat lists, profiles, account settings, calls,
-voice or round messages, message multi-select, contact sharing, emoji buttons or
+voice or round messages, message multi-select, pinning, forwarding, search, contact sharing, emoji buttons or
 panels, emoji autocomplete, sticker or GIF pickers (including the media editor),
 inline bots, custom emoji or attach-menu apps; links to other chats and profiles
 do not navigate. Code blocks show without syntax highlighting, and a poll
-shows only its question. Quick reactions remain; their expanded picker is omitted.
+shows only its question. Avatar menus have no Open Profile entry; the shared-media
+popup and profile openers are omitted. Received content follows the Blah DC's
+producers: photos, documents (including audio/stickers), polls, checklists, rich
+messages and service text remain. Gifts, giveaways, games, call history, stories,
+invoices, contact/location cards and web-page previews use the unsupported-message
+fallback, with their dedicated renderers omitted. Quick reactions remain; their expanded picker is omitted.
 Outgoing messages show sending, sent or failed, never read (double checks); message
-menus omit read dates and seen-by lists. The history fills the frame without a
+menus omit read dates and seen-by lists. Pin service messages and their date separators
+are hidden; forwarded messages keep their attribution. The history fills the frame without a
 chat header, pinned bar, search or floating audio player. Support replies use the native group layout: an avatar beside each group and a
 sender name where upstream shows one (not on photo/video/album bubbles);
 your messages keep their private-chat appearance. The media viewer omits forwarding
@@ -269,6 +275,9 @@ updates; native group rendering decides where sender names appear. The media vie
 self-author text is the widget-owned “Me”. These restrictions also disable message multi-select through the
 selection controller and remove its menu items, covering pointer, touch, keyboard
 and report-selection entry points while keeping hover reactions.
+`messageRestrictions.ts` removes pin/forward/search actions and tag links, skips pin
+service bubbles while preserving history cursors, and suppresses their notifications.
+Forward/pin dialogs, the pinned bar and topbar search are omitted at build time.
 
 [`widget-release.yml`](../.github/workflows/widget-release.yml) builds and verifies
 pushes and pull requests targeting `feedback-widget`. Successful branch pushes and
@@ -316,6 +325,43 @@ node scripts/test-widget-setup.mjs
 BLAH_SERVER_REPO=/path/to/Teleblah node scripts/test-widget.mjs
 ```
 
+To check language coverage against a language-pack checkout, run:
+
+```sh
+WIDGET_LANGPACK_DIR=/path/to/blah-langpack/webk_bfb/en \
+BLAH_SERVER_REPO=/path/to/Teleblah node scripts/test-widget.mjs
+# Recheck a saved trace without starting a browser or DC:
+node scripts/test-widget-language.mjs /path/to/blah-langpack/webk_bfb/en \
+  /path/to/artifacts/language-resolutions.json
+```
+
+With `WIDGET_LANGPACK_DIR`, the harness builds a temporary instrumented widget,
+loads that English pack over the bundled fallback, and records the actual I18n
+resolver, including computed keys, plurals, plain text and accessibility labels.
+The shipped build has no recorder. `language-resolutions.json` distinguishes
+`pack`, `bundled` and `missing` resolutions across reloads. The run fails for an
+unlisted resolved key; narrowly documented hidden-construction exceptions live in
+`tests/widget/languageExceptions.json`. Visible-key snapshots have no exceptions.
+Never add a translation just because a hidden component constructs its label.
+Keep the English values and plural forms identical to `src/lang.ts` / `src/langSign.ts`.
+The fixture checks this before the build-time branding transform. Missing pack configuration prints
+an explicit skip notice.
+
+The widget release workflow currently neither checks out language packs nor provisions
+a debug DC, and runs only the startup/setup browser fixtures. Full language coverage
+therefore remains a local check. A CI job can run the same command after checking
+out the language-pack repository and supplying a built debug DC; the pack path is
+not hardcoded and needs no published tags or changes to the DC's pack configuration.
+
+Source reachability must supplement the runtime trace: include DC-deliverable
+media, service/reply previews, error branches and runtime key tables. Check the
+server's producers, including application custom service messages and external
+reply targets, rather than the schema's list of possible types. Excluded content
+keys belong in the guard's exact-key exceptions with a shared reason per family;
+the synthetic excluded-message tests must render the kept generic fallback.
+Check the saved accessibility snapshots too: hidden infrastructure can still
+construct labels, but customer-visible text must always come from the pack.
+
 The setup fixture needs Playwright Chromium and network access to the real CDN;
 it serves local build files under a test `blahim.com` origin. It verifies signed
 profile discovery and rejection, CSS preview, generated downloads, subdirectory
@@ -331,7 +377,9 @@ messaging, attachment-menu opening on click, photo-first contact, video/file upl
 a support reply, read outgoing text/media/albums retaining single checks before and after
 reload, no chat header or reserved space in LTR/RTL, group-style support senders,
 private media-viewer controls and authors, no read-date menu items,
-the single-chat and no-multi-select restrictions, account
+the single-chat and no-multi-select restrictions, absent pin/forward/search menu items
+(also with selected text), inert tag clicks and search shortcuts, hidden server pin events
+live and after reload with history still at the bottom, account
 replacement/logout across page loads and fragment changes, revoked/missing/invalid
 tokens, CSS customization in light and dark mode, narrow layout and Axe, and that no
 request leaves the widget origin. Its second-client driver is built only into a
