@@ -79,7 +79,8 @@ export async function checkInsets({page, frame, artifacts, showMessage, messageM
     const avatars = frame.locator('.chat.active .bubbles-group-avatar');
     for(const avatar of await avatars.all()) {
       const box = await rect(avatar);
-      if(box.bottom > values[0] && box.top < input.top) await inside(avatar, values, 'visible group avatar');
+      // A previous group's avatar can be partway out through the top scroll fade.
+      if(box.top >= values[0] && box.top < input.top) await inside(avatar, values, 'visible group avatar');
     }
   };
   await toBottom();

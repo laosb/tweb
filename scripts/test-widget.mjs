@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomBytes, createHash} from 'node:crypto';
 import {spawn, execFileSync} from 'node:child_process';
 import {once} from 'node:events';
-import {mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, writeFile, rm, cp} from 'node:fs/promises';
 import {createServer} from 'node:https';
 import {createServer as tcpServer} from 'node:net';
 import {fileURLToPath} from 'node:url';
@@ -15,9 +15,13 @@ import {chromium, webkit, expect as baseExpect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import httpProxy from 'http-proxy';
 import {cbor} from '../tests/blah/cbor.mjs';
+import languageExceptions from '../tests/widget/languageExceptions.json' with {type: 'json'};
+import {checkLanguageSurfaces} from '../tests/widget/languageSurfaces.mjs';
+import {readEnglishPack, languageCoveragePlugin, installLanguageRecorder, checkLanguageCoverage} from '../tests/widget/languageCoverage.mjs';
 import {objectStorage} from '../tests/widget/objectStorage.mjs';
 import {checkTheme, checkStatusTheme} from '../tests/widget/theme.mjs';
 import {checkInsets, checkStatusInsets} from '../tests/widget/insets.mjs';
+import {checkMessageActions, checkTagClicks, assertHiddenPins} from '../tests/widget/messageActions.mjs';
 
 // The full client takes a few seconds to restore after a reload.
 const expect = baseExpect.configure({timeout: 20_000});
@@ -26,12 +30,15 @@ const transport = process.env.WIDGET_TEST_TRANSPORT || 'auto';
 assert(['auto', 'http', 'ws'].includes(transport));
 const transportQuery = transport === 'http' ? 'http=1' : transport === 'ws' ? 'noMultipleTransports=1' : '';
 let httpRequests = 0;
-const widgetDist = process.env.WIDGET_DIST || repo + '/dist/widget';
+let widgetDist = process.env.WIDGET_DIST || repo + '/dist/widget';
 const browserName = process.env.WIDGET_BROWSER || 'chromium';
 assert(['chromium', 'webkit'].includes(browserName), 'WIDGET_BROWSER must be chromium or webkit');
 const tele = process.env.BLAH_SERVER_REPO;
 if(!tele) throw new Error('Set BLAH_SERVER_REPO to a checkout with a built debug BlahMTProtoServer.');
 const dir = await mkdtemp(join(tmpdir(), 'blah-widget-'));
+const languageRecords = new Map();
+const languageStrings = process.env.WIDGET_LANGPACK_DIR ? await readEnglishPack(process.env.WIDGET_LANGPACK_DIR) : undefined;
+if(!languageStrings) console.log('Language coverage skipped: set WIDGET_LANGPACK_DIR to webk_bfb/en to record and check I18n.');
 const artifacts = process.env.WIDGET_TEST_ARTIFACTS || repo + '/tmp/widget';
 await mkdir(artifacts, {recursive: true});
 const proxy = httpProxy.createProxyServer({ws: true});
@@ -96,6 +103,13 @@ try {
   await startDC();
 
   if(!process.env.WIDGET_SKIP_BUILD) await build({configFile: repo + '/vite.widget.config.ts', logLevel: 'warn'});
+  if(languageStrings) {
+    const instrumented = dir + '/widget';
+    await cp(widgetDist, instrumented, {recursive: true});
+    await build({configFile: repo + '/vite.widget.config.ts', logLevel: 'warn',
+      plugins: [languageCoveragePlugin(languageStrings)], build: {outDir: instrumented, emptyOutDir: false}});
+    widgetDist = instrumented;
+  }
   await build({configFile: repo + '/vite.widget.config.ts', logLevel: 'warn',
     ...(transport === 'http' ? {define: {'import.meta.env.VITE_MTPROTO_HAS_WS': 'false', 'import.meta.env.VITE_MTPROTO_HTTP': 'true', 'import.meta.env.VITE_MTPROTO_AUTO': 'false'}} : {}), build: {
     outDir: dir + '/driver', lib: {entry: repo + '/tests/widget/driver.ts', formats: ['es'], fileName: () => 'driver.js'}
@@ -159,6 +173,7 @@ try {
     ...(browserName === 'chromium' ? {args: ['--no-sandbox', '--ignore-certificate-errors']} : {})});
   const context = await browser.newContext({ignoreHTTPSErrors: true});
   context.setDefaultTimeout(35_000);
+  if(languageStrings) await installLanguageRecorder(context, languageRecords);
   // The full client also calls Telegram methods a Blah DC does not implement; those
   // rejections are expected, any other uncaught error is not.
   await context.addInitScript(({optionalErrors, transportQuery, origin}) => {
@@ -260,6 +275,7 @@ try {
       }
     }
   }
+  await widgetFrame().evaluate(() => window.appImManager.chat.input.setInputValue('', true));
   await frame.locator('html').evaluate(el => { el.dir = 'ltr'; el.classList.remove('is-rtl'); });
   await page.emulateMedia({colorScheme: 'light'});
   await page.locator('iframe').evaluate(el => el.style.width = '390px');
@@ -392,7 +408,7 @@ try {
     await expect(contextMenu.getByText('Select', {exact: true})).toHaveCount(0);
     await expect(contextMenu.getByText(/seen|read time|read date/i)).toHaveCount(0);
     assert.equal(await widgetFrame().evaluate(() => window.appImManager.chat.contextMenu.buttons.some(button => button.localName === 'views')), false);
-    // The fixture has only six reactions. Exercise the overflow branch too,
+    // Exercise the overflow branch too,
     // without changing the quick row or sending anything to the server.
     await widgetFrame().evaluate(async() => {
       await window.appImManager.chat.contextMenu.reactionsMenu.render([], true);
@@ -400,8 +416,8 @@ try {
     await expect(contextMenu.locator('.btn-menu-reactions-more')).toHaveCount(0);
     const strip = contextMenu.locator('.btn-menu-reactions-reaction');
     await expect.poll(async() => (await strip.evaluateAll(elements => elements.map(e => e.getAttribute('aria-label'))))
-      .map(label => ({'Thumbs Up': '👍', 'Thumbs Down': '👎', 'Red Heart': '❤', 'HUNDRED POINTS SYMBOL': '💯', 'ROLLING ON THE FLOOR LAUGHING': '🤣', 'EYES': '👀'}[label] || label)))
-      .toEqual(['👍', '👎', '❤', '💯', '🤣', '👀']);
+      .map(label => ({'Thumbs Up': '👍', 'Thumbs Down': '👎', 'Red Heart': '❤', 'HUNDRED POINTS SYMBOL': '💯', 'ROLLING ON THE FLOOR LAUGHING': '🤣', 'EYES': '👀', 'Partying Face': '🥳'}[label] || label)))
+      .toEqual(['👍', '👎', '❤', '💯', '🤣', '👀', '🥳']);
     for(let i = 0; i < 3; ++i) await expect(strip.nth(i).locator('.btn-menu-reactions-reaction-select canvas')).toBeVisible({timeout: 30_000});
     if(process.env.BLAH_MENU_SCREENSHOTS) {
       await page.waitForTimeout(600);
@@ -452,6 +468,9 @@ try {
   await expect(bubble('Thanks! We can help.')).toBeVisible();
   await driver.evaluate(id => window.widgetTestDriver.reply(id, 'A second support message.'), alice.id);
   await expect(bubble('A second support message.')).toBeVisible();
+  await checkMessageActions({page, frame: widgetFrame(),
+    incoming: bubble('A second support message.').getByText('A second support message.', {exact: true}),
+    outgoing: bubble('Widget photo regression').getByText('Widget photo regression', {exact: true})});
   const assertSenders = async() => {
     const first = bubble('Thanks! We can help.');
     const second = bubble('A second support message.');
@@ -521,8 +540,19 @@ try {
   }
   await driver.evaluate(id => window.widgetTestDriver.quotedReply(id, 'Support quoted reply'), alice.id);
   await expect(bubble('Support quoted reply').locator('.reply')).toBeVisible();
+  const beforePin = await frame.locator('.bubble.service').count();
   await driver.evaluate(id => window.widgetTestDriver.pinLatest(id), alice.id);
-  await expect(frame.locator('.bubble.service').filter({hasText: /pinned/i})).toBeVisible();
+  await assertHiddenPins(widgetFrame(), 1);
+  assert.equal(await frame.locator('.bubble.service').count(), beforePin, 'a hidden pin leaves no service/date bubble');
+  await driver.evaluate(id => window.widgetTestDriver.reply(id, 'After hidden pin #widget_no_search $USD', [
+    {_: 'messageEntityHashtag', offset: 17, length: 17},
+    {_: 'messageEntityCashtag', offset: 35, length: 4}
+  ]), alice.id);
+  await expect(bubble('After hidden pin #widget_no_search $USD')).toBeVisible();
+  await checkTagClicks({page, frame: widgetFrame(), message: bubble('After hidden pin #widget_no_search $USD').locator('.message')});
+  await expect(bubble('Support quoted reply')).toBeVisible();
+  await driver.evaluate(id => window.widgetTestDriver.pinLatest(id), alice.id);
+  await assertHiddenPins(widgetFrame(), 2);
   await assertHeader();
 
   await Promise.all([widgetFrame().waitForNavigation(), widgetFrame().evaluate(() => location.reload())]);
@@ -532,8 +562,11 @@ try {
     else await expect(incoming.locator('.name')).toHaveCount(0);
     await expect(incoming.locator('xpath=..').locator('.bubbles-group-avatar')).toHaveCount(1);
   }
-  await expect(frame.locator('.bubble.service').filter({hasText: /pinned/i})).toBeVisible();
+  await assertHiddenPins(widgetFrame(), 2);
+  await expect(bubble('Support quoted reply')).toBeVisible();
+  await expect(bubble('After hidden pin #widget_no_search $USD')).toBeVisible();
   await assertHeader();
+  await page.locator('iframe').screenshot({path: artifacts + '/hidden-pins-after-reload.png'});
 
   await showMessage(messageMids.get('Support photo'));
   const supportPhoto = frame.locator(`.bubble[data-mid="${messageMids.get('Support photo')}"]`);
@@ -676,6 +709,7 @@ try {
   await expect(bubble('Thanks! We can help.').locator('.bubble-content')).toHaveCSS('background-color', 'rgb(20, 40, 60)');
   await page.screenshot({path: artifacts + '/iframe-dark.png'});
   await page.emulateMedia({colorScheme: 'light'});
+  if(languageStrings) await checkLanguageSurfaces({page, frame: widgetFrame(), showMessage, messageMids, photo, strings: languageStrings, artifacts});
   await page.locator('iframe').evaluate((iframe) => { iframe.style.width = '280px'; iframe.style.height = '480px'; });
   assert(await frame.locator('body').evaluate((body) => body.scrollWidth <= body.clientWidth));
 
@@ -729,12 +763,14 @@ try {
   assert.deepEqual(urls.filter((url) => /\.(woff2?|ttf|otf)\b/.test(url) && !url.includes('/assets/fonts/tgico.ttf')), []);
   const local = [origin, origin.replace('127.0.0.1', 'localhost'), 'blob:', 'data:'];
   assert.deepEqual(urls.filter((url) => !local.some((prefix) => url.startsWith(prefix))), []);
+  if(languageStrings) await checkLanguageCoverage(languageRecords, languageStrings, artifacts, languageExceptions);
   console.log('Widget browser checks passed: real token auth, single checks after server reads and reload (text/media/albums), header-free history, group-style support senders, private viewer authors and actions, no read-date menu, captionless photo-first contact, resized photos, video/file upload and download, decoded video after reload, LTR/RTL selection disabled, send/reply, reload, single-chat restrictions, token switch/logout across loads and hash changes, revoked/missing/invalid tokens, cross-origin iframe layout, light/dark theme variables, no BlahDiem.');
 } catch(error) {
   await writeFile(artifacts + '/server.log', serverLog);
   await browser?.contexts()[0]?.pages()[0]?.screenshot({path: artifacts + '/failure.png'}).catch(() => {});
   throw error;
 } finally {
+  if(languageStrings) await writeFile(artifacts + '/language-resolutions.json', JSON.stringify([...languageRecords.values()], null, 2) + '\n');
   await writeFile(artifacts + '/browser.log', JSON.stringify({errors, logs}, null, 2));
   await browser?.close();
   if(child && child.exitCode === null) { const exited = once(child, 'exit'); child.kill('SIGTERM'); await exited; }

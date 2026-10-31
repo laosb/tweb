@@ -1,3 +1,4 @@
+import {hotReloadGuard} from '@lib/solidjs/hotReloadGuardProvider';
 import type {ChatRights} from '@appManagers/appChatsManager';
 import appImManager from '@lib/appImManager';
 import appNavigationController from '@components/appNavigationController';
@@ -14,6 +15,7 @@ import {useWidgetSelfTitle} from '@/widget/selfTitle';
 import {restrictMediaViewer} from '@/widget/mediaViewerRestrictions';
 import {restrictChatStatus} from '@/widget/statusRestrictions';
 import {restrictMessageSelection} from '@/widget/selectionRestrictions';
+import {restrictMessageActions} from '@/widget/messageRestrictions';
 
 // Kept out of the support conversation.
 const DENIED_RIGHTS = new Set<ChatRights>(['send_stickers', 'send_gifs', 'send_inline', 'send_polls', 'send_voices', 'send_roundvideos']);
@@ -28,7 +30,7 @@ export function restrictToSupport(supportPeerId: PeerId) {
   const chatInput = ChatInput.prototype as any;
   const targets = [
     [appImManager, 'setPeer'], [appImManager, 'setInnerPeer'], [appNavigationController, 'overrideHash'],
-    [appSidebarRight, 'toggleSidebar'], [AppSharedMediaTab.prototype, 'setPeer'], [Chat.prototype, 'canSend'], [chatInput, 'constructPeerHelpers'],
+    [appSidebarRight, 'toggleSidebar'], [hotReloadGuard, 'showPeerProfilePopup'], [AppSharedMediaTab, 'open'], [AppSharedMediaTab.prototype, 'setPeer'], [Chat.prototype, 'canSend'], [chatInput, 'constructPeerHelpers'],
     [ChatReactionsMenu.prototype, 'init'], [chatInput, 'checkInlineAutocomplete'],
     [ChatRecording.prototype, 'hasVoiceRecorder'], [ChatRecording.prototype, 'hasAnyRecorder']
   ] as const;
@@ -37,6 +39,7 @@ export function restrictToSupport(supportPeerId: PeerId) {
   }
 
   restrictMessageSelection();
+  restrictMessageActions();
   restrictChatStatus();
   restrictChatPresentation();
   useWidgetSelfTitle();
@@ -52,6 +55,8 @@ export function restrictToSupport(supportPeerId: PeerId) {
   const setInnerPeer = appImManager.setInnerPeer.bind(appImManager);
   appImManager.setInnerPeer = async(options) => { if(isSupportChat(options)) return setInnerPeer(options); };
   appSidebarRight.toggleSidebar = () => Promise.resolve();
+  hotReloadGuard.showPeerProfilePopup = () => Promise.resolve();
+  AppSharedMediaTab.open = () => Promise.resolve();
 
   // Keep shared media's layout without rendering the profile omitted from this build.
   const setMediaPeer = AppSharedMediaTab.prototype.setPeer;

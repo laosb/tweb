@@ -30,6 +30,29 @@ const WIDGET_OMITTED_PUBLIC = [
 // code, workers and libraries stay out of the release.
 const omitted = (name: string) => resolve(__dirname, 'src/widget/omitted', name);
 const WIDGET_REPLACED: Record<string, string> = {
+  'src/components/stargifts/profileList.tsx': omitted('profileContent.ts'),
+  'src/components/stories/profileList.tsx': omitted('profileContent.ts'),
+  'src/components/wrappers/geo.ts': omitted('geo.ts'),
+  'src/components/popups/birthday.tsx': omitted('birthday.ts'),
+  'src/components/popups/contactDetails.tsx': omitted('messageAction.ts'),
+  'src/components/popups/peerProfile.tsx': omitted('messageAction.ts'),
+  'src/components/wrappers/messageForReply.ts': omitted('messageForReply.ts'),
+  'src/components/chat/bubbles/starGift.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/bubbles/premiumGift.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/bubbles/starGiftOffer.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/bubbles/suggestBirthday.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/bubbles/noForwardsRequest.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/giveaway.tsx': omitted('receivedContent.ts'),
+  'src/components/wrappers/callBubble.ts': omitted('callBubble.ts'),
+  'src/components/popups/starGiftInfo.tsx': omitted('giftPopup.ts'),
+  'src/components/popups/giftLink.tsx': omitted('giftPopup.ts'),
+  'src/components/popups/sendGiftPicker.ts': omitted('giftPopup.ts'),
+
+  'src/components/popups/forward.tsx': omitted('messageAction.ts'),
+  'src/components/popups/unpinMessage.ts': omitted('messageAction.ts'),
+  'src/components/chat/topbarSearch.tsx': omitted('messageAction.ts'),
+  'src/components/chat/pinnedMessage.tsx': omitted('messageAction.ts'),
+  'src/components/wrappers/messageActionTextNew.ts': omitted('messageActionText.ts'),
   'src/components/emoticonsDropdown/index.ts': omitted('emoticonsDropdown.ts'),
   'src/components/emoticonsDropdown/tabs/emoji.ts': omitted('emojiTab.ts'),
   'src/components/chat/emojiHelper.ts': omitted('autocompleteHelper.ts'),
@@ -200,6 +223,8 @@ export default mergeConfig(upstream, defineConfig({
     },
     load(id) {
       if(id === UNREACHABLE) return 'export default undefined;';
+      // A widget wrapper may delegate to the unchanged upstream implementation.
+      if(id.endsWith('?widget-original')) return;
       const path = relative(__dirname, id.split('?')[0]);
       if(WIDGET_REPLACED[path]) return readFileSync(WIDGET_REPLACED[path], 'utf8');
       if(WIDGET_INERT.includes(path)) {
