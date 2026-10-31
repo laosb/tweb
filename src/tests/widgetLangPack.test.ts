@@ -256,6 +256,45 @@ it('keeps the applied cache when both difference and full fetch fail', async() =
   expect(commonStateStorage.set).not.toHaveBeenCalled();
 });
 
+it.each([undefined, null, {}, {version: -1, strings: []}, {version: 1, strings: null}])(
+  'keeps usable English when the server pack is malformed: %j', async(value) => {
+    pack.mockResolvedValue(value);
+    await loadWidgetLanguage();
+    expect(I18n.format('Error.AnError', true)).toBe('An error occurred. Please try again later.');
+    expect(I18n.format('Minutes', true, [2])).toBe('2 minutes');
+    expect(stored).toBeUndefined();
+  }
+);
+
+it('repairs a matching cache with missing or malformed fallback strings before applying it', async() => {
+  stored = {...cached(), strings: [
+    {_: 'langPackString', key: 'BfbSupport', value: 'الدعم'},
+    {_: 'langPackStringPluralized', key: 'Minutes', one_value: 'دقيقة'} as any,
+    {_: 'langPackString', key: 'BfbReconnect', value: null} as any,
+    {_: 'langPackString', key: 'Error.AnError', value: 'stale', local: true} as any
+  ]};
+  await applyWidgetLanguage();
+  expect(document.title).toBe('الدعم');
+  expect(I18n.format('BfbReconnect', true)).toBe('Reconnect');
+  expect(I18n.format('Error.AnError', true)).toBe('An error occurred. Please try again later.');
+  expect(I18n.format('Minutes', true, [3])).toBe('3 minutes');
+  expect(I18n.format('Minutes', true, [1])).toBe('1 minute');
+});
+
+it('ignores invalid remote types and plural forms without hiding their English fallback', async() => {
+  pack.mockResolvedValue({...remote(), strings: [
+    null,
+    {_: 'langPackStringDeleted', key: 'BfbReconnect'},
+    {_: 'langPackString', key: 'Minutes', value: 'wrong type'},
+    {_: 'langPackStringPluralized', key: 'Minutes', other_value: null},
+    {_: 'langPackStringPluralized', key: 'Hours', other_value: 'ساعات', one_value: 4}
+  ]});
+  await loadWidgetLanguage();
+  expect(I18n.format('BfbReconnect', true)).toBe('Reconnect');
+  expect(I18n.format('Minutes', true, [2])).toBe('2 minutes');
+  expect(I18n.format('Hours', true, [1])).toBe('1 hour');
+});
+
 it('does not apply or persist a result after the URL language changes', async() => {
   const pending = deferred<LangPackDifference>();
   pack.mockReturnValue(pending.promise);

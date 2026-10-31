@@ -10,6 +10,7 @@ import withTimeout from '@helpers/schedulers/withTimeout';
 
 type WidgetLangPack = LangPackDifference & {lang_pack: typeof WIDGET_LANG_PACK};
 let english: LangPackDifference;
+let englishStrings: Map<string, LangPackString>;
 let applied: WidgetLangPack;
 let loading: Promise<void>;
 const LANGUAGE_DEADLINE = 5_000;
@@ -21,6 +22,19 @@ function validateLocale(lang: string) {
   new Intl.DateTimeFormat(lang.split('-')[0]);
 }
 
+function validPack(pack: LangPackDifference) {
+  return pack && Array.isArray(pack.strings) && Number.isSafeInteger(pack.version) && pack.version >= 0;
+}
+
+function validString(string: LangPackString) {
+  if(!string || typeof(string.key) !== 'string') return false;
+  const fallback = englishStrings.get(string.key);
+  if(fallback && fallback._ !== string._) return false;
+  if(string._ === 'langPackString') return typeof(string.value) === 'string';
+  if(string._ !== 'langPackStringPluralized' || typeof(string.other_value) !== 'string') return false;
+  return Object.entries(string).every(([key, value]) => !key.endsWith('_value') || typeof(value) === 'string');
+}
+
 /** Restore only the URL's language, with the current bundled English underneath it. */
 export async function applyWidgetLanguage() {
   const lang = blah.widget.lang;
@@ -30,12 +44,13 @@ export async function applyWidgetLanguage() {
     I18n.polyfillPromise
   ]);
   english = pack;
+  englishStrings = new Map(pack.strings.map((string) => [string.key, string]));
   applied = undefined;
-  if(lang && blah.widget.lang === lang && stored?.lang_code === lang && stored.localVersion === pack.localVersion &&
+  if(lang && blah.widget.lang === lang && validPack(stored) && stored.lang_code === lang && stored.localVersion === pack.localVersion &&
     (stored as WidgetLangPack).lang_pack === WIDGET_LANG_PACK && typeof stored.rtl === 'boolean') {
     try {
       validateLocale(lang);
-      applied = stored as WidgetLangPack;
+      applied = overlayEnglish(stored);
     } catch{}
   }
   const initial = applied || english;
@@ -53,7 +68,7 @@ function overlayEnglish(pack: LangPackDifference): WidgetLangPack {
     localVersion: english.localVersion,
     strings: [
       ...english.strings.map((string) => ({...string, local: true})),
-      ...pack.strings.filter((string) => string._ !== 'langPackStringDeleted')
+      ...pack.strings.filter((string: LangPackString & {local?: boolean}) => !string?.local && validString(string))
     ]
   };
 }
@@ -73,7 +88,7 @@ export function loadWidgetLanguage(): Promise<void> {
         if(base) {
           try {
             const difference = await managers.appLangPackManager.getDifference(lang, base.version, WIDGET_LANG_PACK);
-            if(difference.lang_code !== lang || difference.from_version !== base.version || difference.version < base.version) {
+            if(!validPack(difference) || difference.lang_code !== lang || difference.from_version !== base.version || difference.version < base.version) {
               throw new Error('LANG_PACK_VERSION_MISMATCH');
             }
             if(difference.version === base.version) return base;
@@ -96,7 +111,7 @@ export function loadWidgetLanguage(): Promise<void> {
           managers.appLangPackManager.getLangPack(lang, WIDGET_LANG_PACK, 'no-store'),
           managers.appLangPackManager.getLanguage(lang, WIDGET_LANG_PACK, 'no-store')
         ]);
-        if(pack.lang_code !== lang || language.lang_code !== lang) return;
+        if(!validPack(pack) || pack.lang_code !== lang || language.lang_code !== lang) return;
         return overlayEnglish({...pack, rtl: pack.rtl ?? !!language.pFlags.rtl});
       };
       const result = await withTimeout(fetchPack(), LANGUAGE_DEADLINE);

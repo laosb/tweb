@@ -1,27 +1,37 @@
 # Embed customer support
 
 The `feedback-widget` branch ships one conversation with the configured DC support
-account, rendered by the full client's own chat page. Customers get its message
-bubbles, history, replies, editing and media viewer, and can send text, system emoji,
-photos, videos and files. There are no chat lists, profiles, account settings, calls,
-voice or round messages, message multi-select, pinning, forwarding, search, contact sharing, emoji buttons or
-panels, emoji autocomplete, sticker or GIF pickers (including the media editor),
-inline bots, custom emoji or attach-menu apps; links to other chats and profiles
-do not navigate. Code blocks show without syntax highlighting, and a poll
-shows only its question. Avatar menus have no Open Profile entry; the shared-media
-popup and profile openers are omitted. Received content follows the Blah DC's
-producers: photos, documents (including audio/stickers), polls, checklists, rich
-messages and service text remain. Gifts, giveaways, games, call history, stories,
-invoices, contact/location cards and web-page previews use the unsupported-message
-fallback, with their dedicated renderers omitted. Quick reactions remain; their expanded picker is omitted.
-Outgoing messages show sending, sent or failed, never read (double checks); message
-menus omit read dates and seen-by lists. Pin service messages and their date separators
-are hidden; forwarded messages keep their attribution. The history fills the frame without a
-chat header, pinned bar, search or floating audio player. Support replies use the native group layout: an avatar beside each group and a
-sender name where upstream shows one (not on photo/video/album bubbles);
-your messages keep their private-chat appearance. The media viewer omits forwarding
-and labels your media “Me”. There are no presence or typing indicators.
-Message read acknowledgements otherwise stay unchanged.
+account. Customers can browse history, reply, quote, edit and send text, system
+emoji, photos, videos and files. There are no calls, voice or round messages,
+contact sharing, message multi-select, pinning, forwarding or search. Emoji
+buttons, panels and autocomplete, sticker/GIF pickers (including in the media
+editor), inline bots, custom emoji sending and attach-menu apps are unavailable.
+Quick reactions and the full reaction-participant list remain, without an expanded
+reaction picker.
+
+Received photos, documents (including audio and stickers), checklists, rich messages
+and service text remain. Stickers and custom emoji render and play, with Copy but
+no pack popups, attribution or pack menu items. Code blocks have no syntax
+highlighting; polls show only their question. Gifts, giveaways, games, call history,
+stories, invoices, contact/location cards and web-page previews show an
+unsupported-message fallback. Pin service messages and their date separators are
+hidden; forwarded messages keep their attribution. Outgoing messages show sending,
+sent or failed, never read (double checks), and menus omit read dates and seen-by
+lists. Message read acknowledgements otherwise stay unchanged.
+
+Replies, quotes and message jumps stay in the support chat. Typed and received
+mentions render, but there are no recipient/share pickers or global mention
+suggestions. Links allow external HTTP(S) URLs with confirmation, tel/mailto and
+rich maps. Other internal, `tg://` and Telegram-host links do nothing before any
+lookup or request. Chat lists, profiles, shared-media browsing and account settings
+are unavailable.
+
+History fills the frame without a chat header, pinned bar or floating audio player.
+Support replies show an avatar beside each group and a sender name where the client
+normally shows one (not on photo/video/album bubbles); customer messages keep their
+private-chat appearance. The media viewer labels customer media “Me”. There are no
+presence or typing indicators, bot-command suggestions, onboarding tips or login
+screens. Developer memory and log collection is disabled, including URL switches.
 The widget follows the system's light or dark appearance.
 
 ## Build and configure
@@ -131,6 +141,11 @@ signs in; removing the token logs out. Changes to the fragment in a running fram
 reload it and follow the same path. A revoked or invalid token shows an error with no
 login form, and the chat stays hidden.
 
+Startup is bounded to 45 seconds, including opening the support conversation. If
+the DC cannot be reached or startup fails, the widget shows an error and
+**Reconnect**, which reloads the page. A timeout keeps the token and session intact;
+it does not sign out.
+
 The widget is the ordinary client with its storage: the session and message cache
 live in the widget origin's IndexedDB and storage, with its workers. Reloading
 restores them before revalidating the token.
@@ -145,10 +160,11 @@ The embedding page chooses the language with `?lang=zh-hans` before the token fr
 for example `index.html?lang=zh-hans#token=...`. Codes are lowercased and underscores
 become hyphens. The widget requests the `webk_bfb` pack from its DC's configured
 [language-pack repository](https://docs.blahim.com/guides/language-packs/).
-Missing strings fall back to bundled English. A cached pack matching `lang` and the
-current bundled strings applies before rendering and catches up with server differences
-within five seconds; otherwise the widget starts in English and, when `lang` is valid,
-tries a full fetch within the same deadline.
+Missing or malformed strings fall back to the widget’s bundled English, including
+plural forms. A cached pack matching `lang` and the current bundled strings applies
+before rendering and catches up with server differences within five seconds;
+otherwise the widget starts in English and, when `lang` is valid, tries a full fetch
+within the same deadline.
 
 ## Theme with CSS variables
 
@@ -251,33 +267,115 @@ already excludes every safe area.
 
 ## Maintain and verify
 
-The widget mode lives in [`src/widget/`](../src/widget/). `vite build --mode widget`
-(through [`vite.widget.config.ts`](../vite.widget.config.ts)) reads the pins from the
-document instead of build-time configuration, renders emoji and text with system fonts
-so the release carries no emoji images or webfonts, replaces wallpapers with a plain
-background color, and pins the URL modes. To keep the
-release small, the config also leaves out what a customer cannot use there: the
-client's screens outside the chat; stories, calls, mini apps, payments, Stars, Premium,
-boosts and the AI editor, whose entry modules build as no-ops; public files for hidden
-features, app icons and manifests; emoji panels, autocomplete and the media editor
-sticker tab; and the modules it replaces with
-[`src/widget/omitted/`](../src/widget/omitted/). The build fails if one of those modules
-is renamed upstream or an omitted screen becomes an eager import. To keep the file count
-low, the client builds as one script and stylesheet, the media editor as one more loaded
-when a customer edits a photo, and each worker as a single file. The client's startup hands
-over to [`src/widget/index.ts`](../src/widget/index.ts) in place of the auth flow; it
-signs in with the token and opens the support chat.
-[`src/widget/restrictions.ts`](../src/widget/restrictions.ts) narrows the client by
-wrapping a few upstream entry points rather than editing them, and fails at startup if
-one is renamed. `chatRestrictions.ts` detaches the empty topbar after chat construction
-and removes sender links' navigation and focus attributes, including on peer-title
-updates; native group rendering decides where sender names appear. The media viewer's
-self-author text is the widget-owned “Me”. These restrictions also disable message multi-select through the
-selection controller and remove its menu items, covering pointer, touch, keyboard
-and report-selection entry points while keeping hover reactions.
-`messageRestrictions.ts` removes pin/forward/search actions and tag links, skips pin
-service bubbles while preserving history cursors, and suppresses their notifications.
-Forward/pin dialogs, the pinned bar and topbar search are omitted at build time.
+The [build config](../vite.widget.config.ts) reuses the client's chat markup and
+replaces omitted features without changing upstream client files. Runtime
+restrictions guard navigation and message actions before lookups or requests.
+Build guards reject changed replacement targets, eager omitted screens and
+unwanted assets. Keep the
+[theme CSS mapping](../scripts/widget-theme-css.ts) aligned with new surfaces and
+the circle exceptions documented above.
+
+Keep future rebase conflicts small: widget behavior belongs in `src/widget/`, its
+build config and tests. Shared files carry the widget's configuration hooks
+(`src/config/blah.ts`, `src/config/app.ts`, the worker URL helper, the DC URL and the
+start-up hand-over), plus `*:widget` package scripts and the README pointer. After
+rebasing, adapt the wrapped entry points in `restrictions.ts` and
+`selectionRestrictions.ts` and run the checks below.
+
+```sh
+pnpm test:widget
+pnpm run typecheck
+pnpm lint
+pnpm exec vite build --config vite.widget.config.ts
+node scripts/test-widget-setup.mjs
+BLAH_SERVER_REPO=/path/to/Teleblah node scripts/test-widget.mjs
+```
+
+### Language keys
+
+[`languageKeys.json`](../src/widget/languageKeys.json) is the reviewed set of literal
+labels, computed families, startup strings and mapped errors, with exact
+hidden-construction exceptions. The [language build](../scripts/widget-language.ts)
+prunes both upstream English dictionaries to this set, rejects missing definitions
+and versions caches by retained strings and upstream version. Token startup needs
+no `langSign` startup keys.
+
+After a rebase or feature addition, trace actual I18n consumers outside dictionary
+definitions and review computed keys where they are constructed. Supplement runtime
+traces with source reachability: DC-deliverable media, service/reply previews,
+errors and runtime key tables. Check the server's producers, including custom
+service messages and external reply targets, rather than every schema type.
+Browser tokens such as `Files` and suffix fragments such as `Voice` alone do not
+establish a translation consumer.
+
+Update the allowlist, remove unused keys from every `webk_bfb` language and keep
+their key sets identical without changing retained translations. English values
+and plural forms must match `src/lang.ts` / `src/langSign.ts` before build-time
+branding. Remove obsolete
+[`languageExceptions.json`](../tests/widget/languageExceptions.json) entries:
+each needs a hidden construction that still resolves the key, never a new
+translation solely for a hidden label. Excluded content needs no exception unless
+such a construction remains; synthetic excluded-message tests must show the generic
+fallback.
+
+Run the harness above without a pack, then with a language-pack checkout:
+
+```sh
+WIDGET_LANGPACK_DIR=/path/to/blah-langpack/webk_bfb/en \
+BLAH_SERVER_REPO=/path/to/Teleblah node scripts/test-widget.mjs
+# Recheck a saved trace without starting a browser or DC:
+node scripts/test-widget-language.mjs /path/to/blah-langpack/webk_bfb/en \
+  /path/to/artifacts/language-resolutions.json
+```
+
+With `WIDGET_LANGPACK_DIR`, the harness builds a temporary instrumented widget,
+overlays the English pack and records actual I18n resolutions, including computed
+keys, plurals, plain text and accessibility labels. The
+[coverage guard](../tests/widget/languageCoverage.mjs) requires the English key set
+to match the allowlist and rejects unlisted resolved keys except documented hidden
+constructions. `language-resolutions.json` distinguishes `pack`, `bundled` and
+`missing` across reloads; no recorder ships in the release. Review the saved
+accessibility snapshots too: visible labels must come from the pack and may never
+use exceptions. Without pack configuration, the harness prints an explicit skip.
+
+The release workflow neither checks out language packs nor provisions a debug DC;
+its browser checks cover startup and setup only. Full language coverage remains
+local. CI can use the same command with a language-pack checkout and built debug DC;
+no published tags or DC pack-configuration changes are needed.
+
+### Browser verification
+
+The [setup fixture](../scripts/test-widget-setup.mjs) needs Playwright Chromium and
+network access to the real CDN. It serves local build files under a test
+`blahim.com` origin and checks profile verification, configuration/downloads,
+preview styling and accessibility without a live DC or account. The workflow runs
+it before packaging the unchanged build output.
+
+The [widget harness](../scripts/test-widget.mjs) needs a built debug DC, OpenSSL and
+Playwright Chromium with its OS dependencies. Run the same checks in WebKit with
+`WIDGET_BROWSER=webkit`; `BLAH_BROWSER_EXECUTABLE` optionally selects an executable
+or wrapper. It seeds disposable managed accounts and exercises the production
+widget in a cross-origin iframe over real encrypted WebSockets, with a temporary
+second-client driver and local S3 fixture for media.
+
+Coverage spans messaging and received content, navigation/action restrictions,
+account/token transitions and request boundaries, plus theme, insets, LTR/RTL,
+narrow layouts and Axe. The [browser fixtures](../tests/widget/) define the detailed
+contracts; language-enabled runs also observe restricted actions at manager,
+worker-RPC and transport boundaries. Review light/dark screenshots and
+`theme-coverage.json`; theme failures identify the element and property.
+
+Set `TMPDIR` and `WIDGET_TEST_ARTIFACTS` to keep temporary files and failure logs in
+a chosen run directory; `WIDGET_SKIP_BUILD=1` tests an already built widget.
+Add `WIDGET_DIST=/path/to/extracted/archive` to test the hosted release itself.
+Both browsers exercise the popup Send button, including a captionless first photo,
+and capture page errors, promise rejections and media errors. WebKit uses an
+existing H.264 MP4 fixture; Chromium generates VP9 WebM for its codec support.
+The client's opt-in `?a11y=1` keyboard layer currently leaves the composer without
+a usable editor, so the fixture runs without it. Screen-reader and physical touch
+testing remain manual.
+
+### Release and deploy
 
 [`widget-release.yml`](../.github/workflows/widget-release.yml) builds and verifies
 pushes and pull requests targeting `feedback-widget`. Successful branch pushes and
@@ -308,108 +406,6 @@ checksum uncached, and hashed assets immutable. HTML path normalization stays di
 so setup can fetch `/index.html` without following a redirect. `/index.html` also allows
 any origin to read it, so a provisioning page hosted elsewhere, such as the Blah server's
 feedback DC setup page, can configure the same release.
-
-Keep future rebase conflicts small: widget behavior belongs in `src/widget/`, its
-build config and tests. Shared files carry the widget's configuration hooks
-(`src/config/blah.ts`, `src/config/app.ts`, the worker URL helper, the DC URL and the
-start-up hand-over), plus `*:widget` package scripts and the README pointer. After
-rebasing, adapt the wrapped entry points in `restrictions.ts` and
-`selectionRestrictions.ts` and run the checks below.
-
-```sh
-pnpm test:widget
-pnpm run typecheck
-pnpm lint
-pnpm exec vite build --config vite.widget.config.ts
-node scripts/test-widget-setup.mjs
-BLAH_SERVER_REPO=/path/to/Teleblah node scripts/test-widget.mjs
-```
-
-To check language coverage against a language-pack checkout, run:
-
-```sh
-WIDGET_LANGPACK_DIR=/path/to/blah-langpack/webk_bfb/en \
-BLAH_SERVER_REPO=/path/to/Teleblah node scripts/test-widget.mjs
-# Recheck a saved trace without starting a browser or DC:
-node scripts/test-widget-language.mjs /path/to/blah-langpack/webk_bfb/en \
-  /path/to/artifacts/language-resolutions.json
-```
-
-With `WIDGET_LANGPACK_DIR`, the harness builds a temporary instrumented widget,
-loads that English pack over the bundled fallback, and records the actual I18n
-resolver, including computed keys, plurals, plain text and accessibility labels.
-The shipped build has no recorder. `language-resolutions.json` distinguishes
-`pack`, `bundled` and `missing` resolutions across reloads. The run fails for an
-unlisted resolved key; narrowly documented hidden-construction exceptions live in
-`tests/widget/languageExceptions.json`. Visible-key snapshots have no exceptions.
-Never add a translation just because a hidden component constructs its label.
-Keep the English values and plural forms identical to `src/lang.ts` / `src/langSign.ts`.
-The fixture checks this before the build-time branding transform. Missing pack configuration prints
-an explicit skip notice.
-
-The widget release workflow currently neither checks out language packs nor provisions
-a debug DC, and runs only the startup/setup browser fixtures. Full language coverage
-therefore remains a local check. A CI job can run the same command after checking
-out the language-pack repository and supplying a built debug DC; the pack path is
-not hardcoded and needs no published tags or changes to the DC's pack configuration.
-
-Source reachability must supplement the runtime trace: include DC-deliverable
-media, service/reply previews, error branches and runtime key tables. Check the
-server's producers, including application custom service messages and external
-reply targets, rather than the schema's list of possible types. Excluded content
-keys belong in the guard's exact-key exceptions with a shared reason per family;
-the synthetic excluded-message tests must render the kept generic fallback.
-Check the saved accessibility snapshots too: hidden infrastructure can still
-construct labels, but customer-visible text must always come from the pack.
-
-The setup fixture needs Playwright Chromium and network access to the real CDN;
-it serves local build files under a test `blahim.com` origin. It verifies signed
-profile discovery and rejection, CSS preview, generated downloads, subdirectory
-asset loading, keyboard navigation, narrow layout and Axe. It requires no live DC
-or account. The workflow runs it before packaging the unchanged build output.
-
-The last command needs a built debug DC, OpenSSL and Playwright Chromium with its
-OS dependencies. Run the same checks in WebKit with `WIDGET_BROWSER=webkit`;
-`BLAH_BROWSER_EXECUTABLE` optionally selects a browser executable or wrapper.
-The harness seeds disposable managed accounts, runs the production widget
-inside a cross-origin iframe and uses real encrypted WebSockets. It checks customer-first
-messaging, attachment-menu opening on click, photo-first contact, video/file uploads and byte-for-byte downloads,
-a support reply, read outgoing text/media/albums retaining single checks before and after
-reload, no chat header or reserved space in LTR/RTL, group-style support senders,
-private media-viewer controls and authors, no read-date menu items,
-the single-chat and no-multi-select restrictions, absent pin/forward/search menu items
-(also with selected text), inert tag clicks and search shortcuts, hidden server pin events
-live and after reload with history still at the bottom, account
-replacement/logout across page loads and fragment changes, revoked/missing/invalid
-tokens, CSS customization in light and dark mode, narrow layout and Axe, and that no
-request leaves the widget origin. Its second-client driver is built only into a
-temporary directory. Inset checks cover live changes and removal, resting history
-and bottom anchoring, LTR/RTL, full-frame backgrounds/scrollers, composer and
-viewer geometry, send-media popups and light/dark screenshots. Its local S3 fixture
-holds disposable media bytes; upload
-authorization, finalization and downloads run through the real DC. Set
-`TMPDIR` and `WIDGET_TEST_ARTIFACTS` to keep temporary files and failure logs in a
-chosen run directory; `WIDGET_SKIP_BUILD=1` tests an already built widget.
-Theme checks set distinct light/dark sentinels, sweep visible colors and corners
-(including pseudo-elements) in chat, menus, send-media and the viewer, and verify
-that removing overrides restores defaults. Failures name the element and property;
-`theme-coverage.json` and default/sentinel screenshots accompany the run. Setup
-checks keyboard disclosure/validation, all exported fields and the sample styles.
-The widget-only CSS build maps fixed corners with upstream defaults as fallbacks;
-keep `scripts/widget-theme-css.ts` and the documented circle exceptions aligned
-when adding a new surface.
-Add `WIDGET_DIST=/path/to/extracted/archive`
-to test the hosted release itself. Both browsers exercise the popup Send button
-inside a cross-origin iframe, including a captionless first photo, and capture
-page errors, promise rejections and media errors. WebKit uses an existing H.264 MP4
-fixture; Chromium generates VP9 WebM, since the test browsers differ in codec support.
-The client's opt-in `?a11y=1` keyboard layer currently leaves the
-composer without a usable editor, so the fixture runs without it. Screen-reader and
-physical touch testing remain manual.
-
-Startup is bounded to 45 seconds, including opening the support conversation. If the DC
-cannot be reached or startup fails, the widget shows an error and **Reconnect**, which
-reloads the page. A timeout keeps the token and session intact; it does not sign out.
 
 Each build carries its full Git commit in the `blah-widget-revision` meta tag and
 `build.json` (`revision`, `version`, `builtAt` in UTC); local uncommitted changes add

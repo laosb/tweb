@@ -5,6 +5,13 @@ type Declaration = {
   source?: {input: {file?: string}}
 };
 
+/** Shared SCSS retains removed columns/panels; dialog rows still serve reaction participants. */
+export function widgetCssSelector(selector: string) {
+  if(/#column-(?:left|right)\b|\.(?:shared-media-container|sidebar-left-overlay|sidebar-left-common|folders-sidebar|chat-topbar)\b/.test(selector)) return false;
+  if(/\.chatlist-chat\b/.test(selector) && /\.(?:has-select-checkbox|dialog-select-checkbox|has-folder-tags|dialog-folder-tags|is-reorderable|is-reordering)\b/.test(selector)) return false;
+  return !/\.(?:botforum-new-topic-bubble|emoji-dropdown|emoji-tone-picker|emoticons|emoji-helper|stickers-helper|inline-helper|voice-recording[\w-]*|video-recording[\w-]*|quiz-hint[\w-]*|selection-wrapper|fake-selection-wrapper|selection-container[\w-]*|bubble-select-checkbox|toggle-emoticons|btn-menu-reactions-more|media-editor__stickers)\b/.test(selector);
+}
+
 /** Widget-only compiled CSS: preserve each upstream default, including lazy editor styles.
  * Mapping at build time also covers CSS modules without depending on their generated names.
  * Content paint (photos, emoji, editor paint swatches) is deliberately not rewritten.

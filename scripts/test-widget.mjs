@@ -16,12 +16,16 @@ import AxeBuilder from '@axe-core/playwright';
 import httpProxy from 'http-proxy';
 import {cbor} from '../tests/blah/cbor.mjs';
 import languageExceptions from '../tests/widget/languageExceptions.json' with {type: 'json'};
+import {assertWidgetLanguageKeys} from '../src/widget/languageKeys.mjs';
 import {checkLanguageSurfaces} from '../tests/widget/languageSurfaces.mjs';
 import {readEnglishPack, languageCoveragePlugin, installLanguageRecorder, checkLanguageCoverage} from '../tests/widget/languageCoverage.mjs';
 import {objectStorage} from '../tests/widget/objectStorage.mjs';
+import {checkHiddenControllers} from '../tests/widget/hiddenControllers.mjs';
+import {checkSidebars, checkSidebarBootstrap} from '../tests/widget/sidebars.mjs';
 import {checkTheme, checkStatusTheme} from '../tests/widget/theme.mjs';
 import {checkInsets, checkStatusInsets} from '../tests/widget/insets.mjs';
 import {checkMessageActions, checkTagClicks, assertHiddenPins} from '../tests/widget/messageActions.mjs';
+import {checkProductRestrictions, checkReceivedPackMenus, checkReceivedLinkActivations} from '../tests/widget/productRestrictions.mjs';
 
 // The full client takes a few seconds to restore after a reload.
 const expect = baseExpect.configure({timeout: 20_000});
@@ -38,6 +42,7 @@ if(!tele) throw new Error('Set BLAH_SERVER_REPO to a checkout with a built debug
 const dir = await mkdtemp(join(tmpdir(), 'blah-widget-'));
 const languageRecords = new Map();
 const languageStrings = process.env.WIDGET_LANGPACK_DIR ? await readEnglishPack(process.env.WIDGET_LANGPACK_DIR) : undefined;
+assertWidgetLanguageKeys(languageStrings?.map(string => string.key), Object.keys(languageExceptions));
 if(!languageStrings) console.log('Language coverage skipped: set WIDGET_LANGPACK_DIR to webk_bfb/en to record and check I18n.');
 const artifacts = process.env.WIDGET_TEST_ARTIFACTS || repo + '/tmp/widget';
 await mkdir(artifacts, {recursive: true});
@@ -236,7 +241,7 @@ try {
   let navigation = 0;
   const navigate = async(token, reload = false) => {
     await Promise.all([widgetFrame().waitForNavigation(), page.locator('iframe').evaluate((iframe, url) => { iframe.src = url; },
-      origin + '/?debug=1&test=1&' + transportQuery + '&navigation=' + (++navigation) + (reload ? '&reload=1' : '') + '#token=' + encodeURIComponent(token))]);
+      origin + '/?debug=1&test=1&memoryWatch=1&' + transportQuery + '&navigation=' + (++navigation) + (reload ? '&reload=1' : '') + '#token=' + encodeURIComponent(token))]);
   };
   const driver = await context.newPage();
   const driverErrors = [];
@@ -391,6 +396,8 @@ try {
   await page.waitForTimeout(400); // cover debounced autocomplete, including the no-dictionary DC
   await expect(frame.locator('.emoji-helper')).toHaveCount(0);
   await emojiProbe.fill('');
+  await checkHiddenControllers(widgetFrame());
+  if(languageStrings) await checkSidebars(widgetFrame());
 
   await bubble('Widget video regression').scrollIntoViewIfNeeded();
   await expect.poll(() => bubble('Widget video regression').locator('video').evaluate(v => v.readyState)).toBeGreaterThanOrEqual(2);
@@ -466,6 +473,7 @@ try {
 
   await driver.evaluate(async(id) => window.widgetTestDriver.reply(id, 'Thanks! We can help.'), alice.id);
   await expect(bubble('Thanks! We can help.')).toBeVisible();
+  messageMids.set('Thanks! We can help.', Number(await bubble('Thanks! We can help.').getAttribute('data-mid')));
   await driver.evaluate(id => window.widgetTestDriver.reply(id, 'A second support message.'), alice.id);
   await expect(bubble('A second support message.')).toBeVisible();
   await checkMessageActions({page, frame: widgetFrame(),
@@ -692,6 +700,14 @@ try {
   await page.screenshot({path: artifacts + '/iframe.png'});
   const axe = await new AxeBuilder({page}).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
   assert.deepEqual(axe.violations.map(({id, nodes}) => id + ': ' + nodes.map(({target}) => target.join(' ')).join(', ')), []);
+  if(languageStrings) {
+    await checkProductRestrictions({page, frame: widgetFrame(), driver, customerId: alice.id, supportId: support.id,
+      bubble, send, artifacts, showMessage, targetMid: messageMids.get('Thanks! We can help.')});
+    await showMessage(messageMids.get('Support video'));
+    await checkReceivedPackMenus({page, frame: widgetFrame(), mid: messageMids.get('Support video'), artifacts});
+  }
+  await checkReceivedLinkActivations({page, frame: widgetFrame(), driver, customerId: alice.id, supportId: support.id,
+    bubble, artifacts, targetMid: messageMids.get('Thanks! We can help.'), observeRequests: !!languageStrings});
   // After the scan: tweb's code block header buttons have no accessible names.
   // The release has no syntax highlighting or polls: code shows as plain text, a poll as its question.
   const code = 'const answer = 42;';
@@ -706,7 +722,8 @@ try {
     '<style>:root.night { --widget-incoming-bubble-color: rgb(20, 40, 60); }</style>'));
   await page.emulateMedia({colorScheme: 'dark'});
   await expect(frame.locator('html')).toHaveClass(/\bnight\b/);
-  await expect(bubble('Thanks! We can help.').locator('.bubble-content')).toHaveCSS('background-color', 'rgb(20, 40, 60)');
+  await showMessage(messageMids.get('Thanks! We can help.'));
+  await expect(frame.locator(`.bubble[data-mid="${messageMids.get('Thanks! We can help.')}"]`).locator('.bubble-content')).toHaveCSS('background-color', 'rgb(20, 40, 60)');
   await page.screenshot({path: artifacts + '/iframe-dark.png'});
   await page.emulateMedia({colorScheme: 'light'});
   if(languageStrings) await checkLanguageSurfaces({page, frame: widgetFrame(), showMessage, messageMids, photo, strings: languageStrings, artifacts});
@@ -715,6 +732,7 @@ try {
 
   // A new document must retire the saved authorization before switching users.
   await navigate(bob.token, true);
+  if(languageStrings) await checkSidebarBootstrap(widgetFrame());
   await assertHeader();
   await expect(bubble('A customer can ask for help first.')).toHaveCount(0);
   const database = new DatabaseSync(dir + '/data.sqlite');

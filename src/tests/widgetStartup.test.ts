@@ -143,7 +143,7 @@ it.each(['reject', 'pending'] as const)('opens support despite a %s language pac
 
 it('renders startup errors and the retry button in the fetched language', async() => {
   blah.widget.lang = 'de';
-  mocks.pack.mockResolvedValue({lang_code: 'de', strings: [
+  mocks.pack.mockResolvedValue({_: 'langPackDifference', lang_code: 'de', from_version: 0, version: 1, strings: [
     {_: 'langPackString', key: 'BfbConnectionFailed', value: 'Verbindung fehlgeschlagen.'},
     {_: 'langPackString', key: 'BfbReconnect', value: 'Erneut verbinden'}
   ]});

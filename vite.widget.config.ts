@@ -4,7 +4,10 @@ import {relative, resolve} from 'node:path';
 import {defineConfig, mergeConfig} from 'vite';
 import upstream from './vite.config';
 import widgetBuildRevision from './scripts/widget-build-revision';
-import {widgetThemeDeclaration} from './scripts/widget-theme-css';
+import widgetLanguage from './scripts/widget-language';
+import widgetBranches from './scripts/widget-branches';
+import {widgetThemeDeclaration, widgetCssSelector} from './scripts/widget-theme-css';
+import {assertWidgetCleanupAssets, assertWidgetCleanupModules} from './scripts/widget-cleanup-guards';
 // @ts-ignore no type declarations
 import keepAsset from './keepAsset.js';
 
@@ -22,7 +25,7 @@ const WIDGET_OMITTED_PUBLIC = [
   /^assets\/tgs\/(?!ReactionGeneric)/,
   /^assets\/fonts\/(?!tgico\.ttf$)/, // the icon font, whose first source is the .ttf
   /^assets\/blah(\/|$)/,
-  /^assets\/img\/(blank\.gif|doc-in|icon-verified|logo|masked|monoforum|favicon|apple-touch-icon-precomposed|pattern|bg\.|android-chrome|mstile|favicon-|favicon_unread|icon_square|safari-pinned|logo_512|screenshot|camomile|password-monkey|premium|stars|anon_paid|amex|card|diners|discover|jcb|mastercard|mir|unionpay|visa|accounts-limit|add-chats-to-folder|android-device)/,
+  /^assets\/img\/(blank\.gif|doc-in|icon-verified|logo|masked|monoforum|favicon|apple-touch-icon-precomposed|pattern|bg\.|android-chrome|mstile|favicon-|favicon_unread|icon_square|safari-pinned|logo_512|screenshot|camomile|password-monkey|premium|stars|anon_paid|amex|card|diners|discover|jcb|mastercard|mir|unionpay|visa|accounts-limit|add-chats-to-folder|android-device|EmptyChats\.svg|chat-thread-separator-dash)/,
   /^(encoderWorker\.min\.|recorder\.min\.js)/
 ];
 
@@ -30,75 +33,158 @@ const WIDGET_OMITTED_PUBLIC = [
 // code, workers and libraries stay out of the release.
 const omitted = (name: string) => resolve(__dirname, 'src/widget/omitted', name);
 const WIDGET_REPLACED: Record<string, string> = {
-  'src/components/stargifts/profileList.tsx': omitted('profileContent.ts'),
-  'src/components/stories/profileList.tsx': omitted('profileContent.ts'),
-  'src/components/wrappers/geo.ts': omitted('geo.ts'),
-  'src/components/popups/birthday.tsx': omitted('birthday.ts'),
-  'src/components/popups/contactDetails.tsx': omitted('messageAction.ts'),
-  'src/components/popups/peerProfile.tsx': omitted('messageAction.ts'),
-  'src/components/wrappers/messageForReply.ts': omitted('messageForReply.ts'),
-  'src/components/chat/bubbles/starGift.tsx': omitted('receivedContent.ts'),
-  'src/components/chat/bubbles/premiumGift.tsx': omitted('receivedContent.ts'),
-  'src/components/chat/bubbles/starGiftOffer.tsx': omitted('receivedContent.ts'),
-  'src/components/chat/bubbles/suggestBirthday.tsx': omitted('receivedContent.ts'),
-  'src/components/chat/bubbles/noForwardsRequest.tsx': omitted('receivedContent.ts'),
-  'src/components/chat/giveaway.tsx': omitted('receivedContent.ts'),
-  'src/components/wrappers/callBubble.ts': omitted('callBubble.ts'),
-  'src/components/popups/starGiftInfo.tsx': omitted('giftPopup.ts'),
-  'src/components/popups/giftLink.tsx': omitted('giftPopup.ts'),
-  'src/components/popups/sendGiftPicker.ts': omitted('giftPopup.ts'),
-
-  'src/components/popups/forward.tsx': omitted('messageAction.ts'),
-  'src/components/popups/unpinMessage.ts': omitted('messageAction.ts'),
-  'src/components/chat/topbarSearch.tsx': omitted('messageAction.ts'),
-  'src/components/chat/pinnedMessage.tsx': omitted('messageAction.ts'),
-  'src/components/wrappers/messageActionTextNew.ts': omitted('messageActionText.ts'),
+  // Authentication and credentials.
+  'src/components/monkeys/password.ts': omitted('passwordMonkey.ts'),
+  'src/components/passcodeLock/passcodeLockScreenController.tsx': omitted('lockScreen.ts'),
+  'src/components/passwordInputField.ts': omitted('password.ts'),
+  'src/lib/appManagers/utils/useLockScreenShortcut.ts': omitted('lockScreenShortcut.ts'),
+  'src/pages/mountAuthFlow.tsx': omitted('authFlow.ts'),
+  // Calls and streaming.
+  'src/components/topbarCall.tsx': omitted('topbarCall.ts'),
+  'src/lib/calls/callsController.ts': omitted('callsController.ts'),
+  'src/lib/calls/conferenceInvitesController.ts': omitted('callsController.ts'),
+  'src/lib/calls/groupCallsController.ts': omitted('callsController.ts'),
+  'src/lib/calls/rtmpCallsController.ts': omitted('callsController.ts'),
+  // Composer and recipients.
+  'src/components/chat/botCommands.ts': omitted('botCommands.ts'),
+  'src/components/chat/commandsHelper.ts': omitted('commandsHelper.ts'),
+  'src/components/chat/emojiHelper.ts': omitted('autocompleteHelper.ts'),
+  'src/components/chat/inlineHelper.ts': omitted('autocompleteHelper.ts'),
+  'src/components/chat/mentionsHelper.ts': omitted('mentionsHelper.ts'),
+  'src/components/chat/sendAs.ts': omitted('sendAs.ts'),
+  'src/components/chat/stickersHelper.ts': omitted('autocompleteHelper.ts'),
+  'src/components/popups/pickUser.tsx': omitted('pickUser.ts'),
+  'src/components/popups/requestPeer.ts': omitted('requestPeer.ts'),
+  'src/components/wrappers/keyboardButton.ts': omitted('keyboardButton.ts'),
+  'src/helpers/addAnchorListener.ts': omitted('anchorListener.ts'),
+  'src/lib/richTextProcessor/wrapUrl.ts': omitted('wrapUrl.ts'),
+  // Diagnostics.
+  'src/lib/debug/logsBuffer.ts': omitted('logsBuffer.ts'),
+  'src/lib/debug/memoryReport.ts': omitted('memoryReport.ts'),
+  'src/lib/debug/memoryStats.ts': omitted('memoryStats.ts'),
+  'src/lib/debug/memoryWatch.ts': omitted('memoryWatch.ts'),
+  // Emoji and sticker pickers.
+  'src/components/emojiDropdownButton.ts': omitted('emojiDropdownButton.ts'),
   'src/components/emoticonsDropdown/index.ts': omitted('emoticonsDropdown.ts'),
   'src/components/emoticonsDropdown/tabs/emoji.ts': omitted('emojiTab.ts'),
-  'src/components/chat/emojiHelper.ts': omitted('autocompleteHelper.ts'),
-  'src/components/chat/stickersHelper.ts': omitted('autocompleteHelper.ts'),
-  'src/components/chat/inlineHelper.ts': omitted('autocompleteHelper.ts'),
-  'src/components/emojiDropdownButton.ts': omitted('emojiDropdownButton.ts'),
-  'src/vendor/prism.ts': omitted('prism.ts'),
+  // Media and recording.
+  'src/components/chat/audio.tsx': omitted('chatAudio.ts'),
+  'src/components/chat/recording/chatRecording.ts': omitted('recording.ts'),
+  'src/helpers/math/loadTemml.ts': omitted('loadTemml.ts'),
+  'src/helpers/voiceRecorder/isNativeSupported.ts': omitted('recordingSupported.ts'),
+  // Message actions and received content.
+  'src/components/chat/bubbleParts/paidServiceMessage.ts': omitted('paidServiceMessage.ts'),
+  'src/components/chat/bubbleParts/pollMessageContent/index.ts': omitted('poll.ts'),
+  'src/components/chat/bubbles/noForwardsRequest.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/bubbles/premiumGift.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/bubbles/starGift.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/bubbles/starGiftOffer.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/bubbles/suggestBirthday.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/giveaway.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/selection.ts': omitted('selection.ts'),
+  'src/components/chat/topbarSearch.tsx': omitted('messageAction.ts'),
+  'src/components/popups/birthday.tsx': omitted('birthday.ts'),
+  'src/components/popups/contactDetails.tsx': omitted('messageAction.ts'),
+  'src/components/popups/forward.tsx': omitted('messageAction.ts'),
+  'src/components/popups/toggleReadDate.tsx': omitted('readDate.ts'),
+  'src/components/popups/unpinMessage.ts': omitted('messageAction.ts'),
+  'src/components/wrappers/callBubble.ts': omitted('callBubble.ts'),
+  'src/components/wrappers/geo.ts': omitted('geo.ts'),
+  'src/components/wrappers/messageActionTextNew.ts': omitted('messageActionText.ts'),
+  'src/components/wrappers/messageForReply.ts': omitted('messageForReply.ts'),
+  'src/components/wrappers/webPage.tsx': omitted('receivedContent.ts'),
+  'src/helpers/parseVcard.ts': omitted('vcard.ts'),
+  // Navigation, settings and profiles.
+  'src/components/autonomousDialogList/monoforumThreads.ts': omitted('monoforumList.ts'),
+  'src/components/chat/bubbles/chatBackground.tsx': omitted('chatBackground.ts'),
+  'src/components/chat/bubbles/unknownUser.tsx': omitted('unknownUser.ts'),
+  'src/components/chat/topbar.ts': omitted('topbar.ts'),
+  'src/components/dialogsPinnedReorder.ts': omitted('dialogsPinnedReorder.ts'),
+  'src/components/folderTags/dialogFolderTags.tsx': omitted('dialogFolderTags.ts'),
+  'src/components/peerProfileAvatars.ts': omitted('profileAvatars.ts'),
+  'src/components/popups/addBotToChat.ts': omitted('profilePopup.ts'),
+  'src/components/popups/deleteMegagroupMessages.tsx': omitted('adminPopup.ts'),
+  'src/components/popups/joinChatInvite.tsx': omitted('profilePopup.ts'),
+  'src/components/popups/myQrCode.tsx': omitted('profilePopup.ts'),
+  'src/components/popups/peerProfile.tsx': omitted('profilePopup.ts'),
+  'src/components/popups/sharedFolderInvite.tsx': omitted('profilePopup.ts'),
+  'src/components/popups/starsRating.tsx': omitted('profilePopup.ts'),
+  'src/components/sidebarLeft/index.ts': omitted('sidebarLeft.ts'),
+  'src/components/sidebarLeft/tabs/background.tsx': omitted('backgroundTab.ts'),
+  'src/components/sidebarRight/index.ts': omitted('sidebarRight.ts'),
+  'src/components/sidebarRight/tabs/pollResults.tsx': omitted('tab.ts'),
+  'src/components/sidebarRight/tabs/savedMusic.tsx': omitted('tab.ts'),
+  'src/components/sidebarRight/tabs/sharedMediaTab.tsx': omitted('sharedMedia.ts'),
+  'src/components/sidebarRight/tabs/statistics.tsx': omitted('tab.ts'),
+  'src/components/solidJsTabs/index.ts': omitted('tabRegistry.ts'),
+  'src/components/solidJsTabs/tabs.ts': omitted('tabs.ts'),
+  'src/components/stories/store.tsx': omitted('stories.ts'),
+  'src/lib/appDialogsManager.ts': omitted('dialogs.ts'),
+  // Payments and gifts.
+  'src/components/chat/paidMessagesInterceptor.ts': omitted('paidMessagesInterceptor.ts'),
+  'src/components/chat/priceChangedInterceptor/index.ts': omitted('priceChangedInterceptor.ts'),
+  'src/components/chat/undoablePaidTooltip.tsx': omitted('undoablePaidTooltip.ts'),
+  'src/components/popups/giftLink.tsx': omitted('giftPopup.ts'),
+  'src/components/popups/sendGiftPicker.ts': omitted('giftPopup.ts'),
+  'src/components/popups/starGiftInfo.tsx': omitted('giftPopup.ts'),
+  'src/helpers/paymentsWrapCurrencyAmount.ts': omitted('currencyAmount.ts'),
+  // Syntax and language detection.
   'src/codeLanguageDetector.ts': omitted('codeLanguageDetector.ts'),
   'src/lib/tinyld/detect.ts': omitted('languageDetector.ts'),
-  'src/components/chat/bubbleParts/pollMessageContent/index.ts': omitted('poll.ts'),
-  'src/lib/calls/callsController.ts': omitted('callsController.ts'),
-  'src/lib/calls/groupCallsController.ts': omitted('callsController.ts'),
-  'src/lib/calls/conferenceInvitesController.ts': omitted('callsController.ts'),
-  'src/lib/calls/rtmpCallsController.ts': omitted('callsController.ts'),
-  'src/components/topbarCall.tsx': omitted('topbarCall.ts'),
-  'src/components/chat/audio.tsx': omitted('chatAudio.ts'),
-  'src/components/chat/bubbles/chatBackground.tsx': omitted('chatBackground.ts'),
-  'src/helpers/math/loadTemml.ts': omitted('loadTemml.ts')
+  'src/vendor/prism.ts': omitted('prism.ts')
 };
 // Entry points of features a support chat has no use for: stories, calls, mini apps and the
 // in-app browser, payments, Stars, Premium, boosts and the AI editor. Each builds with every
 // export a function that does nothing, which leaves the rest of the feature out.
 const WIDGET_INERT = [
-  'src/components/emoticonsDropdown/search.tsx',
-  'src/components/emoticonsDropdown/tabs/SuperStickerRenderer.ts', // only unused sticker options in text menus remain
-  'src/components/popups/createPoll/stickersDropdown.ts', // eager export in hotReloadGuardValue
-  'src/components/popups/sendGift.tsx', // the remaining consumer of sticker grid rendering
-  'src/components/mediaEditor/tabs/stickersTab.tsx',
-  'src/components/sidebarLeft/emojiStatusPicker.tsx',
-  'src/components/peerProfile.tsx', // hidden profile column, including Blah identity rows
-  'src/components/stories/viewer.tsx',
-  'src/components/stories/list.tsx',
-  'src/components/stories/preview.tsx',
-  'src/components/call/index.tsx',
-  'src/components/call/conferenceJoinPopup.tsx',
-  'src/components/mediaViewer/rtmp.ts',
-  'src/components/rtmp/adminPopup.tsx',
-  'src/components/popups/webApp.tsx',
-  'src/components/browser.tsx',
-  'src/components/popups/payment.tsx',
-  'src/components/popups/stars.tsx',
-  'src/components/popups/premium.tsx',
-  'src/components/popups/boost.tsx',
-  'src/components/openBoosts.ts',
+  // AI editor.
   'src/components/richMessageInput/ai.tsx',
-  'src/components/richMessageInput/aiButton.tsx'
+  'src/components/richMessageInput/aiButton.tsx',
+  // Calls and streaming.
+  'src/components/call/conferenceJoinPopup.tsx',
+  'src/components/call/index.tsx',
+  'src/components/mediaViewer/rtmp.ts',
+  'src/lib/calls/noiseSuppression/noiseSuppression.ts',
+  // Diagnostics.
+  'src/lib/debug/mountLogExport.ts',
+  // Emoji and sticker pickers.
+  'src/components/emoticonsDropdown/search.tsx',
+  'src/components/emoticonsDropdown/tabs/SuperStickerRenderer.ts',
+  'src/components/mediaEditor/tabs/stickersTab.tsx',
+  'src/components/popups/createPoll/stickersDropdown.ts',
+  'src/components/popups/stickers.tsx',
+  'src/components/sidebarLeft/emojiStatusPicker.tsx',
+  // Message actions and received content.
+  'src/components/chat/bubbleParts/dice.ts',
+  'src/components/chat/bubbleParts/updateChatThreadSeparators.ts',
+  'src/components/quizHint.ts',
+  // Navigation, settings and profiles.
+  'src/components/businessHours.tsx',
+  'src/components/chat/similarChannels.tsx',
+  'src/components/chat/translation.tsx',
+  'src/components/chatTips/index.tsx',
+  'src/components/communities/communityLinkSection.tsx',
+  'src/components/popups/createBot/index.tsx',
+  'src/components/popups/createContact.tsx',
+  'src/components/popups/editMemberTag.tsx',
+  'src/components/popups/memberTagInfo.tsx',
+  'src/components/sidebarLeft/tabs/createNewGroupTab.ts',
+  // Payments and gifts.
+  'src/components/popups/boost.tsx',
+  'src/components/popups/giftPremium.tsx',
+  'src/components/popups/makePaid.tsx',
+  'src/components/popups/payment.tsx',
+  'src/components/popups/premium.tsx',
+  'src/components/popups/sendGift.tsx',
+  'src/components/popups/starReaction.tsx',
+  'src/components/popups/stars.tsx',
+  'src/components/stars/starsAmount.tsx',
+  // Stories.
+  'src/components/stories/preview.tsx',
+  'src/components/stories/viewer.tsx',
+  // Web apps and browser.
+  'src/components/browser.tsx',
+  'src/components/popups/webApp.tsx'
 ];
 /** The runtime names a module exports, from its source. */
 function exportNames(program: any) {
@@ -115,24 +201,32 @@ function exportNames(program: any) {
 }
 // Screens a customer cannot open in the widget: lazy imports of these build as empty modules.
 const WIDGET_UNREACHABLE = [
-  /^src\/pages\/cards\//, // sign-in: the URL's token is the only credential
+  // Authentication and credentials.
+  /^src\/pages\/cards\//, // the URL token is the only credential
+  /\/qr-code-styling\//,
+  // Calls and streaming.
+  /^src\/components\/call\/(?!index\.|conferenceJoinPopup\.)/,
+  /^src\/components\/groupCall\//,
+  /\/hls\.js\//, // Blah sends no alternative qualities
+  // Diagnostics and in-page workers.
+  /^src\/lib\/debug\//,
+  /^src\/lib\/(mainWorker\/index|crypto\/crypto)\.worker\.ts$/,
+  // Message actions and received content.
+  /^src\/components\/avatarEdit\./, // excluded suggested-profile-photo service action
+  /^src\/components\/chat\/bubbleParts\/(adminLogsResolver\/|suggestedPost)/,
+  /^src\/components\/chat\/(logFiltersPopup|suggestPostPopup)\//,
+  /^src\/components\/popups\/(createPoll|aiEditorPopup|translate)\//,
+  // Navigation, settings and profiles.
+  /^src\/components\/(communities|forumTab|addToFolderDropdownMenu|passcodeLock|iconLibrary)\//,
+  /^src\/components\/popups\/(ageVerification|musicSearch|richButton)\./,
+  /^src\/components\/popups\/(channelsTooMuch|emailSetup|passkey|deleteDialog|mute)\./,
   /^src\/components\/sidebarLeft\/tabs\/(?!background\.)/, // settings and the hidden chat list
   /^src\/components\/sidebarRight\/tabs\/(?!sharedMedia(?:Tab)?\.|boosts\.)/, // the profile column is hidden
-  /^src\/components\/(communities|forumTab|addToFolderDropdownMenu|passcodeLock|iconLibrary)\//,
   /^src\/lib\/blah\/Identity(Details)?Settings\./, // the Blah identity's settings
-  /^src\/components\/popups\/(createPoll|aiEditorPopup|translate)\//,
-  /^src\/components\/popups\/(ageVerification|musicSearch|richButton)\./,
-  /^src\/components\/chat\/(logFiltersPopup|suggestPostPopup)\//,
-  /^src\/components\/chat\/bubbleParts\/(adminLogsResolver\/|suggestedPost)/,
-  /^src\/components\/groupCall\//,
-  /^src\/lib\/debug\//,
-  /^src\/lib\/(mainWorker\/index|crypto\/crypto)\.worker\.ts$/, // in-page workers: src/widget/modes.ts
-  /^src\/components\/call\/(?!index\.|conferenceJoinPopup\.)/,
-  /^src\/lib\/tchart\//, // statistics
   /^src\/lib\/settingsSearch\//,
-  /^src\/vendor\/recorder\.min\.js$/, // voice messages
-  /\/qr-code-styling\//, // QR sign-in and profile links
-  /\/hls\.js\// // adaptive video: Blah sends no alternative qualities
+  /^src\/lib\/tchart\//,
+  // Recording.
+  /^src\/vendor\/recorder\.min\.js$/
 ];
 const UNREACHABLE = '\0widget-unreachable';
 const omittedLazily = new Set<string>();
@@ -163,6 +257,60 @@ function chunkName(id: string, context: ChunkingContext) {
   if(setupModules.has(id)) return SETUP_ONLY.test(id) ? null : 'shared';
   if(clientModules.has(id)) return /\.html$/.test(id) ? null : 'client';
   return allModules.has(id) ? 'media-editor' : null;
+}
+
+const workerModulePaths = new Set<string>();
+function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
+  return {
+    name: 'widget-omitted-modules',
+    enforce: 'pre',
+    apply: (config) => !config.build?.lib,
+    buildStart() {
+      if(requireTargets) workerModulePaths.clear();
+    },
+    async resolveId(source, importer, options) {
+      if(options.kind !== 'dynamic-import' || !importer) return;
+      const resolved = await this.resolve(source, importer, {kind: 'dynamic-import', skipSelf: true});
+      if(resolved && isUnreachable(resolved.id)) {
+        omittedLazily.add(resolved.id);
+        return UNREACHABLE;
+      }
+    },
+    load(id) {
+      if(id === UNREACHABLE) return 'export default undefined;';
+      // A widget wrapper may delegate to the unchanged upstream implementation.
+      if(id.endsWith('?widget-original')) return;
+      const path = relative(__dirname, id.split('?')[0]);
+      if(WIDGET_REPLACED[path]) return readFileSync(WIDGET_REPLACED[path], 'utf8');
+      if(WIDGET_INERT.includes(path)) {
+        const names = exportNames(this.parse(readFileSync(id, 'utf8'), {lang: path.endsWith('x') ? 'tsx' : 'ts'}));
+        return 'const inert = function() {};\nexport {' + names.map((name: string) => 'inert as ' + name).join(', ') + '};';
+      }
+    },
+    buildEnd(error) {
+      if(error) return;
+      // A rename upstream must not silently ship a feature again, nor empty a module in use.
+      const ids = new Set(this.getModuleIds());
+      const pickerModules = [...ids].map((id) => relative(__dirname, id)).filter((path) =>
+        path.startsWith('src/components/emoticonsDropdown/') &&
+        path !== 'src/components/emoticonsDropdown/constants.ts' &&
+        !WIDGET_REPLACED[path] && !WIDGET_INERT.includes(path));
+      if(pickerModules.length) this.error('widget picker code is reachable: ' + pickerModules.join(', '));
+      const paths = [...ids].map((id) => relative(__dirname, id));
+      assertWidgetCleanupModules(paths, [...Object.keys(WIDGET_REPLACED), ...WIDGET_INERT]);
+      if(!requireTargets) {
+        for(const path of paths) workerModulePaths.add(path);
+        return;
+      }
+      const missing = [...Object.keys(WIDGET_REPLACED), ...WIDGET_INERT].filter((path) => !ids.has(resolve(__dirname, path)) && !workerModulePaths.has(path));
+      if(missing.length) this.error('no longer in the build: ' + missing.join(', '));
+      const eager = [...omittedLazily].filter((id) => ids.has(id)).map((id) => relative(__dirname, id));
+      if(eager.length) this.error('omitted lazily but also imported eagerly: ' + eager.join(', '));
+    },
+    generateBundle(_, bundle) {
+      assertWidgetCleanupAssets(Object.values(bundle).flatMap((item: any) => [item.fileName, ...(item.originalFileNames || [])]));
+    }
+  };
 }
 
 /**
@@ -209,46 +357,10 @@ export default mergeConfig(upstream, defineConfig({
         if(/^assets\/blah\/|\.webmanifest$/.test(fileName)) delete bundle[fileName];
       }
     }}
-  }, {
-    name: 'widget-omitted-modules',
-    enforce: 'pre',
-    apply: (config) => !config.build?.lib,
-    async resolveId(source, importer, options) {
-      if(options.kind !== 'dynamic-import' || !importer) return;
-      const resolved = await this.resolve(source, importer, {kind: 'dynamic-import', skipSelf: true});
-      if(resolved && isUnreachable(resolved.id)) {
-        omittedLazily.add(resolved.id);
-        return UNREACHABLE;
-      }
-    },
-    load(id) {
-      if(id === UNREACHABLE) return 'export default undefined;';
-      // A widget wrapper may delegate to the unchanged upstream implementation.
-      if(id.endsWith('?widget-original')) return;
-      const path = relative(__dirname, id.split('?')[0]);
-      if(WIDGET_REPLACED[path]) return readFileSync(WIDGET_REPLACED[path], 'utf8');
-      if(WIDGET_INERT.includes(path)) {
-        const names = exportNames(this.parse(readFileSync(id, 'utf8'), {lang: path.endsWith('x') ? 'tsx' : 'ts'}));
-        return 'const inert = function() {};\nexport {' + names.map((name: string) => 'inert as ' + name).join(', ') + '};';
-      }
-    },
-    buildEnd() {
-      // A rename upstream must not silently ship a feature again, nor empty a module in use.
-      const ids = new Set(this.getModuleIds());
-      const pickerModules = [...ids].map((id) => relative(__dirname, id)).filter((path) =>
-        path.startsWith('src/components/emoticonsDropdown/') &&
-        path !== 'src/components/emoticonsDropdown/constants.ts' &&
-        !WIDGET_REPLACED[path] && !WIDGET_INERT.includes(path));
-      if(pickerModules.length) this.error('widget picker code is reachable: ' + pickerModules.join(', '));
-      const missing = [...Object.keys(WIDGET_REPLACED), ...WIDGET_INERT].filter((path) => !ids.has(resolve(__dirname, path)));
-      if(missing.length) this.error('no longer in the build: ' + missing.join(', '));
-      const eager = [...omittedLazily].filter((id) => ids.has(id)).map((id) => relative(__dirname, id));
-      if(eager.length) this.error('omitted lazily but also imported eagerly: ' + eager.join(', '));
-    }
-  }, {
+  }, widgetOmittedModules(), widgetBranches(), widgetLanguage(__dirname), {
     name: 'widget-public-assets',
     apply: (config) => !config.build?.lib,
-    async closeBundle() {
+    async writeBundle() {
       const publicDir = resolve(__dirname, 'public');
       for(const entry of await readdir(publicDir, {withFileTypes: true})) {
         if(isRuntimePublic(entry.name, entry.isDirectory())) {
@@ -256,6 +368,7 @@ export default mergeConfig(upstream, defineConfig({
             filter: (source) => !WIDGET_OMITTED_PUBLIC.some((pattern) => pattern.test(relative(publicDir, source)))});
         }
       }
+      assertWidgetCleanupAssets(await readdir(outDir, {recursive: true}));
     }
   }],
   // An array, so mergeConfig puts these ahead of the upstream @config and @environment prefixes.
@@ -269,9 +382,9 @@ export default mergeConfig(upstream, defineConfig({
     postcssPlugin: 'widget-system-fonts-and-corners',
     Declaration: widgetThemeDeclaration,
     Rule: (rule) => {
-      // Shared SCSS still includes these removed panels. Preserve selectors used by
-      // message rendering and the remaining mention/command autocomplete helpers.
-      const selectors = rule.selectors.filter((selector) => !/\.(?:emoji-dropdown|emoji-tone-picker|emoticons|emoji-helper|stickers-helper|inline-helper|toggle-emoticons|btn-menu-reactions-more|media-editor__stickers)\b/.test(selector));
+      // Keep the widget's own hide/layout rules; filter only inherited client CSS.
+      if(/[\\/]src[\\/]widget[\\/]/.test(rule.source?.input.file || '')) return;
+      const selectors = rule.selectors.filter(widgetCssSelector);
       if(!selectors.length) rule.remove();
       else if(selectors.length !== rule.selectors.length) rule.selectors = selectors;
     },
@@ -286,6 +399,6 @@ export default mergeConfig(upstream, defineConfig({
     emptyOutDir: true,
     sourcemap: false
   },
-  worker: {rolldownOptions: {output: {codeSplitting: false}}},
+  worker: {plugins: () => [widgetOmittedModules(false)], rolldownOptions: {output: {codeSplitting: false}}},
   test: {root: __dirname, include: ['src/tests/widget*.test.ts']}
 }));

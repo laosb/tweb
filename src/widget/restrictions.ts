@@ -1,13 +1,9 @@
-import {hotReloadGuard} from '@lib/solidjs/hotReloadGuardProvider';
 import type {ChatRights} from '@appManagers/appChatsManager';
 import appImManager from '@lib/appImManager';
 import appNavigationController from '@components/appNavigationController';
-import appSidebarRight from '@components/sidebarRight';
-import AppSharedMediaTab from '@components/sidebarRight/tabs/sharedMediaTab';
 import Chat from '@components/chat/chat';
 import ChatInput from '@components/chat/input';
 import {ChatType} from '@components/chat/chatType';
-import ChatRecording from '@components/chat/recording/chatRecording';
 import {ChatReactionsMenu} from '@components/chat/reactionsMenu';
 import {restrictChatPresentation} from '@/widget/chatRestrictions';
 import {applyWidgetInsets} from '@/widget/insets';
@@ -15,6 +11,9 @@ import {useWidgetSelfTitle} from '@/widget/selfTitle';
 import {restrictMediaViewer} from '@/widget/mediaViewerRestrictions';
 import {restrictChatStatus} from '@/widget/statusRestrictions';
 import {restrictMessageSelection} from '@/widget/selectionRestrictions';
+import {restrictInternalLinks} from '@/widget/linkRestrictions';
+import {restrictRecipients} from '@/widget/recipientRestrictions';
+import {restrictPacks} from '@/widget/packRestrictions';
 import {restrictMessageActions} from '@/widget/messageRestrictions';
 
 // Kept out of the support conversation.
@@ -26,18 +25,20 @@ const ATTACH_ICONS = new Set(['image', 'document']);
  * instead of editing them, which keeps this branch cheap to rebase. Every wrapped member
  * is checked first, so an upstream rename fails loudly instead of silently reopening a feature.
  */
-export function restrictToSupport(supportPeerId: PeerId) {
+export function restrictToSupport(supportPeerId: PeerId, usernames: readonly string[] = []) {
   const chatInput = ChatInput.prototype as any;
   const targets = [
     [appImManager, 'setPeer'], [appImManager, 'setInnerPeer'], [appNavigationController, 'overrideHash'],
-    [appSidebarRight, 'toggleSidebar'], [hotReloadGuard, 'showPeerProfilePopup'], [AppSharedMediaTab, 'open'], [AppSharedMediaTab.prototype, 'setPeer'], [Chat.prototype, 'canSend'], [chatInput, 'constructPeerHelpers'],
-    [ChatReactionsMenu.prototype, 'init'], [chatInput, 'checkInlineAutocomplete'],
-    [ChatRecording.prototype, 'hasVoiceRecorder'], [ChatRecording.prototype, 'hasAnyRecorder']
+    [Chat.prototype, 'canSend'], [chatInput, 'constructPeerHelpers'],
+    [ChatReactionsMenu.prototype, 'init'], [chatInput, 'checkInlineAutocomplete']
   ] as const;
   for(const [object, key] of targets) {
     if(typeof((object as any)[key]) !== 'function') throw new Error('WIDGET_RESTRICTION_TARGET_MISSING: ' + key);
   }
 
+  restrictInternalLinks(supportPeerId, usernames);
+  restrictRecipients();
+  restrictPacks();
   restrictMessageSelection();
   restrictMessageActions();
   restrictChatStatus();
@@ -54,17 +55,6 @@ export function restrictToSupport(supportPeerId: PeerId) {
   appImManager.setPeer = (options = {}, animate) => isSupportChat(options) ? setPeer(options, animate) : Promise.resolve(false);
   const setInnerPeer = appImManager.setInnerPeer.bind(appImManager);
   appImManager.setInnerPeer = async(options) => { if(isSupportChat(options)) return setInnerPeer(options); };
-  appSidebarRight.toggleSidebar = () => Promise.resolve();
-  hotReloadGuard.showPeerProfilePopup = () => Promise.resolve();
-  AppSharedMediaTab.open = () => Promise.resolve();
-
-  // Keep shared media's layout without rendering the profile omitted from this build.
-  const setMediaPeer = AppSharedMediaTab.prototype.setPeer;
-  AppSharedMediaTab.prototype.setPeer = function(...args) {
-    this.noProfile = true;
-    return setMediaPeer.apply(this, args);
-  };
-
   // The fragment carries the customer token; opening the chat must not replace it.
   const overrideHash = appNavigationController.overrideHash.bind(appNavigationController);
   appNavigationController.overrideHash = (hash, forceReplace) => overrideHash(location.hash, forceReplace);
@@ -73,9 +63,6 @@ export function restrictToSupport(supportPeerId: PeerId) {
   Chat.prototype.canSend = function(this: Chat, action?: ChatRights) {
     return DENIED_RIGHTS.has(action) ? Promise.resolve(false) : canSend.call(this, action);
   };
-
-  // No voice or round-video messages: the send button never turns into a recorder.
-  ChatRecording.prototype.hasVoiceRecorder = ChatRecording.prototype.hasAnyRecorder = () => false;
 
   // Photos, videos and files only.
   const constructPeerHelpers = chatInput.constructPeerHelpers;

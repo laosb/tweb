@@ -1,3 +1,4 @@
+import getPeerActiveUsernames from '@appManagers/utils/peers/getPeerActiveUsernames';
 import type {AuthState} from '@types';
 import blah from '@config/blah';
 import rootScope from '@lib/rootScope';
@@ -113,7 +114,7 @@ export async function startWidget(authState: AuthState) {
         throw new Error('SUPPORT_UNAVAILABLE');
       }
       const peerId = user.id.toPeerId(false);
-      const appImManager = restrictToSupport(peerId);
+      const appImManager = restrictToSupport(peerId, getPeerActiveUsernames(user));
       const {bootstrapIm} = await import('@/pages/bootstrapIm');
       attempt.signal.throwIfAborted();
       await bootstrapIm();

@@ -1,7 +1,6 @@
 import ChatBubbles, {FullMid, makeFullMid, splitFullMid} from '@components/chat/bubbles';
 import ChatContextMenu from '@components/chat/contextMenu';
 import ChatInput from '@components/chat/input';
-import {AppSidebarLeft} from '@components/sidebarLeft';
 import contextMenuController from '@helpers/contextMenuController';
 import idleController from '@helpers/idleController';
 import I18n from '@lib/langPack';
@@ -11,7 +10,7 @@ import type {Message} from '@layer';
 import {widgetReceivedMessage} from '@/widget/receivedContent';
 import isPinServiceMessage from '@/widget/isPinServiceMessage';
 
-const MENU_KEYS = new Set(['VoiceChat.OpenProfile', 'SavedMusic.AddToProfile', 'SavedMusic.RemoveFromProfile']);
+const MENU_KEYS = new Set(['Context.ViewStickerSet', 'ViewPackPreview', 'VoiceChat.OpenProfile', 'SavedMusic.AddToProfile', 'SavedMusic.RemoveFromProfile']);
 const MENU_ICONS = new Set(['pin', 'unpin', 'forward', 'search', 'tag_filter']);
 
 export function restrictMessageActions() {
@@ -21,7 +20,7 @@ export function restrictMessageActions() {
   const targets = [
     [contextMenu, 'setButtons'], [bubbles, 'renderMessage'], [bubbles, 'getHistory1'],
     [bubbles, 'isHistoryNeverDrawn'], [bubbles, '_renderNewMessage'], [input, 'initMessagesForward'],
-    [input, 'constructForwardElements'], [AppSidebarLeft.prototype, 'initSearch'],
+    [input, 'constructForwardElements'],
     [contextMenuController, 'openBtnMenu'], [uiNotificationsManager, 'buildNotification']
   ] as const;
   for(const [object, key] of targets) {
@@ -32,12 +31,11 @@ export function restrictMessageActions() {
   const setButtons = contextMenu.setButtons;
   contextMenu.setButtons = function() {
     const result = setButtons.call(this);
-    this.buttons = this.buttons.filter((button: {icon: string, text?: string}) => !MENU_ICONS.has(button.icon) && !MENU_KEYS.has(button.text));
+    this.buttons = this.buttons.filter((button: {icon: string, text?: string, localName?: string}) => button.localName !== 'emojis' && !MENU_ICONS.has(button.icon) && !MENU_KEYS.has(button.text));
     return result;
   };
 
   input.initMessagesForward = input.constructForwardElements = (): undefined => undefined;
-  AppSidebarLeft.prototype.initSearch = () => ({open() {}, openWithPeerId() {}, openWithArchive() {}, close() {}});
   // Both hashtags and cashtags become ordinary text, including in reactive message bodies.
   SITE_HASHTAGS.Telegram = '';
 
