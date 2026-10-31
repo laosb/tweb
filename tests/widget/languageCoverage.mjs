@@ -40,7 +40,35 @@ export function languageCoveragePlugin(strings) {
   return {
     name: 'widget-language-coverage',
     enforce: 'pre',
+    config(config) {
+      const plugins = config.worker?.plugins;
+      return {worker: {plugins: () => [...plugins?.() || [], {
+        name: 'widget-rpc-observation',
+        enforce: 'pre',
+        transform(source, id) {
+          const layer = id.endsWith('/src/lib/appManagers/apiManager.ts') ? 'request' :
+            id.endsWith('/src/lib/mtproto/networker.ts') ? 'transport' : undefined;
+          if(!layer) return;
+          const needle = layer === 'request' ? '// /////this.log(\'Invoke api\', method, params, options);' :
+            'const log = this.log.bindPrefix(\'wrapApiCall\');';
+          assert.equal(source.split(needle).length, 2, 'RPC observation target changed: ' + layer);
+          const channel = '(globalThis as any).__widgetRpcObservationChannel';
+          if(layer === 'request') {
+            source = source.replace(needle, `const widgetRpcId = ++(globalThis as any).__widgetRpcObservationId;\n${channel}.postMessage({layer: 'request', method, id: widgetRpcId});\n${needle}`);
+            const deferred = 'const deferred = deferredPromise<MethodDeclMap[T][\'res\']>();';
+            assert.equal(source.split(deferred).length, 2, 'RPC deferred changed');
+            source = source.replace(deferred, `${deferred}\nconst widgetRpcDone = () => ${channel}.postMessage({layer: 'request', phase: 'end', method, id: widgetRpcId});\ndeferred.then(widgetRpcDone, widgetRpcDone);`);
+          } else source = source.replace(needle, `${channel}.postMessage({layer: 'transport', method});\n${needle}`);
+          return source + `\n${channel} ??= new BroadcastChannel('widget-rpc-observation');\n(globalThis as any).__widgetRpcObservationId ??= 0;\n`;
+        }
+      }]}};
+    },
     transform(source, id) {
+      if(id.endsWith('/src/lib/getProxiedManagers.ts')) {
+        const needle = 'let promise = apiManagerProxy.invoke(\'manager\', {';
+        assert.equal(source.split(needle).length, 2, 'Manager request handoff changed');
+        return source.replace(needle, '(window as any).__widgetManagerRequests?.push(name + \'.\' + String(p));\n' + needle);
+      }
       if(id.endsWith('/src/lib/langPack.ts')) {
         const needle = 'const str = strings.get(key);';
         assert.equal(source.split(needle).length, 2, 'I18n resolver changed');
@@ -48,7 +76,7 @@ export function languageCoveragePlugin(strings) {
         return source.replace(needle, needle + '\n(globalThis as any).__widgetLangRecord?.(key, !str ? "missing" : (str as any).local ? "bundled" : "pack");');
       }
       if(id.endsWith('/src/widget/index.ts')) {
-        return source + '\n(window as any).widgetLanguageFixtures = () => import("../../tests/widget/languageFixtures");';
+        return source + '\n(window as any).widgetLanguageFixtures = () => import("../../tests/widget/languageFixtures");\n(window as any).widgetSidebarFixtures = () => import("../../tests/widget/sidebarFixtures");\n(window as any).widgetProductFixtures = () => import("../../tests/widget/productFixtures");';
       }
       if(id.endsWith('/src/widget/langPack.ts')) {
         const needle = 'const initial = applied || english;';
@@ -74,6 +102,18 @@ export async function installLanguageRecorder(context, records) {
   });
   await context.addInitScript(() => {
     if(!window.parent || window.parent === window) return;
+    window.__widgetRPCRequests = [];
+    window.__widgetRPCPending = new Map();
+    window.__widgetLastRPCAt = 0;
+    window.__widgetRpcObservationChannel = new BroadcastChannel('widget-rpc-observation');
+    window.__widgetRpcObservationChannel.onmessage = ({data}) => {
+      window.__widgetRPCRequests.push(data);
+      if(data.method !== 'account.updateStatus') window.__widgetLastRPCAt = performance.now();
+      if(data.layer === 'request') {
+        if(data.phase === 'end') window.__widgetRPCPending.delete(data.id);
+        else window.__widgetRPCPending.set(data.id, data.method);
+      }
+    };
     const seen = new Set();
     window.__widgetLangRecord = (key, source) => {
       const id = key + '\0' + source;

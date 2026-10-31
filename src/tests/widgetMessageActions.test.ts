@@ -25,16 +25,13 @@ vi.mock('@components/chat/contextMenu', () => ({default: class {
   public setButtons() {
     this.createRateTranscriptionButton();
     (this as any).buttons = ['pin', 'unpin', 'forward', 'search', 'tag_filter', 'copy', 'reply'].map(icon => ({icon})).concat([
-      {icon: 'user', text: 'VoiceChat.OpenProfile'}, {icon: 'stickers', text: 'Message.Context.AttachedStickers', verify: () => { throw new Error('pack lookup'); }}
+      {icon: 'user', text: 'VoiceChat.OpenProfile'}, {icon: 'stickers', text: 'Message.Context.AttachedStickers', verify: () => { throw new Error('pack lookup'); }}, {localName: 'emojis', text: 'Loading', verify: () => { throw new Error('pack lookup'); }}
     ] as any);
   }
 }}));
 vi.mock('@components/chat/input', () => ({default: class {
   public initMessagesForward() {}
   public constructForwardElements() {}
-}}));
-vi.mock('@components/sidebarLeft', () => ({AppSidebarLeft: class {
-  public initSearch() {}
 }}));
 vi.mock('@helpers/contextMenuController', () => ({default: {openBtnMenu() {}}}));
 vi.mock('@lib/langPack', () => ({default: {weakMap: new WeakMap(), format: (key: string) => key},

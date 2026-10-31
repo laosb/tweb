@@ -1,7 +1,7 @@
 import Chat from '@components/chat/chat';
 import ChatBubbles from '@components/chat/bubbles';
 import PeerTitle from '@components/peerTitle';
-import ChatTopbar from '@components/chat/topbar';
+import ChatTopbar from '@/widget/omitted/topbar';
 import {restrictChatPresentation} from '@/widget/chatRestrictions';
 
 const upstream = vi.hoisted(() => vi.fn());
@@ -32,21 +32,11 @@ vi.mock('@components/peerTitle', () => ({default: class {
     return Promise.resolve().then(() => { this.element.textContent = 'Updated support'; });
   }
 }}));
-vi.mock('@components/chat/topbar', () => ({default: class {
-  public construct() { upstream(); }
-  public constructUtils() { upstream(); }
-  public constructPeerHelpers() { upstream(); }
-  public finishPeerChange() { upstream(); }
-  public setupPinnedMessageForPeer() { upstream(); }
-  public revealPreparedPinnedMessage() { upstream(); }
-  public setTitle() { upstream(); }
-  public setFloating() { upstream(); }
-}}));
 beforeAll(restrictChatPresentation);
 afterEach(() => vi.clearAllMocks());
 
 it('keeps a detached lifecycle target without building UI, plates or listeners', () => {
-  const topbar = Object.create(ChatTopbar.prototype);
+  const topbar = new ChatTopbar();
   topbar.constructUtils();
   topbar.constructPeerHelpers();
   topbar.construct();
@@ -56,6 +46,9 @@ it('keeps a detached lifecycle target without building UI, plates or listeners',
   topbar.setFloating();
   expect(topbar.container.isConnected).toBe(false);
   expect(topbar.container.childNodes).toHaveLength(0);
+  expect(topbar.menuButtons).toEqual([]);
+  topbar.cleanup();
+  topbar.destroy();
   expect(upstream).not.toHaveBeenCalled();
 });
 
