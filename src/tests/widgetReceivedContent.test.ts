@@ -15,7 +15,7 @@ it.each(['CustomAction', 'ScreenshotTaken', 'SetMessagesTTL', 'PinMessage', 'Tod
 
 it.each(['StarGift', 'StarGiftUnique', 'StarGiftPurchaseOffer', 'GiftPremium', 'GiftCode', 'GiftStars',
   'GiftTon', 'GiveawayLaunch', 'GiveawayResults', 'PhoneCall', 'ConferenceCall', 'SuggestBirthday',
-  'SuggestProfilePhoto', 'NoForwardsRequest', 'SetChatTheme', 'SetChatWallPaper', 'GameScore'])('replaces service %s without reading its payload', type => {
+  'SuggestProfilePhoto', 'NoForwardsRequest', 'SetChatTheme', 'SetChatWallPaper', 'GameScore', 'GramTransfer', 'WalletTonConnectRequest'])('replaces service %s without reading its payload', type => {
   const message = {_: 'messageService', id: 42, mid: 42, date: 100, peerId: 1,
     action: {_: 'messageAction' + type}, pFlags: {out: true}} as unknown as Message;
   expect(isExcludedService(message)).toBe(true);

@@ -83,20 +83,21 @@ const excludedActions = ['StarGift', 'StarGiftUnique', 'StarGiftPurchaseOffer', 
   'PhoneCall', 'ConferenceCall', 'SuggestBirthday', 'SuggestProfilePhoto', 'NoForwardsRequest',
   'SetChatTheme', 'SetChatWallPaper', 'GameScore', 'PaymentSent'];
 const excludedMetadata = [{factcheck: {}}, {reply_to: {_: 'messageReplyStoryHeader'}}];
-export function excludedMessages() {
-  return excludedMedia.length + excludedActions.length + excludedMetadata.length;
+export function excludedMessages(extraActions: string[] = []) {
+  return excludedMedia.length + excludedActions.length + extraActions.length + excludedMetadata.length;
 }
 
-export async function renderExcluded(mid: number, index: number) {
+export async function renderExcluded(mid: number, index: number, extraActions: string[] = []) {
+  const actions = [...excludedActions, ...extraActions];
   const {chat} = (window as any).appImManager;
   const base = chat.getMessage(mid);
-  const message = index >= excludedMedia.length + excludedActions.length ? {
-    ...base, ...excludedMetadata[index - excludedMedia.length - excludedActions.length]
+  const message = index >= excludedMedia.length + actions.length ? {
+    ...base, ...excludedMetadata[index - excludedMedia.length - actions.length]
   } : index < excludedMedia.length ? {
     ...base, media: {_: 'messageMedia' + excludedMedia[index]}
   } : {
     ...base, _: 'messageService', media: undefined,
-    action: {_: 'messageAction' + excludedActions[index - excludedMedia.length]}
+    action: {_: 'messageAction' + actions[index - excludedMedia.length]}
   };
   await chat.bubbles.safeRenderMessage({message, bubble: chat.bubbles.getBubble(chat.peerId, mid)});
   return wrapMessageForReply({message, managers: chat.managers, plain: true});
