@@ -1,5 +1,4 @@
 import Chat from '@components/chat/chat';
-import ChatTopbar from '@components/chat/topbar';
 import ChatBubbles from '@components/chat/bubbles';
 import PeerTitle from '@components/peerTitle';
 import cancelEvent from '@helpers/dom/cancelEvent';
@@ -10,25 +9,14 @@ import {getWidgetInsetTop} from '@/widget/insets';
 export function restrictChatPresentation() {
   const chat = Chat.prototype as any;
   const bubbles = ChatBubbles.prototype as any;
-  const topbar = ChatTopbar.prototype as any;
-  const inertTopbar = ['constructUtils', 'constructPeerHelpers', 'finishPeerChange',
-    'setupPinnedMessageForPeer', 'revealPreparedPinnedMessage', 'setTitle'];
   const targets = [
-    ...inertTopbar.map((key) => [topbar, key]),
-    [topbar, 'construct'], [chat, '_isLikeGroup'], [chat, 'recomputePaddings'],
+    [chat, '_isLikeGroup'], [chat, 'recomputePaddings'],
     [chat, 'init'], [chat, 'initSearch'], [chat, 'isPinnedMessagesNeeded'],
     [bubbles, 'attachContainerListeners'], [bubbles, 'createTitle'], [PeerTitle.prototype, 'update']
   ];
   for(const [object, key] of targets) {
     if(typeof(object[key]) !== 'function') throw new Error('WIDGET_RESTRICTION_TARGET_MISSING: ' + key);
   }
-  for(const key of inertTopbar) topbar[key] = (): undefined => undefined;
-  topbar.construct = function() {
-    // The init wrapper detaches this before the browser paints. Cleanup still uses it.
-    if(typeof(this.setFloating) !== 'function') throw new Error('WIDGET_RESTRICTION_TARGET_MISSING: setFloating');
-    this.setFloating = (): undefined => undefined;
-    this.container = document.createElement('div');
-  };
   chat.initSearch = (): undefined => undefined;
   chat.isPinnedMessagesNeeded = () => false;
   chat._isLikeGroup = () => Promise.resolve(true);

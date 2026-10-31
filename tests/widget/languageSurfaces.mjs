@@ -88,12 +88,14 @@ export async function checkLanguageSurfaces({page, frame, showMessage, messageMi
   }
   await frame.evaluate(() => window.I18n.forceRTL(false));
   const mid = messageMids.get('Widget photo regression');
-  const excluded = await frame.evaluate(async(mid) => (await window.widgetLanguageFixtures()).excludedMessages(), mid);
+  // Supply intentionally forbidden payloads as test data, outside the guarded bundle.
+  const extraActions = ['GramTransfer', 'WalletTonConnectRequest'];
+  const excluded = await frame.evaluate(async(actions) => (await window.widgetLanguageFixtures()).excludedMessages(actions), extraActions);
   for(const rtl of [false, true]) {
     await frame.evaluate(rtl => window.I18n.forceRTL(rtl), rtl);
     for(let index = 0; index < excluded; ++index) {
-      const preview = await frame.evaluate(async({mid, index}) =>
-        (await window.widgetLanguageFixtures()).renderExcluded(mid, index), {mid, index});
+      const preview = await frame.evaluate(async({mid, index, extraActions}) =>
+        (await window.widgetLanguageFixtures()).renderExcluded(mid, index, extraActions), {mid, index, extraActions});
       expect(preview).toContain('Unsupported Message');
       await expect(frame.locator(`.bubble[data-mid="${mid}"] .bubble-unsupported`)).toBeVisible();
       await snapshot('excluded-' + index + '-' + rtl);

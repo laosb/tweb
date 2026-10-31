@@ -1,69 +1,8 @@
-vi.hoisted(() => {
-  vi.stubGlobal('Worker', class Worker {});
-  vi.stubGlobal('IntersectionObserver', class IntersectionObserver {
-    public observe() {}
-    public unobserve() {}
-    public disconnect() {}
-  });
-  vi.stubGlobal('CSS', {supports: () => false});
-});
-
-vi.mock('@components/button', () => ({default: () => document.createElement('button')}));
-vi.mock('@components/buttonIcon', () => ({default: () => document.createElement('button')}));
-vi.mock('@components/checkboxField', () => ({
-  default: class CheckboxField {
-    public input = document.createElement('input');
-    public label = document.createElement('span');
-
-    constructor() {
-      this.label.classList.add('checkbox-field');
-      this.input.type = 'checkbox';
-      this.input.classList.add('checkbox-field-input');
-      this.label.append(this.input);
-    }
-  }
-}));
-vi.mock('@components/popups/deleteMessages', () => ({default: class PopupDeleteMessages {}}));
-vi.mock('@components/popups/forward', () => ({default: vi.fn()}));
-vi.mock('@components/popups/reportAd', () => ({showSelectedMessagesReport: vi.fn()}));
-vi.mock('@components/singleTransition', () => ({
-  default: ({element, className, forwards}: {
-    element: HTMLElement,
-    className: string,
-    forwards: boolean
-  }) => element.classList.toggle(className, forwards)
-}));
-vi.mock('@components/popups/sendNow', () => ({default: class PopupSendNow {}}));
-vi.mock('@components/appNavigationController', () => ({
-  default: {
-    pushItem: vi.fn(),
-    removeByType: vi.fn()
-  }
-}));
-vi.mock('@environment/touchSupport', () => ({default: false}));
-vi.mock('@lib/langPack', () => ({
-  default: {format: (key: string) => key},
-  i18n: (key: string) => document.createTextNode(key),
-  _i18n: vi.fn()
-}));
-vi.mock('@helpers/dom/clickEvent', () => ({attachClickEvent: vi.fn()}));
-vi.mock('@helpers/dom/attachContextMenuListener', () => ({attachContextMenuListener: vi.fn()}));
-vi.mock('@lib/appImManager', () => ({default: {}}));
-vi.mock('@components/popups', () => ({
-  default: class PopupElement {
-    public static createPopup = vi.fn();
-  }
-}));
-vi.mock('@environment/standalone', () => ({default: false}));
-vi.mock('@components/toast', () => ({toastNew: vi.fn()}));
-vi.mock('@components/confirmationPopup', () => ({default: vi.fn()}));
-vi.mock('@components/chat/controlPlate', () => ({default: () => document.createElement('div')}));
-
 import ListenerSetter from '@helpers/listenerSetter';
 import '@helpers/peerIdPolyfill';
-import ChatSelection from '@components/chat/selection';
+import ChatSelection from '@/widget/omitted/selection';
+import {ChatType} from '@components/chat/chatType';
 import ChatContextMenu from '@components/chat/contextMenu';
-import ChatTopbar from '@components/chat/topbar';
 import {restrictMessageSelection} from '@/widget/selectionRestrictions';
 
 vi.mock('@components/chat/contextMenu', () => ({default: class {
@@ -72,14 +11,6 @@ vi.mock('@components/chat/contextMenu', () => ({default: class {
     this.buttons = [{text: 'Message.Context.Select'}, {text: 'Reply'}];
   }
 }}));
-vi.mock('@components/chat/topbar', () => ({default: class {
-  public menuButtons: {text: string}[];
-  public constructUtils() {
-    this.menuButtons = [{text: 'Chat.Menu.SelectMessages'}, {text: 'Search'}];
-  }
-}}));
-
-
 beforeAll(() => restrictMessageSelection());
 afterEach(() => document.body.replaceChildren());
 
@@ -92,8 +23,7 @@ it('blocks gestures, click/keyboard mutations, forced selection and report selec
   bubble.dataset.peerId = String(peerId);
   root.append(bubble);
   document.body.append(root);
-  const bubbles = {getBubbleGroupedItems: (): HTMLElement[] => []};
-  const selection = new ChatSelection({bubbles} as any, bubbles as any, {} as any, {} as any);
+  const selection = new ChatSelection({type: ChatType.Chat});
   const listeners = new ListenerSetter();
   const add = vi.spyOn(listeners, 'add');
   selection.attachListeners(root, listeners);
@@ -117,21 +47,49 @@ it('blocks gestures, click/keyboard mutations, forced selection and report selec
   expect(selection.canSelectBubble(bubble)).toBe(true);
 });
 
-it('removes only the selection entry from each menu', () => {
+it('removes only the selection entry from the context menu', () => {
   const context = Object.create(ChatContextMenu.prototype);
   context.setButtons();
   expect(context.buttons).toEqual([{text: 'Reply'}]);
-  const topbar = Object.create(ChatTopbar.prototype);
-  topbar.constructUtils();
-  expect(topbar.menuButtons).toEqual([{text: 'Search'}]);
 });
 
 it('fails at startup if an upstream entry point disappears', () => {
-  const original = ChatSelection.prototype.enterReportSelection;
+  const original = (ChatContextMenu.prototype as any).setButtons;
   try {
-    ChatSelection.prototype.enterReportSelection = undefined;
-    expect(restrictMessageSelection).toThrow('WIDGET_RESTRICTION_TARGET_MISSING: enterReportSelection');
+    (ChatContextMenu.prototype as any).setButtons = undefined;
+    expect(restrictMessageSelection).toThrow('WIDGET_RESTRICTION_TARGET_MISSING: setButtons');
   } finally {
-    ChatSelection.prototype.enterReportSelection = original;
+    (ChatContextMenu.prototype as any).setButtons = original;
+  }
+});
+
+it.each(['is-date', 'is-outgoing', 'is-error', 'bubble-first', 'avoid-selection'])(
+  'keeps the hover predicate excluding %s', className => {
+    const selection = new ChatSelection({type: ChatType.Chat});
+    const bubble = document.createElement('div');
+    expect(selection.canSelectBubble(bubble)).toBe(true);
+    bubble.classList.add(className);
+    expect(selection.canSelectBubble(bubble)).toBe(false);
+  }
+);
+
+it('retains event lifecycle, service and ephemeral bubble predicates', async() => {
+  const selection = new ChatSelection({type: ChatType.Chat});
+  const listener = vi.fn();
+  selection.addEventListener('toggle', listener);
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble service is-ephemeral';
+  expect(selection.canSelectBubble(bubble)).toBe(true);
+  selection.enterReportSelection({option: new Uint8Array([1])});
+  selection.toggleByElement(bubble);
+  expect(listener).not.toHaveBeenCalled();
+  expect(selection.isMidSelected(1, 104)).toBe(false);
+  expect(await selection.getSelectedMessages()).toEqual([]);
+  selection.cleanup();
+  selection.removeEventListener('toggle', listener);
+  expect(selection.selectedMids.size).toBe(0);
+  expect(selection.length()).toBe(0);
+  for(const type of [ChatType.Logs, ChatType.Welcome]) {
+    expect(new ChatSelection({type}).canSelectBubble(bubble)).toBe(false);
   }
 });

@@ -1,9 +1,9 @@
 import ChatBubbles from '@components/chat/bubbles';
 import ChatContextMenu from '@components/chat/contextMenu';
-import ChatTopbar from '@components/chat/topbar';
+import ChatTopbar from '@/widget/omitted/topbar';
 import {restrictChatStatus} from '@/widget/statusRestrictions';
 
-const original = vi.hoisted(() => ({render: vi.fn(), status: vi.fn(), verify: vi.fn()}));
+const original = vi.hoisted(() => ({render: vi.fn(), verify: vi.fn()}));
 vi.mock('@components/chat/bubbles', () => ({default: class {
   public setBubbleSendingStatus() {}
 }}));
@@ -12,10 +12,6 @@ vi.mock('@components/chat/contextMenu', () => ({default: class {
     (this as any).buttons = [{localName: 'views', verify: original.verify}, {text: 'Reply'}];
   }
 }}));
-vi.mock('@components/chat/topbar', () => ({default: class {
-  public createStatus() { return original.status(); }
-}}));
-
 beforeAll(() => {
   (ChatBubbles.prototype as any).setBubbleSendingStatus = original.render;
   restrictChatStatus();
@@ -42,15 +38,14 @@ it('removes seen-by/read-date entries before their predicates can request data',
 it('never creates the status lifecycle', () => {
   const topbar = Object.create(ChatTopbar.prototype);
   expect(topbar.createStatus()).toBeUndefined();
-  expect(original.status).not.toHaveBeenCalled();
 });
 
 it('fails loudly when an upstream target is renamed', () => {
-  const original = (ChatTopbar.prototype as any).createStatus;
+  const original = (ChatContextMenu.prototype as any).setButtons;
   try {
-    (ChatTopbar.prototype as any).createStatus = undefined;
-    expect(restrictChatStatus).toThrow('WIDGET_RESTRICTION_TARGET_MISSING: createStatus');
+    (ChatContextMenu.prototype as any).setButtons = undefined;
+    expect(restrictChatStatus).toThrow('WIDGET_RESTRICTION_TARGET_MISSING: setButtons');
   } finally {
-    (ChatTopbar.prototype as any).createStatus = original;
+    (ChatContextMenu.prototype as any).setButtons = original;
   }
 });
