@@ -11,6 +11,7 @@ export default {
   test: false,
   debug: false,
   logs: false,
+  memoryWatch: false,
   ssl: true,
   pfs: false,
   // WebKit cannot read iframe-owned Blobs in a SharedWorker (FileReader returns

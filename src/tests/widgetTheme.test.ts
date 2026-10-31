@@ -1,5 +1,15 @@
 import {describe, expect, it} from 'vitest';
-import {widgetThemeDeclaration} from '@/../scripts/widget-theme-css';
+import {widgetThemeDeclaration, widgetCssSelector} from '@/../scripts/widget-theme-css';
+
+it('drops removed columns and picker-only rules while keeping participant rows and shared sections', () => {
+  for(const selector of ['#column-left .item-main', 'body.is-right-column-shown #column-right', '.chat.chat-preview .chat-topbar',
+    '.folders-sidebar .btn-new-menu', '.shared-media-container .profile-content', '.chatlist-chat.has-folder-tags .dialog-avatar',
+    '.chatlist-chat .dialog-select-checkbox']) expect(widgetCssSelector(selector)).toBe(false);
+  for(const selector of ['.popup-reacted-list .chatlist-chat', '.chatlist-chat .dialog-title', '.popup-reacted-list .sidebar-left-section-container',
+    '.popup-report-ad .sidebar-left-section-caption', '.bubble .media-sticker-wrapper', '.custom-emoji', '.chat-input .input-message-input']) {
+    expect(widgetCssSelector(selector)).toBe(true);
+  }
+});
 
 function corner(selector: string, value: string, prop = 'border-radius', file = '') {
   const declaration = {prop, value, parent: {type: 'rule', selector}, source: {input: {file}}};
