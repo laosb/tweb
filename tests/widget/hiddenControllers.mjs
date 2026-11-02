@@ -54,5 +54,6 @@ export async function checkHiddenControllers(frame) {
   await expect(frame.locator('.commands-helper, .chat-tips, .voice-recording-panel, .video-recording-panel, #auth-flow-root, #auth-pages')).toHaveCount(0);
   await editor.fill('');
   assert.equal(await frame.evaluate(() => localStorage.getItem('memory_watch_log')), null);
+  await expect(frame.locator('.btn-send-stars-badge')).toBeHidden();
   console.log('PASS hidden controllers: no capture/commands/auth/tips/debug UI, zero-price promises, detached topbar');
 }
