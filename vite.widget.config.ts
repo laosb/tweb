@@ -7,6 +7,7 @@ import widgetBuildRevision from './scripts/widget-build-revision';
 import widgetLanguage from './scripts/widget-language';
 import widgetBranches from './scripts/widget-branches';
 import {widgetThemeDeclaration, widgetCssSelector} from './scripts/widget-theme-css';
+import {assertWidgetServiceWorkerModules} from './scripts/widget-service-worker';
 import {assertWidgetCleanupAssets, assertWidgetCleanupModules} from './scripts/widget-cleanup-guards';
 // @ts-ignore no type declarations
 import keepAsset from './keepAsset.js';
@@ -45,6 +46,7 @@ const WIDGET_REPLACED: Record<string, string> = {
   'src/lib/calls/conferenceInvitesController.ts': omitted('callsController.ts'),
   'src/lib/calls/groupCallsController.ts': omitted('callsController.ts'),
   'src/lib/calls/rtmpCallsController.ts': omitted('callsController.ts'),
+  'src/lib/serviceWorker/rtmp.ts': omitted('serviceWorkerRtmp.ts'),
   // Composer and recipients.
   'src/components/chat/botCommands.ts': omitted('botCommands.ts'),
   'src/components/chat/commandsHelper.ts': omitted('commandsHelper.ts'),
@@ -283,6 +285,10 @@ function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
       // A widget wrapper may delegate to the unchanged upstream implementation.
       if(id.endsWith('?widget-original')) return;
       const path = relative(__dirname, id.split('?')[0]);
+      if(path === 'src/lib/serviceWorker/rtmp.ts') {
+        const names = exportNames(this.parse(readFileSync(id, 'utf8'), {lang: 'ts'})).sort();
+        if(names.join(',') !== 'onRtmpFetch,onRtmpLeftCall') this.error('widget SW RTMP contract changed');
+      }
       if(WIDGET_REPLACED[path]) return readFileSync(WIDGET_REPLACED[path], 'utf8');
       if(WIDGET_INERT.includes(path)) {
         const names = exportNames(this.parse(readFileSync(id, 'utf8'), {lang: path.endsWith('x') ? 'tsx' : 'ts'}));
@@ -299,6 +305,7 @@ function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
         !WIDGET_REPLACED[path] && !WIDGET_INERT.includes(path));
       if(pickerModules.length) this.error('widget picker code is reachable: ' + pickerModules.join(', '));
       const paths = [...ids].map((id) => relative(__dirname, id));
+      assertWidgetServiceWorkerModules(paths);
       assertWidgetCleanupModules(paths, [...Object.keys(WIDGET_REPLACED), ...WIDGET_INERT]);
       if(!requireTargets) {
         for(const path of paths) workerModulePaths.add(path);
