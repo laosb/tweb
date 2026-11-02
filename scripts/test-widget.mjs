@@ -15,6 +15,7 @@ import {chromium, webkit, expect as baseExpect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import httpProxy from 'http-proxy';
 import {cbor} from '../tests/blah/cbor.mjs';
+import {checkNativeEmoji} from '../tests/widget/emoji.mjs';
 import languageExceptions from '../tests/widget/languageExceptions.json' with {type: 'json'};
 import {assertWidgetLanguageKeys} from '../src/widget/languageKeys.mjs';
 import {checkLanguageSurfaces} from '../tests/widget/languageSurfaces.mjs';
@@ -229,13 +230,15 @@ try {
     await widgetFrame().evaluate(mid => window.appImManager.setPeer({peerId: window.appImManager.chat.peerId, lastMsgId: mid}), mid);
   };
   const bubble = (text) => frame.locator('#column-center .bubble[data-mid]').filter({hasText: text});
-  const send = async(text) => {
+  const send = async(text, {last = false, renderedText = text} = {}) => {
     await frame.getByRole('textbox', {name: 'Message'}).click();
     await page.keyboard.insertText(text);
     await page.keyboard.press('Enter');
-    await expect(bubble(text)).toBeVisible();
-    await expect(bubble(text)).not.toHaveClass(/is-outgoing|is-error/);
-    messageMids.set(text, Number(await bubble(text).getAttribute('data-mid')));
+    const sent = last ? bubble(renderedText).last() : bubble(renderedText);
+    await expect(sent).toBeVisible();
+    await expect(sent).not.toHaveClass(/is-outgoing|is-error/);
+    messageMids.set(text, Number(await sent.getAttribute('data-mid')));
+    return sent;
   };
   await expect(status).toContainText('requires a customer token');
   await checkStatusInsets(widgetFrame());
@@ -752,6 +755,7 @@ try {
   // Revoking a token must also refuse a reload with its previously valid key.
   await navigate(alice.token);
   await expect(bubble('📊 How did we do?')).toBeVisible();
+  await checkNativeEmoji({driver, customerId: alice.id, send, bubble, artifacts});
   database.prepare('UPDATE users SET bot_token_hash = ? WHERE id = ?')
     .run(createHash('sha256').update(randomBytes(32)).digest('hex'), alice.id);
   await Promise.all([widgetFrame().waitForNavigation(), widgetFrame().evaluate(() => location.reload())]);
