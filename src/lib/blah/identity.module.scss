@@ -24,22 +24,16 @@
 }
 .setupPopup { --popup-width: 420px; --popup-max-height: 90vh; --popup-background-color: var(--surface-color); }
 .setupBody { padding: 1rem; }
-.dropzone { min-height: 160px; margin: 4px 0; padding: 16px; border: 2px dashed currentColor; text-align: center; cursor: pointer; }
 .footnote { font-size: 12px; color: var(--secondary-text-color); text-align: center; }
-.pickerInput, .pickerLabel { @include text-overflow(); min-width: 0; }
-.pickerIcon { font-size: 24px; color: var(--secondary-text-color); }
-.pickerRow { display: flex; align-items: center; gap: .5rem; min-width: 0; }
-.pickerRow > :first-child { flex: 1; min-width: 0; }
 .detailsBody { padding: 0 0 1rem; }
-.lockedDetails { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 1rem; padding: 1rem; }
 
 .renewalSettings { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 1rem; padding-top: 1rem; }
 
 .renewalSettings :global(.row-title) { white-space: normal; }
 
-.paperWords {
+.recoveryWords {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(12ch, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: .25rem 1rem;
   margin: 0;
   padding: 0;
@@ -61,6 +55,4 @@
 
 .sectionNote { font-size: 12px; color: var(--secondary-text-color); text-align: start; }
 
-.detailsSettings {
-  .lockedDetails { min-height: calc(100dvh - 10rem); align-content: center; max-width: 420px; margin-inline: auto; width: 100%; }
-}
+.wordInputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; min-width: 0; }

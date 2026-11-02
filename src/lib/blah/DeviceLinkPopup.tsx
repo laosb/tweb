@@ -10,7 +10,7 @@ import {getManagersSession} from '@lib/accounts/getCurrentAccount';
 import I18n, {i18n} from '@lib/langPack';
 import getStream from '@lib/calls/helpers/getStream';
 import IdentityInput from '@lib/blah/IdentityInput';
-import {exportIdentityFile} from '@lib/blah/identityFiles';
+import {exportProfile} from '@lib/blah/profileFiles';
 import {deviceLinkMessage} from '@lib/blah/deviceLinkMessage';
 import type {DeviceLinkResult} from '@lib/blah/deviceLinkTypes';
 import styles from '@lib/blah/identity.module.scss';
@@ -29,8 +29,6 @@ export default function showDeviceLinkPopup(props: Props) {
   let stream: MediaStream;
   let cameraGeneration = 0;
   let scanTimer: ReturnType<typeof setTimeout>;
-  let unlockedHere: string;
-  let pending: Promise<void>;
   function stopCamera() {
     ++cameraGeneration;
     clearTimeout(scanTimer);
@@ -41,14 +39,13 @@ export default function showDeviceLinkPopup(props: Props) {
     const popup = usePopupContext();
     const [busy, setBusy] = createSignal(false);
     const [message, setMessage] = createSignal('');
-    const [phase, setPhase] = createSignal<'scan' | 'confirm' | 'unlock' | 'publish'>('scan');
+    const [phase, setPhase] = createSignal<'scan' | 'confirm' | 'publish'>('scan');
     const [link, setLink] = createSignal('');
     const [info, setInfo] = createSignal<DeviceLinkResult>();
-    const [transfer, setTransfer] = createSignal(true);
+    const [transfer, setTransfer] = createSignal(false);
     const [scanning, setScanning] = createSignal(false);
     const [cameraAvailable, setCameraAvailable] = createSignal(false);
     let input: HTMLInputElement;
-    let password: HTMLInputElement;
     let video: HTMLVideoElement;
     let actionButton: HTMLElement;
     const Detector = (globalThis as typeof globalThis & {BarcodeDetector?: DetectorClass}).BarcodeDetector;
@@ -64,8 +61,8 @@ export default function showDeviceLinkPopup(props: Props) {
     function run(action: () => Promise<void>) {
       if(busy() || closed) return;
       setBusy(true); setMessage('');
-      pending = action().catch((error) => {
-        if(!closed) setMessage(phase() === 'unlock' && !info().unlocked ? I18n.format('BlahLinkUnlockFailed', true) : deviceLinkMessage(error));
+      void action().catch((error) => {
+        if(!closed) setMessage(deviceLinkMessage(error));
       })
       .finally(() => { if(!closed) setBusy(false); });
     }
@@ -123,22 +120,6 @@ export default function showDeviceLinkPopup(props: Props) {
       if(result.manualPublication) { setPhase('publish'); focusAction(); }
       else await accept();
     }
-    async function confirm() {
-      if(!info().unlocked) {
-        setPhase('unlock');
-        focusWhenSettled(password, () => !closed);
-      } else await prepare();
-    }
-    async function unlock() {
-      if(!password.value) return;
-      const value = password.value;
-      password.value = '';
-      await custodyManager.blahIdentity({action: 'unlock', id: info().id, password: value});
-      unlockedHere = info().id;
-      if(closed) return;
-      setInfo((previous) => ({...previous, unlocked: true}));
-      await prepare();
-    }
     return <div class={styles.panel} aria-busy={busy()}>
       <Show when={phase() === 'scan'}>
         <form onSubmit={(event) => { event.preventDefault(); run(() => inspect(link())); }}>
@@ -159,18 +140,11 @@ export default function showDeviceLinkPopup(props: Props) {
           <Row.CheckboxField><CheckboxField checked={transfer()} disabled={busy()} onChange={setTransfer} /></Row.CheckboxField>
           <Row.Title>{i18n('BlahLinkTransfer')}</Row.Title>
         </Row>
-        <Button ref={actionButton} primaryFilled text="BlahLinkApprove" disabled={busy()} onClick={() => run(confirm)} />
-      </Show>
-      <Show when={phase() === 'unlock'}>
-        <form onSubmit={(event) => { event.preventDefault(); run(unlock); }}>
-          <p dir="auto">{i18n('BlahLinkUnlock', [<bdi dir="ltr">{info().domain || info().id}</bdi> as HTMLElement])}</p>
-          <IdentityInput label="BlahIdentityPassword" type="password" autocomplete="current-password" disabled={busy()} ref={(input) => password = input} />
-          <Button primaryFilled text="BlahUnlockIdentity" disabled={busy()} onClick={() => run(unlock)} />
-        </form>
+        <Button ref={actionButton} primaryFilled text="BlahLinkApprove" disabled={busy()} onClick={() => run(prepare)} />
       </Show>
       <Show when={phase() === 'publish'}>
         <p dir="auto">{i18n('BlahLinkPublish', [<bdi dir="ltr">{`https://${info().identity.domain}/.well-known/blah/profile.cbor`}</bdi> as HTMLElement])}</p>
-        <Button text="BlahExportProfile" onClick={() => exportIdentityFile('profile.cbor', new Uint8Array(info().identity.profile))} />
+        <Button text="BlahExportProfile" onClick={() => exportProfile('profile.cbor', new Uint8Array(info().identity.profile))} />
         <Button ref={actionButton} primaryFilled text="Continue" disabled={busy()} onClick={() => run(accept)} />
       </Show>
       <p role="status">{busy() ? i18n('PleaseWait') : message()}</p>
@@ -180,9 +154,6 @@ export default function showDeviceLinkPopup(props: Props) {
     closed = true;
     stopCamera();
     void custodyManager.blahDeviceLink({action: 'cancel', attempt}).catch(() => {});
-    void Promise.resolve(pending).then(async() => {
-      if(unlockedHere) await custodyManager.blahIdentity({action: 'lock', id: unlockedHere});
-    }).catch(() => {});
   }}>
     <PopupElement.Header><PopupElement.CloseButton /><PopupElement.Title title="BlahLinkDevice" /></PopupElement.Header>
     <PopupElement.Scrollable><PopupElement.Body class={styles.setupBody}><Content /></PopupElement.Body></PopupElement.Scrollable>

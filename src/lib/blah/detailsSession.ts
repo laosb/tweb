@@ -1,7 +1,7 @@
-import type {IdentityActions} from '@lib/blah/IdentityPanel';
+import type {IdentityActions} from '@lib/blah/identity';
 
-/** Closing must win over an unlock or save that is still in flight. */
-export function detailsSession(action: IdentityActions, id: string, onLock: () => void) {
+/** Closing waits for settings saves already in flight. */
+export function detailsSession(action: IdentityActions, id: string, onClose: () => void) {
   let closed = false;
   let closing: Promise<unknown>;
   const pending = new Set<Promise<unknown>>();
@@ -11,7 +11,7 @@ export function detailsSession(action: IdentityActions, id: string, onLock: () =
     action: ((request) => {
       if(closed) return Promise.reject(new Error('Identity details are closed.'));
       const result = action({...request, id});
-      // Public network checks do not hold keys and must not delay locking.
+      // Public network checks do not hold keys and must not delay closing.
       if(!['publication', 'hostingPlan', 'hostingStatus'].includes(request.action)) {
         pending.add(result);
         void result.finally(() => pending.delete(result)).catch(() => {});
@@ -22,8 +22,8 @@ export function detailsSession(action: IdentityActions, id: string, onLock: () =
       if(closing) return closing;
       session.beforeClose();
       closed = true;
-      onLock();
-      closing = Promise.allSettled([...pending]).then(() => action({action: 'lock', id}));
+      onClose();
+      closing = Promise.allSettled([...pending]);
       return closing;
     }
   };

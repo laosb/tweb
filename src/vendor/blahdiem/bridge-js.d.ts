@@ -58,6 +58,7 @@ export interface DCSetupRequest {
     now: number;
     profileLifetime: number;
     deviceLifetime: number;
+    removeDevices: number[][];
 }
 export interface DCSetupResult {
     id: string;
@@ -78,16 +79,15 @@ export interface DeviceLinkBeginning {
 export interface DeviceLinkOpening {
     profile: number[];
     domain: string;
-    identityKey: boolean;
+    seed: number[] | null;
     metadata: number[] | null;
-    keyFileContents: number[];
 }
 export interface DeviceLinkApproval {
-    parameter: string;
+    code: string;
     request: number[];
     profile: number[];
     domain: string;
-    transferIdentity: boolean;
+    seed: number[] | null;
     metadata: number[] | null;
     now: number;
 }
@@ -124,34 +124,6 @@ export interface HostingPublishedInfo {
     identity: string;
     revision: string;
     domains: string[];
-}
-export interface KeyFileInfo {
-    id: string;
-    salt: number[];
-}
-export interface KeyFilePayload {
-    profile: number[];
-    identity: number[] | null;
-    device: number[] | null;
-    domain: string;
-    publisher: string;
-    token: string;
-    profileDays: number;
-    deviceDays: number;
-    autoRenew: boolean;
-    publicationPending: boolean;
-    hostingDomain: string | null;
-    hostingHeld: string[];
-    hostingProofs: HostingProofInfo[];
-}
-/**
- * A paper device key's canonical words, the Ed25519 seed WebCrypto signs with and the
- * encoded Diem device public key to certify.
- */
-export interface PaperKeyResult {
-    phrase: string;
-    seed: number[];
-    device: number[];
 }
 /**
  * Public profile facts. Decimal strings preserve all wire integers exactly.
@@ -232,25 +204,10 @@ export type Exports = {
     destroyDeviceLink(session: string): void;
     beginDeviceLink(label: string, crypto: any): Promise<DeviceLinkBeginning>;
     openDeviceLink(session: string, response: number[], expectedDC: number[], now: number): Promise<DeviceLinkOpening>;
-    respondToDeviceLink(input: DeviceLinkApproval, keyFile: number[], crypto: any): Promise<number[]>;
+    respondToDeviceLink(input: DeviceLinkApproval, crypto: any): Promise<number[]>;
     hostingPolicy(domain: string, callbacks: any): Promise<HostingPolicyInfo>;
     hostingPlan(domain: string, labels: string[], identity: number[], callbacks: any): Promise<HostingNameInfo[]>;
     hostingPublish(domain: string, encoding: number[], via: string | null, proofs: HostingProofInfo[], solve: boolean, callbacks: any): Promise<HostingPublishedInfo>;
-    keyFileInfo(encoding: number[]): KeyFileInfo;
-    sealKeyFile(input: KeyFilePayload, salt: number[], crypto: any): Promise<number[]>;
-    /**
-     * Installs native custody bytes returned by device linking without exporting individual keys.
-     */
-    sealKeyFileContents(encoding: number[], salt: number[], crypto: any): Promise<number[]>;
-    openKeyFile(encoding: number[], crypto: any): Promise<KeyFilePayload>;
-    /**
-     * The paper key that 32 bytes of random `entropy` encode.
-     */
-    newPaperKey(entropy: number[], crypto: any): Promise<PaperKeyResult>;
-    /**
-     * The paper key that written words encode; checks the word list, count and checksum.
-     */
-    paperKey(phrase: string, crypto: any): Promise<PaperKeyResult>;
     /**
      * Verifies public profiles without a discovery domain or any private keys.
      */

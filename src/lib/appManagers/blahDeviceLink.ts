@@ -1,11 +1,11 @@
 import {ensureBlahConfig, getBlahConfig} from '@config/blah';
 import type {ApiManager} from '@appManagers/apiManager';
 import type {AuthLoginToken} from '@layer';
-import type {DeviceLinkSession} from '@blahdiem/diem';
+import type {DeviceLinkOpened, DeviceLinkSession} from '@blahdiem/diem';
 import type {BlahInvokeOptions} from '@lib/blah/invoke';
 import type {DeviceLinkRequest, DeviceLinkResult} from '@lib/blah/deviceLinkTypes';
 import {diemClient} from '@lib/blah/runtime';
-import {respondToLinkedDevice, certifyLinkedDevice, installLinkedIdentity, linkedAccountIdentity, publicationPending, withIdentity} from '@lib/blah/identity';
+import {respondToLinkedDevice, certifyLinkedDevice, installLinkedIdentity, linkedAccountIdentity, publicationPending, withIdentity, hasLinkedEnrollment} from '@lib/blah/identity';
 import {decode} from '@lib/blah/vault';
 import bytesFromHex from '@helpers/bytes/bytesFromHex';
 import bytesCmp from '@helpers/bytes/bytesCmp';
@@ -16,7 +16,7 @@ type NewLink = {
   parameter: string,
   session: DeviceLinkSession,
   token?: Extract<AuthLoginToken, {_: 'auth.loginToken'}>,
-  opened?: Uint8Array,
+  opened?: DeviceLinkOpened,
   exceptIds: UserId[]
 };
 type Approval = {token: Uint8Array, parameter: string, request: Uint8Array, device: Uint8Array, id: string,
@@ -45,7 +45,8 @@ function cancel(key: string) {
   attempt.cancelled = true;
   clearTimeout(attempt.timer);
   attempt.next?.session.destroy();
-  attempt.next?.opened?.fill(0);
+  attempt.next?.opened?.seed?.fill(0);
+  attempt.next?.opened?.metadata?.fill(0);
   attempts.delete(key);
 }
 
@@ -85,6 +86,15 @@ async function run(slot: number, api: ApiManager, request: DeviceLinkRequest, ke
     api_id: App.id, api_hash: App.hash, except_ids: next.exceptIds
   }, {...options, ...(initial ? {blahDeviceLink: next.request} : {})} as BlahInvokeOptions);
   if(request.action === 'begin') {
+    if(await hasLinkedEnrollment(slot)) {
+      // The installed device is sufficient for proof login; the ephemeral QR is gone.
+      try {
+        const loginToken = await exportToken({exceptIds: request.exceptIds} as NewLink, false);
+        check();
+        if(loginToken._ !== 'auth.loginTokenSuccess') throw {type: 'DEVICE_LINK_INVALID'};
+        return {loginToken};
+      } finally { cancel(key); }
+    }
     const next = await client.deviceLink.begin(request.label);
     if(!alive()) { next.session.destroy(); check(); }
     attempt.next = {...next, exceptIds: request.exceptIds};
@@ -97,16 +107,24 @@ async function run(slot: number, api: ApiManager, request: DeviceLinkRequest, ke
   if(request.action === 'poll') {
     const next = attempt.next;
     if(!next?.token) throw {type: 'DEVICE_LINK_INVALID'};
-    if(next.opened) return {needsPassword: true};
     try {
       const result = await api.invokeApi('blah.getDeviceLink', {token: new Uint8Array(next.token.token)}, options);
       check();
       if(result.response) {
         try {
           const opened = await client.deviceLink.open(next.session, new Uint8Array(result.response), bytesFromHex(getBlahConfig(slot).home.identity));
-          if(!alive()) { opened.keyFileContents.fill(0); check(); }
-          next.opened = opened.keyFileContents;
-          return {needsPassword: true};
+          if(!alive()) { opened.seed?.fill(0); opened.metadata?.fill(0); check(); }
+          next.opened = opened;
+          await installLinkedIdentity(slot, opened, alive);
+          check();
+          opened.seed?.fill(0); opened.metadata?.fill(0);
+          next.opened = undefined;
+          try {
+            const loginToken = await exportToken(next, false);
+            check();
+            if(loginToken._ !== 'auth.loginTokenSuccess') throw {type: 'DEVICE_LINK_INVALID'};
+            return {loginToken};
+          } finally { cancel(key); }
         } catch(error) { cancel(key); throw error; }
       }
     } catch(error) {
@@ -121,31 +139,17 @@ async function run(slot: number, api: ApiManager, request: DeviceLinkRequest, ke
     }
     return {loginToken: next.token, parameter: next.parameter};
   }
-  if(request.action === 'complete') {
-    const next = attempt.next;
-    if(!next?.opened || !request.password) throw {type: 'DEVICE_LINK_INVALID'};
-    await installLinkedIdentity(slot, next.opened, request.password, alive);
-    check();
-    next.opened.fill(0);
-    next.opened = undefined;
-    try {
-      const loginToken = await exportToken(next, false);
-      check();
-      if(loginToken._ !== 'auth.loginTokenSuccess') throw {type: 'DEVICE_LINK_INVALID'};
-      return {loginToken};
-    } finally { cancel(key); }
-  }
   if(request.action === 'inspect') {
     const {token, parameter} = parseDeviceLink(request.link);
     const result = await api.invokeApi('blah.getDeviceLink', {token}, options);
     check();
     const inspected = await client.deviceLink.inspect(parameter, new Uint8Array(result.request));
-    // Browser identities and their current signers are Ed25519 (Diem algorithm 1).
-    if(!inspected.verifies.includes(1)) throw {type: 'BLAH_LINK_ALGORITHM'};
+    // Require support for the Ed25519 identity and P-256 approving device.
+    if(!inspected.verifies.includes(1) || !inspected.verifies.includes(2)) throw {type: 'BLAH_LINK_ALGORITHM'};
     const identity = await linkedAccountIdentity(slot, request.id);
     check();
     attempt.approval = {token, parameter, request: new Uint8Array(result.request), device: inspected.device, id: identity.id};
-    return {label: inspected.label, id: identity.id, domain: identity.domain, unlocked: identity.unlocked};
+    return {label: inspected.label, id: identity.id, domain: identity.domain};
   }
   const approval = attempt.approval;
   if(!approval) throw {type: 'DEVICE_LINK_INVALID'};
@@ -166,7 +170,7 @@ async function run(slot: number, api: ApiManager, request: DeviceLinkRequest, ke
     if(!approval.response) {
       // Do the host read outside the custody lock, then recheck the signed revision.
       if(approval.manualPublication) {
-        const domain = await withIdentity(slot, async(secret) => secret.domain, true, false);
+        const domain = await withIdentity(slot, async(secret) => secret.domain, false);
         if(await publicationPending([domain], approval.profile)) throw {type: 'DEVICE_LINK_PROFILE_STALE'};
         check();
       }
@@ -174,9 +178,10 @@ async function run(slot: number, api: ApiManager, request: DeviceLinkRequest, ke
         if(info.id !== approval.id || !bytesCmp(info.profile, approval.profile)) throw {type: 'BLAH_LINK_PROFILE_CHANGED'};
         check();
         await save(info, false);
-        approval.response = await respondToLinkedDevice(slot, {parameter: approval.parameter, request: approval.request,
-          profile: new Uint8Array(info.profile), domain: secret.domain, transferIdentity: approval.transferIdentity});
-      }, true, false);
+        approval.response = await respondToLinkedDevice(slot, {code: approval.parameter, request: approval.request, domain: secret.domain,
+          profile: new Uint8Array(info.profile), seed: approval.transferIdentity ? secret.seed : undefined,
+          metadata: approval.transferIdentity ? new TextEncoder().encode(JSON.stringify({renewal: secret.renewal, hosting: secret.hosting})) : undefined});
+      }, false);
     }
     for(const delay of [0, 1000, 2000, 4000, 8000, 15000]) {
       if(delay) await pause(delay);

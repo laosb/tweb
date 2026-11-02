@@ -4,7 +4,7 @@ import {TLDeserialization, TLSerialization} from '@lib/mtproto/tl_utils';
 
 const mock = vi.hoisted(() => ({bind: vi.fn(), number: vi.fn(), use: vi.fn(), diem: vi.fn()}));
 vi.mock('@config/blah', () => ({getBlahConfig: () => ({home: {identity: '0a0b'}})}));
-vi.mock('@lib/blah/identity', () => ({bindIdentity: mock.bind, numberIdentity: mock.number, withIdentity: mock.use}));
+vi.mock('@lib/blah/identity', () => ({bindIdentity: mock.bind, numberIdentity: mock.number, withIdentity: mock.use, completeEnrollment: vi.fn(), pruneSessionDevices: async(_slot: number, snapshot: () => Promise<unknown>) => { await snapshot(); }}));
 vi.mock('@lib/blah/wasm', () => ({diem: mock.diem}));
 vi.mock('@lib/blah/chatIdentity', () => ({chatIdentityAction: vi.fn()}));
 vi.mock('@appManagers/blahDeviceLink', () => ({deviceLinkAction: vi.fn()}));
@@ -79,7 +79,7 @@ describe('device-link MTProto proof boundary', () => {
     expect(mock.number).toHaveBeenCalledExactlyOnceWith(1, '42');
     expect(wrapApiCall.mock.calls.map(([method]) => method)).toEqual([
       'blah.requestIdentityChallenge', 'blah.invokeWithIdentityProof',
-      'blah.requestIdentityChallenge', 'blah.invokeWithIdentityProof'
+      'blah.requestIdentityChallenge', 'blah.invokeWithIdentityProof', 'blah.getSessionDevices'
     ]);
     expect(mock.diem.mock.calls[0][2].query).toEqual(encoded('auth.exportLoginToken', exportParams));
   });

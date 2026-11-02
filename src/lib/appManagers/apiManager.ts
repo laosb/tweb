@@ -21,6 +21,7 @@ import {IDB} from '@lib/files/idb';
 import ctx from '@environment/ctx';
 import blah, {ensureBlahConfig, getBlahConfig} from '@config/blah';
 import {invokeBlah} from '@lib/blah/invoke';
+import {logoutIdentity, logoutAllIdentities} from '@lib/blah/sessions';
 import {requireAccountBinding} from '@lib/blah/accountStorage';
 import noop from '@helpers/noop';
 import Modes from '@config/modes';
@@ -323,6 +324,7 @@ export class ApiManager extends ApiManagerMethods {
     }
 
     this.loggingOut = true;
+    if(blah) await logoutIdentity(this.getAccountNumber()).catch(() => {});
 
     const totalAccounts = await AccountController.getTotalAccounts();
     const accountNumber = this.getAccountNumber();
@@ -352,8 +354,11 @@ export class ApiManager extends ApiManagerMethods {
       }
 
       this.baseDcId = undefined;
-      // * totalAccounts can be 0 somehow
-      if(totalAccounts <= 1 && accountNumber === 1 && !migrateAccountTo) {
+      let removedAccount = accountNumber;
+      if(blah?.discovery || blah?.home) {
+        const removed = await (await import('@lib/blah/accountStorage')).relocateAccount(accountNumber, async() => true);
+        if(removed) removedAccount = removed;
+      } else if(totalAccounts <= 1 && accountNumber === 1 && !migrateAccountTo) {
         await Promise.all([
           (async() => {
             const keys: Parameters<typeof sessionStorage['delete']>[0][] = [
@@ -389,11 +394,8 @@ export class ApiManager extends ApiManagerMethods {
           await saveEncryptionKeyForHandoff();
         }
       }
-      if(blah?.discovery || blah?.home) {
-        await (await import('@lib/blah/homeStorage')).shiftHomeStorage(accountNumber);
-      }
       IDB.closeDatabases();
-      this.rootScope.dispatchEvent('logging_out', {accountNumber, migrateTo: migrateAccountTo});
+      this.rootScope.dispatchEvent('logging_out', {accountNumber: removedAccount, migrateTo: migrateAccountTo});
     };
 
     setTimeout(clear, 1e3);
@@ -408,6 +410,7 @@ export class ApiManager extends ApiManagerMethods {
   }
 
   public static async forceLogOutAll() {
+    if(blah) await logoutAllIdentities();
     const clearAllStoresPromises = ([1, 2, 3, 4] as ActiveAccountNumber[])
     .map(accountNumber => AppStoragesManager.clearAllStoresForAccount(accountNumber));
 
