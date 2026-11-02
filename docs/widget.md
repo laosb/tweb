@@ -310,6 +310,11 @@ absent from both widget graphs. [Build guards](../scripts/widget-emoji-guards.ts
 require review when upstream
 normalization or its consumers change.
 
+The icon font is subset from a [reviewed allowlist](../src/widget/iconNames.md)
+at build time, with stable codepoints and glyph IDs. The build rejects unlisted
+bundle usages or names missing upstream. The browser harness compares every
+retained glyph and observed icon with the original font, including editor/viewer tools.
+
 ### Language keys
 
 [`languageKeys.json`](../src/widget/languageKeys.json) is the reviewed set of literal

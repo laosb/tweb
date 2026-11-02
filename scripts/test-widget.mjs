@@ -21,6 +21,7 @@ import {assertWidgetLanguageKeys} from '../src/widget/languageKeys.mjs';
 import {checkLanguageSurfaces} from '../tests/widget/languageSurfaces.mjs';
 import {readEnglishPack, languageCoveragePlugin, installLanguageRecorder, checkLanguageCoverage} from '../tests/widget/languageCoverage.mjs';
 import {objectStorage} from '../tests/widget/objectStorage.mjs';
+import {installIconCoverage, checkIconCoverage} from '../tests/widget/iconCoverage.mjs';
 import {checkReactionParticipants} from '../tests/widget/reactionParticipants.mjs';
 import {checkHiddenControllers} from '../tests/widget/hiddenControllers.mjs';
 import {checkSidebars, checkSidebarBootstrap} from '../tests/widget/sidebars.mjs';
@@ -179,6 +180,7 @@ try {
   browser = await ({chromium, webkit})[browserName].launch({headless: true, executablePath: process.env.BLAH_BROWSER_EXECUTABLE,
     ...(browserName === 'chromium' ? {args: ['--no-sandbox', '--ignore-certificate-errors']} : {})});
   const context = await browser.newContext({ignoreHTTPSErrors: true});
+  const observedIcons = await installIconCoverage(context);
   context.setDefaultTimeout(35_000);
   if(languageStrings) await installLanguageRecorder(context, languageRecords);
   // The full client also calls Telegram methods a Blah DC does not implement; those
@@ -770,6 +772,7 @@ try {
   const rejections = logs.filter((line) => line.startsWith('REJECTION ')).map((line) => line.slice(10));
   assert.deepEqual(rejections.filter((type) => !optionalFixtureErrors.includes(type)), []);
   assert.deepEqual(mediaErrors, []);
+  await checkIconCoverage({frame: widgetFrame(), observed: observedIcons, repo, artifacts});
   assert.deepEqual(errors, []);
   for(const {token} of customers) assert(!logs.join('\n').includes(token), 'tokens must not appear in console logs');
   assert.deepEqual([...paths], transport === 'http' ? [] : ['/exact/socket?widget=1']);
