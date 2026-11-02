@@ -8,6 +8,8 @@ separate non-extractable CryptoKey. No device private key is serialized or expor
 The existing app passcode remains an optional additional lock. Telegram builds keep
 the upstream auth flow.
 
+Safari uses dedicated workers and single-tab mode because its SharedWorkers cannot structured-clone the CryptoKeys used for identity custody.
+
 ## Configure a home and build
 
 Enter your home DC's domain on **Connect to Blah**. The browser fetches
