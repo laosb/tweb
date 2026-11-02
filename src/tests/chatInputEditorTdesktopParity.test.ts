@@ -177,6 +177,8 @@ describe('chat input editor tdesktop parity', () => {
       }
     ]);
 
+    // Model a separate user action even within the same clock tick.
+    editor.separateHistory();
     mathPosition = findNodePosition(tiptap, 'blockMath');
     tiptap.view.dispatch(tiptap.state.tr.setSelection(
       NodeSelection.create(tiptap.state.doc, mathPosition)
