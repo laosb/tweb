@@ -5,6 +5,7 @@ import {defineConfig, mergeConfig} from 'vite';
 import upstream from './vite.config';
 import widgetBuildRevision from './scripts/widget-build-revision';
 import widgetLanguage from './scripts/widget-language';
+import widgetIconFont from './scripts/widget-icon-font';
 import widgetBranches from './scripts/widget-branches';
 import {widgetThemeDeclaration, widgetCssSelector} from './scripts/widget-theme-css';
 import {assertWidgetEmojiSource, assertWidgetEmojiConsumer, assertWidgetEmojiModules} from './scripts/widget-emoji-guards';
@@ -390,17 +391,19 @@ export default mergeConfig(upstream, defineConfig({
   }, widgetOmittedModules(), widgetBranches(), widgetLanguage(__dirname), {
     name: 'widget-public-assets',
     apply: (config) => !config.build?.lib,
-    async writeBundle() {
+    async writeBundle(options) {
+      // Temporary language-instrumented builds must not overwrite the release assets.
+      const outputDir = resolve(options.dir);
       const publicDir = resolve(__dirname, 'public');
       for(const entry of await readdir(publicDir, {withFileTypes: true})) {
         if(isRuntimePublic(entry.name, entry.isDirectory())) {
-          await cp(resolve(publicDir, entry.name), resolve(outDir, entry.name), {recursive: true,
+          await cp(resolve(publicDir, entry.name), resolve(outputDir, entry.name), {recursive: true,
             filter: (source) => !WIDGET_OMITTED_PUBLIC.some((pattern) => pattern.test(relative(publicDir, source)))});
         }
       }
-      assertWidgetCleanupAssets(await readdir(outDir, {recursive: true}));
+      assertWidgetCleanupAssets(await readdir(outputDir, {recursive: true}));
     }
-  }],
+  }, widgetIconFont(__dirname)],
   // An array, so mergeConfig puts these ahead of the upstream @config and @environment prefixes.
   resolve: {alias: [
     {find: '@config/modes', replacement: resolve(__dirname, 'src/widget/modes.ts')},
