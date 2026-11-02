@@ -317,11 +317,15 @@ retained glyph and observed icon with the original font, including editor/viewer
 
 ### Background manager contracts
 
-The widget replaces unused call managers with account-bound implementations in
+The widget replaces unused call, statistics, boost, business and website authorization
+managers with account-bound implementations in
 [`src/widget/managers/`](../src/widget/managers/). Ingestion and inherited entry
 points keep explicit typed contracts. The [contract guard](../scripts/widget-manager-contracts.ts)
 checks page and worker call sites and requires a new audit when upstream manager
 or lifecycle wiring changes; aliases and dynamic method access fail closed.
+Profile intro stickers retain document ingestion and file references. Stories,
+payments, gifts, translations, inline/attach-menu bots and games retain their
+original managers for shared ingestion, caches and reference refreshes.
 
 ### Language keys
 
@@ -396,6 +400,11 @@ narrow layouts and Axe. The [browser fixtures](../tests/widget/) define the deta
 contracts; language-enabled runs also observe restricted actions at manager,
 worker-RPC and transport boundaries. Review light/dark screenshots and
 `theme-coverage.json`; theme failures identify the element and property.
+
+`WIDGET_TEST_MANAGER_CONTRACTS=1` adds real edit/delete/reply/reaction and received
+service/external-reply checks, plus worker-console capture across reload and token
+changes. It instruments a temporary copy of the built workers; `worker-console.json`
+records the observations and missing-method/undefined errors fail the run.
 
 Set `TMPDIR` and `WIDGET_TEST_ARTIFACTS` to keep temporary files and failure logs in
 a chosen run directory; `WIDGET_SKIP_BUILD=1` tests an already built widget.
