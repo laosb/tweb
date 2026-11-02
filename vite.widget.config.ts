@@ -8,6 +8,7 @@ import widgetLanguage from './scripts/widget-language';
 import widgetIconFont from './scripts/widget-icon-font';
 import widgetBranches from './scripts/widget-branches';
 import widgetWallet from './scripts/widget-wallet';
+import widgetManagerContracts, {widgetManagerReplacements} from './scripts/widget-manager-contracts';
 import {widgetThemeDeclaration, widgetCssSelector} from './scripts/widget-theme-css';
 import {assertWidgetEmojiSource, assertWidgetEmojiConsumer, assertWidgetEmojiModules} from './scripts/widget-emoji-guards';
 import {widgetStyles, widgetStyleSelector} from './scripts/widget-styles';
@@ -38,6 +39,7 @@ const WIDGET_OMITTED_PUBLIC = [
 // code, workers and libraries stay out of the release.
 const omitted = (name: string) => resolve(__dirname, 'src/widget/omitted', name);
 const WIDGET_REPLACED: Record<string, string> = {
+  ...widgetManagerReplacements(__dirname),
   // Authentication and credentials.
   'src/components/monkeys/password.ts': omitted('passwordMonkey.ts'),
   'src/components/passcodeLock/passcodeLockScreenController.tsx': omitted('lockScreen.ts'),
@@ -394,7 +396,7 @@ export default mergeConfig(upstream, defineConfig({
         if(/^assets\/blah\/|\.webmanifest$/.test(fileName)) delete bundle[fileName];
       }
     }}
-  }, widgetOmittedModules(), widgetWallet(), widgetBranches(), widgetLanguage(__dirname), {
+  }, widgetOmittedModules(), widgetManagerContracts(__dirname), widgetWallet(), widgetBranches(), widgetLanguage(__dirname), {
     name: 'widget-public-assets',
     apply: (config) => !config.build?.lib,
     async writeBundle(options) {
@@ -438,6 +440,6 @@ export default mergeConfig(upstream, defineConfig({
     emptyOutDir: true,
     sourcemap: false
   },
-  worker: {plugins: () => [widgetOmittedModules(false), widgetWallet(false)], rolldownOptions: {output: {codeSplitting: false}}},
+  worker: {plugins: () => [widgetOmittedModules(false), widgetManagerContracts(__dirname), widgetWallet(false)], rolldownOptions: {output: {codeSplitting: false}}},
   test: {root: __dirname, include: ['src/tests/widget*.test.ts']}
 }));
