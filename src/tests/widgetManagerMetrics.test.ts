@@ -1,6 +1,6 @@
 import {expect, it, vi} from 'vitest';
-import AppStatisticsManager from '@appManagers/appStatisticsManager';
-import AppBoostsManager from '@appManagers/appBoostsManager';
+import AppStatisticsManager from '@/widget/managers/statistics';
+import AppBoostsManager from '@/widget/managers/boosts';
 import {parseSync} from '@babel/core';
 import {assertWidgetManagerCalls} from '../../scripts/widget-manager-contracts';
 
@@ -12,7 +12,7 @@ it('keeps statistics and boosts registry slots without work or account state', (
     manager.setManagersAndAccountNumber({rootScope: managerTrap, apiManager: managerTrap, apiUpdatesManager: managerTrap} as any, 2);
     expect(manager.getAccountNumber()).toBe(2);
     expect((manager as any).after).toBeUndefined();
-    expect(manager.clear).toBeUndefined();
+    expect((manager as any).clear).toBeUndefined();
     expect(Object.getOwnPropertyNames(Manager.prototype)).toEqual(['constructor']);
   }
   expect(interval).not.toHaveBeenCalled();
