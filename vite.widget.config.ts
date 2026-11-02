@@ -435,5 +435,5 @@ export default mergeConfig(upstream, defineConfig({
     sourcemap: false
   },
   worker: {plugins: () => [widgetOmittedModules(false), widgetManagerContracts(__dirname)], rolldownOptions: {output: {codeSplitting: false}}},
-  test: {root: __dirname, include: ['src/tests/widget*.test.ts']}
+  test: {root: __dirname, include: ['src/tests/widget*.test.ts'], provide: {widgetBuild: true}}
 }));

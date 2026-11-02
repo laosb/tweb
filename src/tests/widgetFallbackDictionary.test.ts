@@ -1,5 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {inject} from 'vitest';
 import I18n from '@lib/langPack';
 import rootScope from '@lib/rootScope';
 import {
@@ -12,6 +13,11 @@ import {pruneWidgetPeerTitle} from '../../scripts/widget-branches';
 import widgetLanguage from '../../scripts/widget-language';
 
 const sources = ['lang.ts', 'langSign.ts'].map((name) => readFileSync('src/' + name, 'utf8'));
+declare module 'vitest' {
+  interface ProvidedContext {
+    widgetBuild?: boolean
+  }
+}
 
 it('removes only the topics pseudo-peer title and rejects a changed or duplicated branch', () => {
   const source = readFileSync('src/components/peerTitle.ts', 'utf8');
@@ -93,9 +99,10 @@ it('hashes the version delivered after the upstream generator, rather than an ea
   expect(result.code).toBe('export default ' + widgetLanguageSignature(sources, source) + ';');
 });
 
-it('loads the pruned fallback through the actual resolver, including errors and plurals', async() => {
+it('loads this build\'s fallback through the actual resolver, including errors and plurals', async() => {
   const pack = await I18n.loadLocalLangPack();
-  expect(pack.strings.map((string) => string.key).sort()).toEqual(widgetFallbackKeys);
+  const expected = inject('widgetBuild') ? widgetFallbackKeys : sources.flatMap((source) => Object.keys(readWidgetDictionary(source))).sort();
+  expect(pack.strings.map((string) => string.key).sort()).toEqual(expected);
   const dispatch = vi.spyOn(rootScope, 'dispatchEvent').mockImplementation(() => {});
   I18n.setLangCode('en');
   I18n.applyLangPack(pack);
