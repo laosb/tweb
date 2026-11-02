@@ -18,5 +18,15 @@
     "source": "src/lib/appManagers/appBoostsManager.ts",
     "sha256": "3599fc95c0ac22ca60e37ca3ec785648fde4deca00f1b5f7dd2caa172c5b45d9",
     "replacement": "src/widget/managers/boosts.ts"
+  },
+  "appBusinessManager": {
+    "source": "src/lib/appManagers/appBusinessManager.ts",
+    "sha256": "f778923c2fd94a801aed5dff0841e899bc8bf039e8c14ca97306b96d11df0ff9",
+    "replacement": "src/widget/managers/business.ts"
+  },
+  "appSeamlessLoginManager": {
+    "source": "src/lib/appManagers/appSeamlessLoginManager.ts",
+    "sha256": "b65f8a229cca516b34595af2f5f6fe32883bd62f731ccdde8249f629f6f60cf6",
+    "replacement": "src/widget/managers/seamlessLogin.ts"
   }
 }
