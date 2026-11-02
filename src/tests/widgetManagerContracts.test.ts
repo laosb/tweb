@@ -70,3 +70,12 @@ describe('widget call managers', () => {
     ]) await expect(promise).rejects.toMatchObject({type: 'GROUPCALL_INVALID'});
   });
 });
+
+it('discards wallet metadata without installing observers, touching storage or making requests', async() => {
+  const {default: Wallet} = await import('@/widget/managers/wallet');
+  const manager = new Wallet();
+  const poison = new Proxy({}, {get() { throw new Error('unexpected wallet dependency'); }});
+  manager.setManagersAndAccountNumber({apiManager: poison, appStateManager: poison, peersStorage: poison} as any, 1);
+  await expect(manager.saveWalletAddress(42, 'excluded')).resolves.toBeUndefined();
+  expect((manager as any).after).toBeUndefined();
+});

@@ -1,3 +1,4 @@
+import '@/tests/mocks/widgetEmoji';
 import {readFileSync} from 'node:fs';
 import {parseSync} from '@babel/core';
 import {describe, expect, it} from 'vitest';

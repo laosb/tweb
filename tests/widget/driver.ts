@@ -48,6 +48,23 @@ let transport: WidgetTransport;
     return transport.call('messages.sendMessage', {peer: await customer(id), message: text,
       reply_to: {_: 'inputReplyToMessage', reply_to_msg_id: result.messages[0].id}, random_id: String(Date.now())});
   },
+  async historyService(id: number) {
+    return transport.call('messages.setHistoryTTL', {peer: await customer(id), period: 86400});
+  },
+  async externalServiceReply(id: number) {
+    const created = await transport.call('channels.createChannel', {megagroup: true, title: 'Widget external source', about: 'Fixture'});
+    if(!('chats' in created)) throw new Error('Missing external channel');
+    const chat = created.chats.find(chat => chat._ === 'channel');
+    if(chat?._ !== 'channel') throw new Error('Missing external channel');
+    const peer: InputPeer = {_: 'inputPeerChannel', channel_id: chat.id, access_hash: chat.access_hash};
+    const result = await transport.call('messages.getHistory', {peer, offset_id: 0, offset_date: 0,
+      add_offset: 0, limit: 10, max_id: 0, min_id: 0, hash: '0'});
+    if(result._ === 'messages.messagesNotModified') throw new Error('Missing external service history');
+    const service = result.messages.find(message => message._ === 'messageService');
+    if(!service) throw new Error('Missing external service message');
+    return transport.call('messages.sendMessage', {peer: await customer(id), message: 'Manager contract external service reply',
+      random_id: String(Date.now()), reply_to: {_: 'inputReplyToMessage', reply_to_msg_id: service.id, reply_to_peer_id: peer}});
+  },
   async read(id: number) {
     return transport.call('messages.readHistory', {peer: await customer(id), max_id: 0});
   },
