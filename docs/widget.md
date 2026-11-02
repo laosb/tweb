@@ -301,6 +301,14 @@ from the upstream style entry without maintaining a second copy. The
 returning feature selectors. Shared reply, confirmation and reaction-tab styles
 stay, alongside chat, media, editor, viewer, accessibility and RTL controls.
 
+Native emoji follow the Unicode regex in both the page and main worker, including
+emoji absent from Telegram’s artwork table. They use the system font and the same
+emoji-only sizing and normalization as older emoji. Standalone ♀, ♂ and ⚕ keep
+their upstream text treatment, including variation selectors. The artwork table is
+absent from both widget graphs. [Build guards](../scripts/widget-emoji-guards.ts)
+require review when upstream
+normalization or its consumers change.
+
 ### Language keys
 
 [`languageKeys.json`](../src/widget/languageKeys.json) is the reviewed set of literal

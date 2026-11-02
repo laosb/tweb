@@ -7,6 +7,7 @@ import widgetBuildRevision from './scripts/widget-build-revision';
 import widgetLanguage from './scripts/widget-language';
 import widgetBranches from './scripts/widget-branches';
 import {widgetThemeDeclaration, widgetCssSelector} from './scripts/widget-theme-css';
+import {assertWidgetEmojiSource, assertWidgetEmojiConsumer, assertWidgetEmojiModules} from './scripts/widget-emoji-guards';
 import {widgetStyles, widgetStyleSelector} from './scripts/widget-styles';
 import {assertWidgetServiceWorkerModules} from './scripts/widget-service-worker';
 import {assertWidgetCleanupAssets, assertWidgetCleanupModules} from './scripts/widget-cleanup-guards';
@@ -66,6 +67,8 @@ const WIDGET_REPLACED: Record<string, string> = {
   'src/lib/debug/memoryReport.ts': omitted('memoryReport.ts'),
   'src/lib/debug/memoryStats.ts': omitted('memoryStats.ts'),
   'src/lib/debug/memoryWatch.ts': omitted('memoryWatch.ts'),
+  'src/lib/richTextProcessor/emojiImage.ts': omitted('emojiImage.ts'),
+  'src/lib/richTextProcessor/getEmojiUnified.ts': omitted('getEmojiUnified.ts'),
   // Emoji and sticker pickers.
   'src/components/emojiDropdownButton.ts': omitted('emojiDropdownButton.ts'),
   'src/components/emoticonsDropdown/index.ts': omitted('emoticonsDropdown.ts'),
@@ -287,6 +290,13 @@ function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
       // A widget wrapper may delegate to the unchanged upstream implementation.
       if(id.endsWith('?widget-original')) return;
       const path = relative(__dirname, id.split('?')[0]);
+      if(path === 'src/lib/richTextProcessor/getEmojiUnified.ts') {
+        assertWidgetEmojiSource(readFileSync(id, 'utf8'), source => this.parse(source, {lang: 'ts'}));
+      }
+      if(path === 'src/lib/richTextProcessor/emojiImage.ts') {
+        const names = exportNames(this.parse(readFileSync(id, 'utf8'), {lang: 'ts'})).sort();
+        if(names.join(',') !== 'areAllEmojiNative,getEmojiImageUrl,isEmojiNative') this.error('widget native emoji contract changed');
+      }
       if(path === 'src/scss/style.scss') return widgetStyles(readFileSync(id, 'utf8'));
       if(path === 'src/lib/serviceWorker/rtmp.ts') {
         const names = exportNames(this.parse(readFileSync(id, 'utf8'), {lang: 'ts'})).sort();
@@ -307,7 +317,12 @@ function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
         path !== 'src/components/emoticonsDropdown/constants.ts' &&
         !WIDGET_REPLACED[path] && !WIDGET_INERT.includes(path));
       if(pickerModules.length) this.error('widget picker code is reachable: ' + pickerModules.join(', '));
+      const emoji = this.getModuleInfo(resolve(__dirname, 'src/lib/richTextProcessor/getEmojiUnified.ts'));
+      for(const id of [...(emoji?.importers || []), ...(emoji?.dynamicImporters || [])]) {
+        assertWidgetEmojiConsumer(relative(__dirname, id));
+      }
       const paths = [...ids].map((id) => relative(__dirname, id));
+      assertWidgetEmojiModules(paths);
       assertWidgetServiceWorkerModules(paths);
       assertWidgetCleanupModules(paths, [...Object.keys(WIDGET_REPLACED), ...WIDGET_INERT]);
       if(!requireTargets) {
