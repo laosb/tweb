@@ -8,5 +8,15 @@
     "source": "src/lib/appManagers/appGroupCallsManager.ts",
     "sha256": "3b19796c59aef71f8c02fdd709b51fcb2765203da7589e0aed38f085b7919b9b",
     "replacement": "src/widget/managers/groupCalls.ts"
+  },
+  "appStatisticsManager": {
+    "source": "src/lib/appManagers/appStatisticsManager.ts",
+    "sha256": "e9b79063faf21d18b9f9019ec46edeac69a44018694c7ca0d07a3b54257b61da",
+    "replacement": "src/widget/managers/statistics.ts"
+  },
+  "appBoostsManager": {
+    "source": "src/lib/appManagers/appBoostsManager.ts",
+    "sha256": "3599fc95c0ac22ca60e37ca3ec785648fde4deca00f1b5f7dd2caa172c5b45d9",
+    "replacement": "src/widget/managers/boosts.ts"
   }
 }
