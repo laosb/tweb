@@ -25,7 +25,6 @@ export const NON_NAVIGABLE_SECTIONS = new Set([
   'AppTwoStepVerificationSetTab',
   'AppPasscodeEnterPasswordTab',
   'AppSessionTab',
-  'AppBlahIdentityDetailsTab',
   'AppConnectedBotSessionTab',
   'AppEditFolderTab',
   // its list is a store owned by the Privacy tab

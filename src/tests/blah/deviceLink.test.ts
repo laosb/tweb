@@ -4,14 +4,14 @@ import type {DeviceLinkRequest} from '@lib/blah/deviceLinkTypes';
 
 const mock = vi.hoisted(() => ({begin: vi.fn(), open: vi.fn(), inspect: vi.fn(), respond: vi.fn(), destroy: vi.fn(),
   install: vi.fn(), certify: vi.fn(), identity: vi.fn(), publication: vi.fn(), save: vi.fn(),
-  use: vi.fn()}));
+  linked: vi.fn(), use: vi.fn()}));
 vi.mock('@config/blah', () => ({default: {defaultDcId: 1}, ensureBlahConfig: async() => {},
   getBlahConfig: () => ({home: {identity: '0a0b', generation: '1'}})}));
 vi.mock('@lib/blah/runtime', () => ({diemClient: async() => ({deviceLink: {
   begin: mock.begin, open: mock.open, inspect: mock.inspect
 }})}));
 vi.mock('@lib/blah/identity', () => ({respondToLinkedDevice: mock.respond, installLinkedIdentity: mock.install, certifyLinkedDevice: mock.certify,
-  linkedAccountIdentity: mock.identity, publicationPending: mock.publication, withIdentity: mock.use}));
+  linkedAccountIdentity: mock.identity, publicationPending: mock.publication, withIdentity: mock.use, hasLinkedEnrollment: mock.linked}));
 import {deviceLinkAction, parseDeviceLink} from '@lib/blah/deviceLink';
 
 const requestBytes = new Uint8Array([17, 1, 7]);
@@ -21,10 +21,7 @@ const parameter = 'cXVpZXQtc2VjcmV0';
 const link = 'tg://login?token=' + btoa(String.fromCharCode(...token)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') + '&blah=' + parameter;
 const profile = [3, 4];
 const info = {id: 'alice', profile, domains: ['alice.example.org']};
-const secret = {domain: 'alice.example.org', profile: 'AwQ=', publicationPending: true,
-  identity: {privateKey: 'identity-private', publicKey: 'identity-public'},
-  device: {privateKey: 'O-private', publicKey: 'O-public'},
-  publisher: 'https://publisher.example.org/alice', token: 'publisher-token',
+const secret = {domain: 'alice.example.org', profile: 'AwQ=', publicationPending: true, seed: new Uint8Array(32).fill(1),
   renewal: {profileDays: 60, deviceDays: 90, autoRenew: false}};
 let serial = 0;
 let attempts: {slot: number, attempt: string, api: ApiManager}[];
@@ -32,7 +29,8 @@ let contents: Uint8Array;
 
 function harness(slot = 1, serverTimeOffset = 0) {
   const invokeApi = vi.fn(async(method: string, _params?: unknown, _options?: unknown): Promise<any> => {
-    if(method === 'auth.exportLoginToken') return {_: 'auth.loginToken', token, expires: Date.now() / 1000 + 30};
+    if(method === 'auth.exportLoginToken') return mock.install.mock.calls.length ? {_: 'auth.loginTokenSuccess', authorization: {_: 'auth.authorization', user: {id: 42}}} :
+      {_: 'auth.loginToken', token, expires: Date.now() / 1000 + 30};
     if(method === 'blah.getDeviceLink') return {_: 'blah.deviceLink', request: requestBytes};
     if(method === 'auth.acceptLoginToken') return {_: 'authorization'};
     throw new Error('Unexpected RPC: ' + method);
@@ -67,9 +65,9 @@ beforeEach(() => {
   attempts = [];
   contents = new Uint8Array([9, 10]);
   mock.begin.mockResolvedValue({request: requestBytes, parameter, session: {destroy: mock.destroy}});
-  mock.open.mockResolvedValue({keyFileContents: contents});
-  mock.inspect.mockResolvedValue({device: new Uint8Array([5]), label: 'New browser', verifies: [1]});
-  mock.identity.mockResolvedValue({id: 'alice', domain: 'alice.example.org', unlocked: true});
+  mock.open.mockResolvedValue({profile: new Uint8Array(profile), domain: secret.domain, device: {privateKey: {}, publicKey: new Uint8Array(65)}, seed: contents});
+  mock.inspect.mockResolvedValue({device: new Uint8Array([5]), label: 'New browser', verifies: [1, 2]});
+  mock.identity.mockResolvedValue({id: 'alice', domain: 'alice.example.org'});
   mock.certify.mockResolvedValue({identity: info, manualPublication: false});
   mock.use.mockImplementation((_slot, action) => action(secret, info, mock.save));
   mock.publication.mockResolvedValue(false);
@@ -82,6 +80,22 @@ afterEach(async() => {
 });
 
 describe('N device-link state machine', () => {
+  it('resumes installed custody on a new QR mount after final proof failed', async() => {
+    const h = harness();
+    await begin(h);
+    h.invokeApi.mockResolvedValueOnce({_: 'blah.deviceLink', request: requestBytes, response: responseBytes});
+    h.invokeApi.mockRejectedValueOnce(new Error('Connection lost after installation'));
+    await expect(h.run({action: 'poll'})).rejects.toThrow('Connection lost');
+    expect(mock.install).toHaveBeenCalledOnce();
+    mock.linked.mockResolvedValue(true);
+    mock.begin.mockClear();
+    const reloaded = harness();
+    const result = await begin(reloaded);
+    expect(result.loginToken._).toBe('auth.loginTokenSuccess');
+    expect(mock.begin).not.toHaveBeenCalled();
+    expect(mock.install).toHaveBeenCalledOnce();
+    expect(reloaded.invokeApi.mock.calls[0][2]).not.toHaveProperty('blahDeviceLink');
+  });
   it('begins once with a request-wrapped export and keeps the QR secret out of RPC params', async() => {
     const h = harness();
     const result = await begin(h);
@@ -104,18 +118,6 @@ describe('N device-link state machine', () => {
     ]);
     expect(h.invokeApi.mock.calls[3][2]).toMatchObject({blahDeviceLink: requestBytes});
     expect(mock.begin).toHaveBeenCalledOnce();
-  });
-
-  it('opens an accepted response on an expired token before considering re-export', async() => {
-    const h = harness();
-    await begin(h);
-    await vi.advanceTimersByTimeAsync(30000);
-    h.invokeApi.mockResolvedValueOnce({request: requestBytes, response: responseBytes});
-    expect(await h.run({action: 'poll'})).toEqual({needsPassword: true});
-    expect(mock.open).toHaveBeenCalledWith(expect.anything(), responseBytes, new Uint8Array([10, 11]));
-    expect(h.invokeApi).toHaveBeenCalledTimes(2);
-    expect(await h.run({action: 'poll'})).toEqual({needsPassword: true});
-    expect(mock.open).toHaveBeenCalledOnce();
   });
 
   it('uses the DC clock offset when deciding whether the displayed token expired', async() => {
@@ -143,43 +145,35 @@ describe('N device-link state machine', () => {
     expect(mock.install).not.toHaveBeenCalled();
   });
 
-  it('waits for custody and slot binding before the proof export, then returns loginTokenSuccess', async() => {
+  it('stores opaque custody before the proof export and clears the optional seed', async() => {
     const h = harness();
-    await approved(h);
-    let finish: () => void;
-    const stored = new Promise<void>(resolve => finish = resolve);
-    mock.install.mockReturnValue(stored);
-    const success = {_: 'auth.loginTokenSuccess', authorization: {_: 'auth.authorization', user: {id: 42}}};
-    h.invokeApi.mockResolvedValueOnce(success);
-    const completion = h.run({action: 'complete', password: 'local password'});
-    await vi.waitFor(() => expect(mock.install).toHaveBeenCalled());
-    expect(h.invokeApi).toHaveBeenCalledTimes(2);
-    expect(mock.install).toHaveBeenCalledWith(1, contents, 'local password', expect.any(Function));
-    finish();
-    expect(await completion).toEqual({loginToken: success});
-    const [method, , options] = h.invokeApi.mock.calls[2];
-    expect(method).toBe('auth.exportLoginToken');
-    expect(options).not.toHaveProperty('blahDeviceLink');
+    await begin(h);
+    h.invokeApi.mockResolvedValueOnce({response: responseBytes});
+    const result = await h.run({action: 'poll'});
+    expect(result.loginToken?._).toBe('auth.loginTokenSuccess');
+    expect(mock.install).toHaveBeenCalledWith(1, expect.objectContaining({seed: contents}), expect.any(Function));
+    expect(h.invokeApi.mock.calls[2][2]).not.toHaveProperty('blahDeviceLink');
+    expect(mock.install.mock.invocationCallOrder[0]).toBeLessThan(h.invokeApi.mock.invocationCallOrder[2]);
     expect(contents).toEqual(new Uint8Array(2));
     expect(mock.destroy).toHaveBeenCalledOnce();
   });
 
-  it('keeps the installed custody when the proof export requires Telegram 2FA', async() => {
+  it('retains installed custody when Telegram requires 2FA', async() => {
     const h = harness();
-    await approved(h);
-    h.invokeApi.mockRejectedValueOnce({type: 'SESSION_PASSWORD_NEEDED'});
-    await expect(h.run({action: 'complete', password: 'local password'})).rejects.toMatchObject({type: 'SESSION_PASSWORD_NEEDED'});
+    await begin(h);
+    h.invokeApi.mockResolvedValueOnce({response: responseBytes}).mockRejectedValueOnce({type: 'SESSION_PASSWORD_NEEDED'});
+    await expect(h.run({action: 'poll'})).rejects.toMatchObject({type: 'SESSION_PASSWORD_NEEDED'});
     expect(mock.install).toHaveBeenCalledOnce();
-    expect(mock.destroy).toHaveBeenCalledOnce();
     expect(contents).toEqual(new Uint8Array(2));
   });
 
-  it('never exports with proof after custody storage fails', async() => {
-    const h = harness();
-    await approved(h);
+  it('does not export a proof after storage fails', async() => {
+    const h = harness(); await begin(h);
     mock.install.mockRejectedValue(new Error('Storage failed'));
-    await expect(h.run({action: 'complete', password: 'local password'})).rejects.toThrow('Storage failed');
+    h.invokeApi.mockResolvedValueOnce({response: responseBytes});
+    await expect(h.run({action: 'poll'})).rejects.toThrow('Storage failed');
     expect(h.invokeApi).toHaveBeenCalledTimes(2);
+    expect(contents).toEqual(new Uint8Array(2));
   });
 
   it('cancel clears private buffers and timers, and drops a response arriving late', async() => {
@@ -194,15 +188,6 @@ describe('N device-link state machine', () => {
     finish({response: responseBytes});
     await rejected;
     expect(mock.open).not.toHaveBeenCalled();
-    expect(mock.destroy).toHaveBeenCalledOnce();
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('cancel wipes an already opened grant', async() => {
-    const h = harness();
-    await approved(h);
-    await h.run({action: 'cancel'});
-    expect(contents).toEqual(new Uint8Array(2));
     expect(mock.destroy).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -228,7 +213,7 @@ describe('N device-link state machine', () => {
     const rejected = expect(polling).rejects.toMatchObject({type: 'BLAH_LINK_CANCELLED'});
     await vi.waitFor(() => expect(mock.open).toHaveBeenCalledOnce());
     await h.run({action: 'cancel'});
-    finish({keyFileContents: contents});
+    finish({seed: contents});
     await rejected;
     expect(contents).toEqual(new Uint8Array(2));
     expect(mock.install).not.toHaveBeenCalled();
@@ -262,12 +247,11 @@ describe('O device-link approval', () => {
     expect(mock.identity).not.toHaveBeenCalled();
   });
 
-  it('reports locked custody for the UI unlock prompt', async() => {
+  it('refuses a non-holder before certification', async() => {
     const h = harness();
-    mock.identity.mockResolvedValue({id: 'alice', domain: 'alice.example.org', unlocked: false});
-    expect(await h.run({action: 'inspect', link})).toMatchObject({label: 'New browser', id: 'alice', unlocked: false});
+    mock.identity.mockRejectedValue({type: 'BLAH_LINK_APPROVAL_REQUIRED'});
+    await expect(h.run({action: 'inspect', link})).rejects.toMatchObject({type: 'BLAH_LINK_APPROVAL_REQUIRED'});
     expect(mock.certify).not.toHaveBeenCalled();
-    expect(mock.respond).not.toHaveBeenCalled();
   });
 
   it('cannot accept after publication fails', async() => {
@@ -299,9 +283,10 @@ describe('O device-link approval', () => {
     await prepare(h, transferIdentity);
     await h.run({action: 'accept'});
     const payload = mock.respond.mock.calls[0][1];
-    expect(payload).toMatchObject({parameter, request: requestBytes, profile: new Uint8Array(profile),
-      domain: secret.domain, transferIdentity});
-    expect(payload).not.toHaveProperty('metadata');
+    expect(payload).toMatchObject({code: parameter, request: requestBytes, profile: new Uint8Array(profile),
+      domain: secret.domain, seed: transferIdentity ? secret.seed : undefined});
+    if(transferIdentity) expect(JSON.parse(new TextDecoder().decode(payload.metadata))).toMatchObject({renewal: secret.renewal});
+    else expect(payload.metadata).toBeUndefined();
     expect(mock.save).toHaveBeenCalledWith(info, false);
     expect(mock.save.mock.invocationCallOrder[0]).toBeLessThan(mock.respond.mock.invocationCallOrder[0]);
     expect(h.invokeApi.mock.calls[1][2]).toMatchObject({blahDeviceLink: responseBytes});
@@ -333,7 +318,7 @@ describe('O device-link approval', () => {
     await h.run({action: 'prepare', transferIdentity: false});
     h.invokeApi.mockResolvedValue({_: 'authorization'});
     await h.run({action: 'accept'});
-    expect(mock.respond.mock.calls.map(([, input]) => input.transferIdentity)).toEqual([true, false]);
+    expect(mock.respond.mock.calls.map(([, input]) => !!input.seed)).toEqual([true, false]);
     expect(h.invokeApi.mock.lastCall[2]).toMatchObject({blahDeviceLink: replacement});
   });
 

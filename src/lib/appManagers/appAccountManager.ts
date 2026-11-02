@@ -1,3 +1,4 @@
+import blah from '@config/blah';
 import App from '@config/app';
 import ctx from '@environment/ctx';
 import longFromBytes from '@helpers/long/longFromBytes';
@@ -100,6 +101,7 @@ export default class AppAccountManager extends AppManager {
   private authorizationTTLSaves = createSerializedQueue();
 
   protected after() {
+    if(blah) void import('@lib/blah/identity').then(({startIdentityMaintenance}) => startIdentityMaintenance(this.getAccountNumber())).catch(() => {});
     const pendingUpdates: Update.updateNewAuthorization[] = [];
     let loaded = false;
 
@@ -408,6 +410,7 @@ export default class AppAccountManager extends AppManager {
   }
 
   public async blahIdentity(request: import('@lib/blah/identity').IdentityRequest) {
+    if(request.action === 'discardEnrollment' && (await AccountController.get(this.getAccountNumber())).userId) throw new Error('This sign-in is already complete.');
     const {identityAction} = await import('@lib/blah/identity');
     return identityAction(this.getAccountNumber(), request);
   }
@@ -638,8 +641,10 @@ export default class AppAccountManager extends AppManager {
     });
   }
 
-  public resetAuthorization(hash: string | number) {
-    return this.apiManager.invokeApi('account.resetAuthorization', {hash}).then((result) => {
+  public async resetAuthorization(hash: string | number) {
+    const reset = () => this.apiManager.invokeApi('account.resetAuthorization', {hash});
+    const result = blah ? (await import('@lib/blah/sessions')).resetBlahSessions(this.getAccountNumber(), this.apiManager, reset, hash) : reset();
+    return result.then((result) => {
       if(result) {
         this.removeUnconfirmedAuthorization(hash);
       }
@@ -648,8 +653,10 @@ export default class AppAccountManager extends AppManager {
     });
   }
 
-  public resetAuthorizations() {
-    return this.apiManager.invokeApi('auth.resetAuthorizations').then((result) => {
+  public async resetAuthorizations() {
+    const reset = () => this.apiManager.invokeApi('auth.resetAuthorizations');
+    const result = blah ? (await import('@lib/blah/sessions')).resetBlahSessions(this.getAccountNumber(), this.apiManager, reset) : reset();
+    return result.then((result) => {
       if(result) {
         this.unconfirmedAuthorizationClearVersion = ++this.unconfirmedAuthorizationMutationVersion;
         this.unconfirmedAuthorizationMutations.clear();

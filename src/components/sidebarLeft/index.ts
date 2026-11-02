@@ -761,7 +761,7 @@ export class AppSidebarLeft extends SidebarSlider {
       }
     }, {
       icon: 'key',
-      text: 'BlahBrowserIdentity',
+      text: 'BlahIdentity',
       verify: () => !!blah,
       onClick: () => closeTabsBefore(() => this.createTab(AppBlahIdentityTab).open())
     }, newSubmenu, {

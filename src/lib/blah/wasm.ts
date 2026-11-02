@@ -3,8 +3,17 @@ import {DAY, renewalPolicy} from '@lib/blah/renewal';
 import {decode} from '@lib/blah/vault';
 import type {CryptoBackend, IdentityResult} from '@blahdiem/diem';
 
-export type {SigningKey} from '@blahdiem/diem';
-export type IdentitySecret = import('@blahdiem/diem').KeyFileSecret;
+export type DeviceKey = {privateKey: CryptoKey, publicKey: Uint8Array};
+export type IdentitySecret = {
+  domain: string,
+  profile: string,
+  seed?: Uint8Array,
+  identity?: {publicKey: Uint8Array, id: string, signer: CryptoKey},
+  device: DeviceKey,
+  renewal?: import('@lib/blah/renewal').RenewalPolicy,
+  publicationPending?: boolean,
+  hosting?: import('@lib/blah/hosting').PortableHosting
+};
 export type IdentityInfo = IdentityResult;
 
 let queue: Promise<unknown> = Promise.resolve();
@@ -14,29 +23,18 @@ export function diem(operation: string, secret: IdentitySecret, extra: Record<st
   const run = queue.then(async() => {
     const blah = getBlahConfig(slot);
     if(!blah?.home) throw new Error('A decentralized Blah home bootstrap is required.');
-    if(typeof secret?.domain !== 'string' || secret.domain.length > 253 || !/^[a-z0-9.-]+$/.test(secret.domain) ||
-      typeof secret.profile !== 'string' || secret.profile.length > 100_000 ||
-      [secret.identity, secret.device].filter(Boolean).some((key) => typeof key?.privateKey !== 'string' || key.privateKey.length > 256 ||
-        typeof key?.publicKey !== 'string' || decode(key.publicKey).length !== 32)) {
-      throw new Error('Invalid identity key or profile data.');
+    if(!secret.device || typeof secret.domain !== 'string' || secret.domain.length > 253 ||
+      !/^[a-z0-9.-]+$/.test(secret.domain) || typeof secret.profile !== 'string' || secret.profile.length > 100_000) {
+      throw new Error('Invalid identity custody.');
     }
-    if(!secret.device) throw new Error('This recovery file requires enrolling a device before browser sign-in.');
     const {diemClient, verifySignature} = await import('@lib/blah/runtime');
     const client = await diemClient();
-    const keys: Record<string, CryptoKey> = {};
-    for(const role of ['identity', 'device'] as const) {
-      if(!secret[role]) continue;
-      keys[role] = await crypto.subtle.importKey('pkcs8', decode(secret[role].privateKey), 'Ed25519', false, ['sign']);
-      const probe = crypto.getRandomValues(new Uint8Array(32));
-      const publicKey = await crypto.subtle.importKey('raw', decode(secret[role].publicKey), 'Ed25519', false, ['verify']);
-      if(!await crypto.subtle.verify('Ed25519', publicKey, await crypto.subtle.sign('Ed25519', keys[role], probe), probe)) {
-        throw new Error('Identity file contains mismatched keys.');
-      }
-    }
+    secret.identity ||= secret.seed && await client.seeds.identity(secret.seed);
     const backend: CryptoBackend = {
       random: (length) => crypto.getRandomValues(new Uint8Array(length)),
-      publicKey: (role) => secret[role] ? decode(secret[role].publicKey) : new Uint8Array(),
-      sign: async(role, data) => new Uint8Array(await crypto.subtle.sign('Ed25519', keys[role], new Uint8Array(data))),
+      publicKey: (role) => role === 'identity' ? secret.identity?.publicKey.slice(-32) || new Uint8Array() : secret.device.publicKey,
+      sign: async(role, data) => new Uint8Array(await crypto.subtle.sign(role === 'identity' ? 'Ed25519' :
+        {name: 'ECDSA', hash: 'SHA-256'}, role === 'identity' ? secret.identity.signer : secret.device.privateKey, new Uint8Array(data))),
       verify: verifySignature
     };
     const policy = renewalPolicy(secret.renewal);

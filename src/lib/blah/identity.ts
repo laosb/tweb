@@ -1,4 +1,4 @@
-import type {DeviceLinkApproval, HostingPlanName, KeyFileSession} from '@blahdiem/diem';
+import type {DeviceLinkApproval, DeviceLinkOpened, HostingPlanName} from '@blahdiem/diem';
 import {diemClient, verifySignature} from '@lib/blah/runtime';
 import bytesFromHex from '@helpers/bytes/bytesFromHex';
 import {fetchProfile, profileDomain} from '@lib/blah/profile';
@@ -6,78 +6,43 @@ import {renewalDue, renewalPolicy, RenewalPolicy} from '@lib/blah/renewal';
 import {ensureBlahConfig, getBlahConfig} from '@config/blah';
 import {bindHomeStorage} from '@lib/blah/homeStorage';
 import {dcDomain, fetchDCProfile, profileConfig, type SavedDC} from '@lib/blah/discovery';
-import {decode, encode, exclusively, identityIDs, SealedIdentity, stored, storeEntries} from '@lib/blah/vault';
-import {diem, IdentityInfo, IdentitySecret, SigningKey} from '@lib/blah/wasm';
-import {HostedNames, hostingAPI, mergeHosting, planHostedName, portableHosting, publishHosted} from '@lib/blah/hosting';
+import {decode, encode, exclusively, identityIDs, stored, storeEntries} from '@lib/blah/vault';
+import {diem, IdentityInfo, IdentitySecret} from '@lib/blah/wasm';
+import {custodyKey, openCustody, sealCustody} from '@lib/blah/custody';
+import {HostedNames, hostingAPI, planHostedName, portableHosting, publishHosted} from '@lib/blah/hosting';
 
 export type IdentityKind = 'user' | 'channel';
 export type IdentityMetadata = {kind: IdentityKind, chatId?: ChatId, title?: string, namespace?: string, home?: string};
 /** A user identity's hosting from its verified profile, and the DC of the account slot viewing it. */
 export type IdentityHosting = {dc: string, domain?: string, account?: string, epoch: string, current: boolean,
   slot: {dc: string, domain: string}};
-export type IdentityView = Omit<IdentityInfo, 'proof'> & Partial<IdentityMetadata> & {domain: string, publisher: string, renewal: RenewalPolicy,
-  publicationPending: boolean, hosting?: IdentityHosting, hostedNames?: HostedNames, hostingAvailable?: boolean};
+export type IdentityView = Omit<IdentityInfo, 'proof'> & Partial<IdentityMetadata> & {domain: string, renewal: RenewalPolicy,
+  publicationPending: boolean, holder: boolean, hosting?: IdentityHosting, hostedNames?: HostedNames, hostingAvailable?: boolean};
 export type IdentityRequest = {
-  action: 'suggestDomain' | 'list' | 'create' | 'unlock' | 'lock' | 'inspect' | 'renew' | 'backup' | 'restore' | 'paper' | 'publisher' | 'addDevice' | 'addPaperKey' | 'removeDevice' | 'renewal' | 'publication' | 'removeOtherDevices' | 'domains' | 'home' | 'hostingCapability' | 'hostingPlan' | 'hostingClaim' | 'hostingStatus' | 'retryPublication',
+  action: 'suggestDomain' | 'list' | 'create' | 'restore' | 'inspect' | 'renew' | 'renewal' | 'publication' |
+    'domains' | 'home' | 'hostingCapability' | 'hostingPlan' | 'hostingClaim' | 'hostingStatus' | 'retryPublication' |
+    'generateWords' | 'words' | 'enterWords' | 'removeWords' | 'attempt' | 'discardEnrollment',
   id?: string,
   kind?: IdentityKind,
   attempt?: string,
-  password?: string,
   domain?: string,
   domains?: string[],
   hosted?: {domain: string, label: string, proofs?: Record<string, number[]>},
-  backup?: number[],
-  publisher?: string,
-  token?: string,
-  device?: string,
   phrase?: string,
   renewal?: RenewalPolicy
 };
+export type IdentityActions = (request: IdentityRequest) => Promise<IdentityResponse>;
 export type IdentitySummary = {id: string, domain?: string} & Partial<IdentityMetadata>;
-/** A new paper key's words, shown once, and the device it certifies. */
-export type PaperKeyView = {phrase: string, device: string};
-/** `retired`: the slot's session belonged to the hosting a home change just ended. */
-export type IdentityResponse = {domain?: string, ids?: string[], identities?: IdentitySummary[], identity?: IdentityView, backup?: number[], publication?: {profile: number[], pending: boolean}, paperKey?: PaperKeyView, retired?: boolean, hostingAvailable?: boolean, hostingPlan?: HostingPlanName, unlocked?: boolean};
-type Unlocked = {id: string, key: KeyFileSession, until: number, timer?: ReturnType<typeof setTimeout>, renewalTimer?: ReturnType<typeof setTimeout>};
-const unlocked = new Map<number, Unlocked>();
-const resources = new Map<number, Map<string, Unlocked>>();
-
-function sessions(slot: number, id?: string) {
-  if(!id) return {get: () => unlocked.get(slot), set: (value: Unlocked) => unlocked.set(slot, value), delete: () => unlocked.delete(slot)};
-  let entries = resources.get(slot);
-  if(!entries) resources.set(slot, entries = new Map());
-  return {get: () => entries.get(id), set: (value: Unlocked) => entries.set(id, value), delete: () => entries.delete(id)};
-}
+export type IdentityResponse = {domain?: string, ids?: string[], identities?: IdentitySummary[], identity?: IdentityView,
+  publication?: {profile: number[], pending: boolean}, words?: string[], retired?: boolean,
+  unfinished?: boolean, managed?: boolean, hostingAvailable?: boolean, hostingPlan?: HostingPlanName, available?: boolean};
+const renewalTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export {requireHomeStorage} from '@lib/blah/homeStorage';
 
-async function signingKey(): Promise<SigningKey> {
-  return (await diemClient()).generateSigningKey();
-}
-
 async function profileKind(encoding: Uint8Array): Promise<IdentityKind> {
   const profile = await (await diemClient()).verifyProfile(encoding, Math.floor(Date.now() / 1000), {verify: verifySignature});
-  // DC operator profiles, like user profiles, retain the account custody path.
   return profile.kind === 'channel' ? 'channel' : 'user';
-}
-
-/** BlahDiem reports codes; a paper key's failures name what the person can check. */
-async function paperFailure<T>(operation: () => Promise<T>): Promise<T> {
-  try { return await operation(); } catch(error) {
-    const code = (error as Error).message;
-    if(code === 'invalidEncoding') throw new Error('Check the paper key words.');
-    if(code === 'deviceNotListed') throw new Error('This paper key is not a current device of the identity at that domain.');
-    if(code === 'identityKeyRequired') throw new Error('Only a device that holds the identity key can add a paper key.');
-    throw error;
-  }
-}
-
-async function certifyPaperKey(secret: IdentitySecret, slot: number, kind: IdentityKind) {
-  const paper = await paperFailure(async() => (await diemClient()).paperKeys.generate());
-  const info = await paperFailure(() => diem('addDevice', secret, {device: paper.device}, slot, kind));
-  const device = info.devices.find((entry) => entry.key.length === paper.device.length &&
-    entry.key.every((byte, index) => byte === paper.device[index]));
-  return {info, paperKey: {phrase: paper.phrase, device: device.id}};
 }
 
 /** Public DC domains this browser knows: account slots' DCs and home-change destinations. */
@@ -100,106 +65,80 @@ async function hosting(info: IdentityInfo, slot: number): Promise<IdentityHostin
 
 async function view(secret: IdentitySecret, info: IdentityInfo, kind: IdentityKind, slot: number): Promise<IdentityView> {
   const {proof: _, ...publicInfo} = info;
-  return {...publicInfo, kind, domain: secret.domain, publisher: secret.publisher || '', renewal: renewalPolicy(secret.renewal), publicationPending: !!secret.publicationPending,
+  return {...publicInfo, kind, holder: !!secret.seed, domain: secret.domain, renewal: renewalPolicy(secret.renewal), publicationPending: !!secret.publicationPending,
     hostedNames: await stored<HostedNames>('hosting:' + info.id),
     hostingAvailable: !!secret.identity && !!(await diemClient()).hosting,
     ...(kind === 'user' ? {hosting: await hosting(info, slot)} : {})};
-}
-
-function session(slot: number, touch = true, id?: string) {
-  const value = sessions(slot, id).get();
-  if(!value || value.until < Date.now()) {
-    lock(slot, id);
-    throw new Error('Unlock your browser identity to continue.');
-  }
-  if(touch) {
-    value.until = Date.now() + 15 * 60_000;
-    clearTimeout(value.timer);
-    value.timer = setTimeout(() => lock(slot, id), 15 * 60_000);
-  }
-  return value;
-}
-
-function lock(slot: number, id?: string) {
-  const entries = sessions(slot, id);
-  clearTimeout(entries.get()?.timer);
-  clearTimeout(entries.get()?.renewalTimer);
-  entries.get()?.key.destroy();
-  entries.delete();
 }
 
 type IdentityOperation<T> = (secret: IdentitySecret, info: IdentityInfo,
   save: (info: IdentityInfo, pending?: boolean, entries?: [string, unknown][]) => Promise<void>) => Promise<T>;
 
 /** The slot's signer: the user identity this account slot is (or will be) bound to, hosted at its DC. */
-export function withIdentity<T>(slot: number, action: IdentityOperation<T>, touch = true, maintain = true): Promise<T> {
-  return exclusively(() => useIdentity(slot, action, touch, maintain, undefined, true));
+export function withIdentity<T>(slot: number, action: IdentityOperation<T>, maintain = true): Promise<T> {
+  return exclusively(() => useIdentity(slot, action, maintain, undefined, true));
 }
 
-export function withResourceIdentity<T>(slot: number, id: string, action: IdentityOperation<T>, touch = true, maintain = true): Promise<T> {
+export function withResourceIdentity<T>(slot: number, id: string, action: IdentityOperation<T>, maintain = true): Promise<T> {
   if(!id) throw new Error('Select a chat identity.');
-  return exclusively(() => useIdentity(slot, action, touch, maintain, id));
+  return exclusively(() => useIdentity(slot, action, maintain, id));
 }
 
-// Caller holds the vault lock, including the initial unlock/renewal transaction.
-// Custody works on any user identity; only `signer` use is limited to the slot's own.
-async function useIdentity<T>(slot: number, action: IdentityOperation<T>, touch = true, maintain = true, id?: string, signer = false): Promise<T> {
-  const current = session(slot, touch, id);
+// Caller holds the vault lock. Seeds exist in memory only for this operation.
+async function useIdentity<T>(slot: number, action: IdentityOperation<T>, maintain = true, id?: string, signer = false): Promise<T> {
   const kind = id ? 'channel' : 'user';
-  const backup = await stored<SealedIdentity>('identity:' + current.id);
-  const secret = await current.key.open(backup);
-  let info = await diem('inspect', secret, {}, slot, kind);
-  if(info.id !== current.id) throw new Error('Identity file mismatch.');
-  if(signer) {
-    if(!info.namespace) throw new Error('This identity is hosted on another DC. Change its home DC in identity details to sign in here.');
-    const binding = await stored<string>('slot:' + slot);
-    if(binding && binding !== info.namespace) throw new Error('This account slot belongs to another identity. Use another account slot.');
-  }
-  const save = async(next: IdentityInfo, pending = true, entries: [string, unknown][] = []) => {
-    secret.profile = encode(new Uint8Array(next.profile));
-    secret.publicationPending = pending;
-    secret.hosting = portableHosting(entries.find(([key]) => key === 'hosting:' + current.id)?.[1] as HostedNames ||
-      await stored<HostedNames>('hosting:' + current.id), next.domains);
-    await storeEntries([['identity:' + current.id, await current.key.seal(secret)], ['domain:' + current.id, secret.domain], ...entries]);
-  };
-  if(maintain && secret.identity) {
-    // Finish an unanswered hosted PUT before renewing its exact saved bytes.
-    try {
-      if(await retryHostedPublication(secret, info)) await save(info, false);
-    } catch{
-      // Keep the old bytes retryable, but allow inspection/unlock while the host is down.
-      return action(secret, info, save);
+  const secret = await openCustody(slot, id);
+  try {
+    let info = await diem('inspect', secret, {}, slot, kind);
+    if(id && info.id !== id) throw new Error('Identity custody mismatch.');
+    if(signer) {
+      if(!info.namespace) throw new Error('This identity is hosted on another DC. Change its home DC in Blah Identity to sign in here.');
+      const binding = await stored<string>('slot:' + slot);
+      if(binding && binding !== info.namespace) throw new Error('This account slot belongs to another identity.');
     }
-    if(renewalPolicy(secret.renewal).autoRenew && renewalDue(info)) {
-      info = await diem('renew', secret, {}, slot, kind);
-      await save(info);
-    }
-    if(secret.publicationPending && (secret.publisher || await stored('hosting:' + current.id))) {
+    const save = async(next: IdentityInfo, pending = true, entries: [string, unknown][] = []) => {
+      secret.profile = encode(new Uint8Array(next.profile));
+      secret.publicationPending = pending;
+      secret.hosting = portableHosting(entries.find(([key]) => key === 'hosting:' + info.id)?.[1] as HostedNames ||
+        await stored<HostedNames>('hosting:' + info.id), next.domains);
+      await storeEntries([[custodyKey(slot, id), await sealCustody(secret, next.id)], ['domain:' + next.id, secret.domain], ...entries]);
+    };
+    if(maintain && secret.seed) {
       try {
-        if(await publish(secret, info)) await save(info, false);
+        if(await retryHostedPublication(secret, info)) await save(info, false);
+        if(renewalPolicy(secret.renewal).autoRenew && renewalDue(info)) {
+          info = await latestPublishedProfile(slot, secret, info, kind);
+          info = await diem('renew', secret, {}, slot, kind);
+          await save(info);
+        }
+        if(secret.publicationPending && await publish(secret, info)) await save(info, false);
       } catch{
-        // Keep the renewed profile and pending flag. Retry while unlocked;
-        // manual publishing still reports errors and the dialog offers export.
+        // A failed publisher keeps signed bytes durable for the next attempt.
       }
     }
+    scheduleRenewal(slot, id);
+    return await action(secret, info, save);
+  } finally {
+    secret.seed?.fill(0);
+    secret.identity = undefined;
   }
-  return action(secret, info, save);
 }
 
 function scheduleRenewal(slot: number, id?: string) {
-  const current = sessions(slot, id).get();
-  if(!current) return;
-  clearTimeout(current.renewalTimer);
-  current.renewalTimer = setTimeout(async() => {
-    try {
-      await exclusively(() => useIdentity(slot, async() => {}, false, true, id));
-    } catch{
-      // Keep pending publication durable and retry while unlocked. Foreground
-      // operations surface the error and allow manual export/publication.
-    } finally {
-      if(sessions(slot, id).get() === current) scheduleRenewal(slot, id);
-    }
-  }, 60_000);
+  const key = custodyKey(slot, id);
+  if(renewalTimers.has(key)) return;
+  renewalTimers.set(key, setTimeout(async() => {
+    renewalTimers.delete(key);
+    try { await exclusively(() => useIdentity(slot, async() => {}, true, id)); }
+    catch{ /* Custody may have been removed by logout. */ }
+  }, 60_000));
+}
+
+export async function startIdentityMaintenance(slot: number) {
+  if(await stored(custodyKey(slot))) scheduleRenewal(slot);
+  for(const id of await identityIDs()) {
+    if((await stored<IdentityMetadata>('metadata:' + id))?.home === identityHome(slot)) scheduleRenewal(slot, id);
+  }
 }
 
 export {requireAccountBinding} from '@lib/blah/accountStorage';
@@ -224,12 +163,14 @@ async function retryHostedPublication(secret: IdentitySecret, info: IdentityInfo
 
 export async function publish(secret: IdentitySecret, info?: IdentityInfo) {
   if(info && await publishHosted(info.id, Array.from(decode(secret.profile)), info.domains)) return true;
-  if(!secret.publisher) return; // Manual hosting uses the exported profile.
-  const url = publicationURL(secret.publisher);
-  const response = await fetch(url, {method: 'PUT', redirect: 'error', credentials: 'omit', cache: 'no-store',
+  const dcProfile = info && await (await diemClient()).verifyProfile(new Uint8Array(info.profile), Math.floor(Date.now() / 1000), {verify: verifySignature});
+  const endpoint = dcProfile?.kind === 'dc' ? `https://${info.domains[0]}/api/v1/renewal` : undefined;
+  if(!endpoint) return;
+  const url = publicationURL(endpoint);
+  const response = await fetch(url, {method: 'POST', redirect: 'error', credentials: 'omit', cache: 'no-store',
     signal: AbortSignal.timeout(15_000),
-    headers: {'Content-Type': 'application/cbor', ...(secret.token ? {Authorization: 'Bearer ' + secret.token} : {})},
-    body: decode(secret.profile)});
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({profile: secret.profile})});
   if(!response.ok) throw new Error('Profile publication failed: HTTP ' + response.status);
   return true;
 }
@@ -239,13 +180,12 @@ async function listIdentities() {
     ...await stored<IdentityMetadata>('metadata:' + id)})));
 }
 
-/** A saved attachment is a binding even while its private key is locked. */
+/** A saved attachment binds the chat to its local custody. */
 export async function chatIdentityForId(slot: number, chatId: ChatId) {
   const identity = (await listIdentities()).find((entry) => entry.kind === 'channel' && entry.chatId === chatId &&
     (!entry.home || entry.home === identityHome(slot)));
   if(!identity) return;
-  const current = sessions(slot, identity.id).get();
-  return {...identity, locked: !current || current.until <= Date.now()};
+  return identity;
 }
 
 function identityHome(slot: number) {
@@ -254,139 +194,139 @@ function identityHome(slot: number) {
 }
 
 export async function identityAction(slot: number, request: IdentityRequest): Promise<IdentityResponse> {
-  if(request.action === 'lock') {
-    return exclusively(async() => {
-      if(!request.id || unlocked.get(slot)?.id === request.id) lock(slot);
-      if(request.id) lock(slot, request.id);
-      else for(const id of resources.get(slot)?.keys() || []) lock(slot, id);
-      return {};
-    });
+  if(request.action === 'generateWords') {
+    const seed = await (await diemClient()).seeds.generate();
+    try { return {words: seed.words}; } finally { seed.entropy.fill(0); }
   }
   if(request.action === 'hostingCapability') return {hostingAvailable: !!(await diemClient()).hosting};
-  if(request.action === 'hostingStatus') {
-    const current = resources.get(slot)?.get(request.id) || unlocked.get(slot);
-    return {unlocked: !!current && current.id === request.id && current.until > Date.now()};
-  }
+  if(request.action === 'hostingStatus') return {available: !!await stored(custodyKey(slot, request.kind === 'channel' ? request.id : undefined))};
   await ensureBlahConfig(slot);
   if(!getBlahConfig(slot)?.home) throw new Error('This build needs a decentralized Blah bootstrap.');
   await bindHomeStorage(getBlahConfig(slot).home, slot);
+  if(request.action === 'discardEnrollment') {
+    return exclusively(async() => {
+      const enrollment = await stored<{id: string}>('enrollment:' + slot);
+      if(!enrollment || enrollment.id !== request.id) throw new Error('This sign-in is already complete.');
+      await storeEntries([[custodyKey(slot), null], ['slot:' + slot, null], ['enrollment:' + slot, null]]);
+      return {};
+    });
+  }
+  if(request.action === 'attempt') {
+    return exclusively(async() => {
+      const id = await stored<string>(chatAttemptKey(slot, request.attempt));
+      if(!id) return {};
+      return useIdentity(slot, async(secret, info) => ({identity: await view(secret, info, 'channel', slot)}), false, id);
+    });
+  }
+  if(request.action === 'inspect' && !request.id && await stored('slot:' + slot) === 'managed-account') return {managed: true};
   if(request.action === 'suggestDomain') {
-    const binding = await stored<string>('slot:' + slot);
-    if(!binding) return {};
-    for(const id of await identityIDs()) {
-      const metadata = await stored<IdentityMetadata>('metadata:' + id);
-      if(metadata?.kind === 'user' && metadata.namespace === binding) return {domain: await stored<string>('domain:' + id)};
-    }
-    return {};
+    try {
+      const secret = await openCustody(slot);
+      secret.seed?.fill(0);
+      return {domain: secret.domain};
+    } catch{ return {}; }
   }
   if(request.action === 'list') {
-    const entries = await listIdentities();
-    const identities = entries.filter((entry) => (entry.kind || 'user') === (request.kind || 'user'));
+    const identities = request.kind === 'channel' ? await listIdentities() : [];
     return {ids: identities.map((entry) => entry.id), identities};
   }
-  let kind = request.kind || (request.id && (await stored<IdentityMetadata>('metadata:' + request.id))?.kind) || 'user';
-  const use = <T>(action: IdentityOperation<T>, touch = true, maintain = true) => kind === 'channel' ?
-    withResourceIdentity(slot, request.id, action, touch, maintain) : exclusively(() => useIdentity(slot, action, touch, maintain));
+  const kind = request.kind || (request.id && (await stored<IdentityMetadata>('metadata:' + request.id))?.kind) || 'user';
+  const use = <T>(action: IdentityOperation<T>, maintain = true) => kind === 'channel' ?
+    withResourceIdentity(slot, request.id, action, maintain) : exclusively(() => useIdentity(slot, action, maintain));
   if(request.action === 'hostingPlan') {
-    if(request.id && session(slot, false, kind === 'channel' ? request.id : undefined).id !== request.id) throw {type: 'BlahHostingCancelled'};
     return {hostingPlan: await planHostedName(request.hosted.domain, request.hosted.label, request.id || '0'.repeat(64))};
   }
   if(request.action === 'publication') {
-    // Fetch outside the custody lock: a slow host must not delay locking keys.
-    const {domains, profile} = await use(async(_secret, info) => ({domains: info.domains, profile: info.profile}), false, false);
+    // Check public hosting outside the custody transaction.
+    const {domains, profile} = await use(async(_secret, info) => ({domains: info.domains, profile: info.profile}), false);
     return {publication: {profile, pending: await publicationPending(domains, profile)}};
   }
-  if(request.action === 'create' || request.action === 'restore' || request.action === 'paper' || request.action === 'unlock') {
-    // Fetch outside the custody lock: a slow host must not delay locking keys.
-    const paperDomain = request.action === 'paper' ? profileDomain(request.domain) : undefined;
-    const hosted = paperDomain && await fetchProfile(paperDomain);
-    if(paperDomain && !hosted) throw new Error('No profile is published at this domain.');
-    return exclusively(async() => {
-      const files = (await diemClient()).keyFiles;
-      const attemptKey = request.attempt && kind === 'channel' && `attempt:${getBlahConfig(slot).home.identity}:${request.attempt}`;
-      if(request.action === 'create' && attemptKey) {
-        const id = await stored<string>(attemptKey);
-        if(id) request = {...request, action: 'unlock', id};
-      }
-      let backup: SealedIdentity;
-      let secret: IdentitySecret;
-      let key: KeyFileSession | undefined;
+  if(request.action === 'create' || request.action === 'restore') {
+    const domain = profileDomain(request.domain);
+    const profile = request.action === 'restore' && await fetchProfile(domain);
+    if(request.action === 'restore' && !profile) throw new Error('No profile is published at this domain.');
+    const runtime = await diemClient();
+    let restoredHosting: HostedNames;
+    const parentDomain = domain.split('.').slice(1).join('.');
+    if(profile && runtime.hosting && parentDomain.includes('.')) {
       try {
-        let info: IdentityInfo;
-        let paperKey: PaperKeyView;
-        if(request.action === 'create') {
-          const domain = profileDomain(request.domain);
-          if(request.hosted) {
-            await hostingAPI();
-            if(domain !== request.hosted.label + '.' + profileDomain(request.hosted.domain)) throw {type: 'BlahHostingInvalid'};
-          }
-          key = await files.create(request.password || '');
-          secret = {domain, profile: '', hosting: request.hosted && {domain: profileDomain(request.hosted.domain), held: [], proofs: {}}, renewal: renewalPolicy(request.renewal), publicationPending: true, identity: await signingKey(), device: await signingKey()};
-          info = await diem('create', secret, {}, slot, kind);
-          if(kind === 'channel') {
-            secret.profile = encode(new Uint8Array(info.profile));
-            ({info, paperKey} = await certifyPaperKey(secret, slot, kind));
-          }
-          secret.profile = encode(new Uint8Array(info.profile));
-        } else if(request.action === 'paper') {
-          // A paper key is a listed device: keep it as device-only custody of the hosted profile.
-          kind = await profileKind(hosted);
-          const paper = await paperFailure(async() => (await diemClient()).paperKeys.restore(request.phrase || ''));
-          key = await files.create(request.password || '');
-          secret = {domain: paperDomain, profile: encode(hosted), renewal: renewalPolicy(request.renewal), device: paper.key};
-          info = await paperFailure(() => diem('inspect', secret, {}, slot, kind));
-          if(await stored('identity:' + info.id)) {
-            throw new Error('This identity already exists here. Unlock its current copy instead.');
-          }
-        } else {
-          if(request.backup && request.backup.length > 262_144) throw new Error('Identity file is too large.');
-          backup = request.action === 'restore' ? new Uint8Array(request.backup) : await stored('identity:' + request.id);
-          ({session: key, contents: secret} = await files.unlock(backup, request.password || ''));
-          kind = await profileKind(decode(secret.profile));
-          info = await diem('inspect', secret, {}, slot, kind);
-          if(info.id !== files.inspect(backup).id) throw new Error('Identity file mismatch.');
-          // Never roll an existing vault back to an older device generation/revision.
-          if(request.action === 'restore' && await stored('identity:' + info.id)) {
-            throw new Error('This identity already exists here. Unlock its current copy instead.');
-          }
+        const policy = await runtime.hosting.policy(parentDomain);
+        if(policy.domain === parentDomain) restoredHosting = {domain: parentDomain, held: [domain.split('.')[0]], proofs: {}};
+      } catch{ /* Own-domain profiles use manual publication. */ }
+    }
+    return exclusively(async() => {
+      const client = runtime;
+      const seed = await client.seeds.restore(request.phrase || '');
+      let secret: IdentitySecret;
+      try {
+        if(profile && await profileKind(profile) !== kind) throw new Error('The profile has a different identity kind.');
+        const attemptKey = request.attempt && kind === 'channel' && chatAttemptKey(slot, request.attempt);
+        const previous = attemptKey && await stored<string>(attemptKey);
+        if(previous) return await useIdentity(slot, async(secret, info) => {
+          const derived = await client.seeds.identity(seed);
+          if(derived.id !== info.id || secret.domain !== domain) throw new Error('This chat setup already has different recovery words or a domain.');
+          return {identity: await view(secret, info, kind, slot)};
+        }, false, previous);
+        if(kind === 'user' && await stored(custodyKey(slot))) throw new Error('This account slot already has an identity.');
+        const identity = await client.seeds.identity(seed);
+        if(kind === 'channel' && await stored(custodyKey(slot, identity.id))) throw new Error('This chat identity is already held in this browser.');
+        if(profile) {
+          const verified = await client.verifyProfile(profile, Math.floor(Date.now() / 1000), {verify: verifySignature});
+          if(verified.id !== identity.id) throw new Error('The recovery words do not match this domain.');
         }
-        if(request.attempt && secret.domain !== profileDomain(request.domain)) {
-          throw new Error('This attempt already has an identity. Use its original domain: ' + secret.domain);
+        if(request.hosted) {
+          await hostingAPI();
+          if(domain !== request.hosted.label + '.' + profileDomain(request.hosted.domain)) throw {type: 'BlahHostingInvalid'};
         }
-        // Kind comes from the verified profile on import, never from the file picker.
-        const localHosting = await stored<HostedNames>('hosting:' + info.id);
-        const claim = request.action === 'create' && request.hosted ?
-          {...secret.hosting, unclaimed: request.hosted.label} : request.action === 'restore' ?
-            mergeHosting(localHosting, secret.hosting) : localHosting || mergeHosting(undefined, secret.hosting);
+        secret = {domain, profile: profile ? encode(profile) : '', seed, identity,
+          device: await client.deviceKeys.generate(), renewal: renewalPolicy(request.renewal), publicationPending: true};
+        const info = await diem(profile ? 'enroll' : 'create', secret, {}, slot, kind);
+        secret.profile = encode(new Uint8Array(info.profile));
+        const claim: HostedNames = request.hosted ? {domain: profileDomain(request.hosted.domain), held: [], proofs: {}, unclaimed: request.hosted.label} : restoredHosting;
         secret.hosting = portableHosting(claim, info.domains);
-        backup = await key.seal(secret);
-        const metadata = await stored<IdentityMetadata>('metadata:' + info.id);
-        await storeEntries([['identity:' + info.id, backup], ['domain:' + info.id, info.domains[0]],
-          ['metadata:' + info.id, {...metadata, kind, namespace: info.namespace, home: identityHome(slot), ...(kind === 'channel' && info.account ? {chatId: Number(info.account)} : {})}],
+        await storeEntries([[custodyKey(slot, kind === 'channel' ? info.id : undefined), await sealCustody(secret, info.id)],
+          ['domain:' + info.id, domain], ['metadata:' + info.id, {kind, namespace: info.namespace, home: identityHome(slot),
+            ...(kind === 'channel' && info.account ? {chatId: Number(info.account)} : {})}],
+          ...(kind === 'user' ? [['enrollment:' + slot, {id: info.id, kind: 'words'}] as [string, unknown]] : []),
           ...(attemptKey ? [[attemptKey, info.id] as [string, unknown]] : []),
           ...(claim ? [['hosting:' + info.id, claim] as [string, unknown]] : [])]);
-        const resourceId = kind === 'channel' ? info.id : undefined;
-        lock(slot, resourceId);
-        sessions(slot, resourceId).set({id: info.id, key, until: Date.now() + 15 * 60_000});
-        session(slot, true, resourceId);
-        scheduleRenewal(slot, resourceId);
-        return await useIdentity(slot, async(secret, info) => ({identity: await view(secret, info, kind, slot), paperKey}), true, !request.hosted, resourceId);
-      } finally {
-        if(key && unlocked.get(slot)?.key !== key && ![...(resources.get(slot)?.values() || [])].some((value) => value.key === key)) key.destroy();
-      }
+        scheduleRenewal(slot, kind === 'channel' ? info.id : undefined);
+        return await useIdentity(slot, async(secret, info, save) => {
+          if(!request.hosted && await publish(secret, info)) await save(info, false);
+          return {identity: await view(secret, info, kind, slot)};
+        }, false, kind === 'channel' ? info.id : undefined);
+      } finally { seed.fill(0); if(secret) secret.identity = undefined; }
     });
   }
   if(request.action === 'home') return changeHome(slot, request, kind);
   return use(async(secret, current, save) => {
-    if(request.id && current.id !== request.id) throw new Error('Unlock your browser identity to continue.');
-    if(request.action === 'inspect') return {identity: await view(secret, current, kind, slot)};
-    if(request.action === 'backup') {
+    if(request.id && current.id !== request.id) throw new Error('Identity custody mismatch.');
+    if(request.action === 'inspect') return {identity: await view(secret, current, kind, slot),
+      unfinished: kind === 'user' && !!await stored('enrollment:' + slot)};
+    if(request.action === 'words') {
+      if(!secret.seed) throw new Error('Enter the recovery words on this device first.');
+      return {words: await (await diemClient()).seeds.words(secret.seed)};
+    }
+    if(request.action === 'enterWords') {
+      const seed = await (await diemClient()).seeds.restore(request.phrase || '');
+      try {
+        const derived = await (await diemClient()).seeds.identity(seed);
+        if(derived.id !== current.id) throw new Error('The recovery words do not match this identity.');
+        secret.seed?.fill(0);
+        secret.seed = seed;
+        secret.identity = derived;
+        await save(current, !!secret.publicationPending);
+        return {identity: await view(secret, current, kind, slot)};
+      } finally { seed.fill(0); }
+    }
+    if(request.action === 'removeWords') {
+      secret.seed?.fill(0);
+      secret.seed = undefined;
+      secret.identity = undefined;
       await save(current, !!secret.publicationPending);
-      return {backup: Array.from(await stored<SealedIdentity>('identity:' + current.id))};
+      return {identity: await view(secret, current, kind, slot)};
     }
-    if(!secret.identity && ['renew', 'addDevice', 'removeDevice', 'removeOtherDevices', 'domains', 'hostingClaim'].includes(request.action)) {
-      throw new Error('Only a device that holds the identity key can add devices or renew the identity.');
-    }
+    if(!secret.seed) throw new Error('Enter the recovery words on this device first.');
     let info = current;
     // Resolve ambiguous PUTs before signing another hosted revision.
     if(request.action !== 'retryPublication' && await retryHostedPublication(secret, info)) {
@@ -409,48 +349,21 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
       if(unique.join() !== current.domains.join()) info = await diem('domains', secret, {domains: unique}, slot, kind);
       secret.domain = info.domains[0];
       entries = [['hosting:' + current.id, {domain, held: (state?.held || []).filter((label) => label !== request.hosted.label || !request.hosted.proofs?.[label]), unclaimed: request.hosted.label, proofs: {...state?.proofs, ...request.hosted.proofs}}]];
-    } else if(request.action === 'addPaperKey') {
-      const certified = await certifyPaperKey(secret, slot, kind);
-      info = certified.info;
-      await save(info);
-      // The words exist only in this response; a publication failure must not lose them.
-      let published = false;
-      try { published = !!await publish(secret, info); } catch{ published = false; }
-      if(published) await save(info, false);
-      return {identity: await view(secret, info, kind, slot), paperKey: certified.paperKey};
     } else if(request.action === 'renewal') {
       secret.renewal = renewalPolicy(request.renewal);
       await save(info, !!secret.publicationPending);
       return {identity: await view(secret, info, kind, slot)};
-    } else if(request.action === 'removeOtherDevices') {
-      for(const device of current.devices.filter((entry) => !entry.current)) {
-        info = await diem('removeDevice', secret, {
-          device: bytesFromHex(device.id)
-        }, slot, kind);
-        secret.profile = encode(new Uint8Array(info.profile));
-      }
     } else if(request.action === 'domains') {
       info = await diem('domains', secret, {domains: request.domains}, slot, kind);
       secret.domain = info.domains[0];
-    } else if(request.action === 'publisher') {
-      if(request.publisher) publicationURL(request.publisher);
-      secret.publisher = request.publisher || '';
-      secret.token = request.token || '';
     } else {
-      if(request.action === 'addDevice' && (!request.device || request.device.length > 500)) {
-        throw new Error('Enter an encoded Ed25519 device public key.');
-      }
-      if(request.action === 'removeDevice' && !/^[a-f0-9]{64}$/.test(request.device || '')) {
-        throw new Error('Invalid device identifier.');
-      }
-      info = await diem(request.action, secret, request.device ? {
-        device: request.action === 'removeDevice' ? bytesFromHex(request.device) : decode(request.device)
-      } : {}, slot, kind);
+      info = await latestPublishedProfile(slot, secret, info, kind);
+      info = await diem(request.action, secret, {}, slot, kind);
     }
     await save(info, true, entries); // Signed bytes and claim proofs are durable before PUT.
     if(await publish(secret, info)) await save(info, false);
     return {identity: await view(secret, info, kind, slot)};
-  }, true, false);
+  }, false);
 }
 
 /**
@@ -463,7 +376,7 @@ async function changeHome(slot: number, request: IdentityRequest, kind: Identity
   const domain = dcDomain(request.domain || '');
   const {home} = (await profileConfig(domain, await fetchDCProfile(domain))).config;
   return exclusively(() => useIdentity(slot, async(secret, current, save) => {
-    if(request.id && current.id !== request.id) throw new Error('Unlock your browser identity to continue.');
+    if(request.id && current.id !== request.id) throw new Error('Identity custody mismatch.');
     await retryHostedPublication(secret, current);
     let info: IdentityInfo;
     try {
@@ -479,7 +392,7 @@ async function changeHome(slot: number, request: IdentityRequest, kind: Identity
     await stored('metadata:' + current.id, {...metadata, namespace: info.namespace});
     if(await publish(secret, info)) await save(info, false);
     return {identity: await view(secret, info, kind, slot), retired};
-  }, true, false));
+  }, false));
 }
 
 export async function numberIdentity(slot: number, account: string, id?: string) {
@@ -499,7 +412,7 @@ export async function numberIdentity(slot: number, account: string, id?: string)
     }
     if(published) await save(info, false);
   };
-  if(id) await withResourceIdentity(slot, id, operation, true, false);
+  if(id) await withResourceIdentity(slot, id, operation, false);
   else await withIdentity(slot, operation);
 }
 
@@ -513,41 +426,39 @@ export async function publicationPending(domains: string[], profile: number[]) {
   return pending;
 }
 
-/** Install the verified grant before any RPC can authorize the new account slot. */
-export async function installLinkedIdentity(slot: number, contents: IdentitySecret | Uint8Array, password: string, alive: () => boolean) {
+/** Install opaque device custody before authorizing the new slot. */
+export async function installLinkedIdentity(slot: number, opened: DeviceLinkOpened, alive: () => boolean) {
   return exclusively(async() => {
-    const key = await (await diemClient()).keyFiles.create(password);
-    try {
-      const secret = contents instanceof Uint8Array ? await key.open(await key.seal(contents)) : contents;
-      const info = await diem('inspect', secret, {}, slot);
-      if(!info.namespace || !info.account) throw {type: 'DEVICE_LINK_INVALID'};
-      if(await stored('identity:' + info.id)) throw {type: 'BLAH_LINK_IDENTITY_EXISTS'};
-      const binding = await stored<string>('slot:' + slot);
-      if(binding && binding !== info.namespace) throw {type: 'DEVICE_LINK_INVALID'};
-      const claim = mergeHosting(await stored<HostedNames>('hosting:' + info.id), secret.hosting);
-      secret.hosting = portableHosting(claim, info.domains);
-      secret.publicationPending = false;
-      const backup = await key.seal(secret);
-      if(!alive()) throw {type: 'BLAH_LINK_CANCELLED'};
-      await storeEntries([['identity:' + info.id, backup], ['domain:' + info.id, secret.domain],
-        ['metadata:' + info.id, {kind: 'user', namespace: info.namespace, home: identityHome(slot)}],
-        ['slot:' + slot, info.namespace], ...(claim ? [['hosting:' + info.id, claim] as [string, unknown]] : [])]);
-      lock(slot);
-      if(!alive()) return;
-      sessions(slot).set({id: info.id, key, until: Date.now() + 15 * 60_000});
-      session(slot);
-      scheduleRenewal(slot);
-    } finally {
-      if(unlocked.get(slot)?.key !== key) key.destroy();
+    const verified = await (await diemClient()).verifyProfile(opened.profile, Math.floor(Date.now() / 1000), {verify: verifySignature});
+    const secret: IdentitySecret = {domain: opened.domain, profile: encode(opened.profile), device: opened.device,
+      seed: opened.seed, renewal: renewalPolicy(), publicationPending: false};
+    if(opened.seed && opened.metadata) {
+      try {
+        const metadata = JSON.parse(new TextDecoder().decode(opened.metadata));
+        secret.renewal = renewalPolicy(metadata.renewal);
+        secret.hosting = metadata.hosting && portableHosting(metadata.hosting, verified.domains);
+      } catch{ /* Ignore metadata from other clients. */ }
     }
+    const info = await diem('inspect', secret, {}, slot);
+    if(!info.namespace || !info.account || !['user', 'dc'].includes(verified.kind)) throw {type: 'DEVICE_LINK_INVALID'};
+    if(await stored(custodyKey(slot))) throw {type: 'BLAH_LINK_IDENTITY_EXISTS'};
+    const binding = await stored<string>('slot:' + slot);
+    if(binding && binding !== info.namespace) throw {type: 'DEVICE_LINK_INVALID'};
+    const custody = await sealCustody(secret, info.id);
+    if(!alive()) throw {type: 'BLAH_LINK_CANCELLED'};
+    await storeEntries([[custodyKey(slot), custody], ['domain:' + info.id, secret.domain],
+      ['metadata:' + info.id, {kind: 'user', namespace: info.namespace, home: identityHome(slot)}],
+      ['slot:' + slot, info.namespace], ['enrollment:' + slot, {id: info.id, kind: 'qr'}], ...(secret.hosting ? [['hosting:' + info.id, secret.hosting] as [string, unknown]] : [])]);
+    scheduleRenewal(slot);
   });
 }
 
-/** QR admission must save and publish the certified revision before sending its grant. */
+/** QR admission saves and publishes the certified revision before sending its grant. */
 export function certifyLinkedDevice(slot: number, id: string, device: Uint8Array) {
   return withIdentity(slot, async(secret, info, save) => {
-    if(info.id !== id || !secret.identity) throw {type: 'BLAH_LINK_APPROVAL_REQUIRED'};
+    if(info.id !== id || !secret.seed) throw {type: 'BLAH_LINK_APPROVAL_REQUIRED'};
     await retryHostedPublication(secret, info);
+    info = await latestPublishedProfile(slot, secret, info);
     if(!info.devices.some((entry) => entry.key.length === device.length && entry.key.every((byte, index) => byte === device[index]))) {
       info = await diem('addDevice', secret, {device}, slot);
       await save(info);
@@ -555,19 +466,76 @@ export function certifyLinkedDevice(slot: number, id: string, device: Uint8Array
     const published = !!await publish(secret, info);
     if(published) await save(info, false);
     return {identity: await view(secret, info, 'user', slot), manualPublication: !published};
-  }, true, false);
+  }, false);
 }
 
 export async function linkedAccountIdentity(slot: number, id?: string) {
-  const binding = await stored<string>('slot:' + slot);
-  const entries = await listIdentities();
-  const identity = entries.find((entry) => entry.kind !== 'channel' && entry.namespace === binding && (!id || entry.id === id));
-  if(!identity || !binding || binding === 'managed-account') throw {type: 'BLAH_LINK_APPROVAL_REQUIRED'};
-  const current = unlocked.get(slot);
-  return {...identity, unlocked: current?.id === identity.id && current.until > Date.now()};
+  return withIdentity(slot, async(secret, info) => {
+    if(!secret.seed || (id && info.id !== id)) throw {type: 'BLAH_LINK_APPROVAL_REQUIRED'};
+    return {id: info.id, domain: secret.domain};
+  }, false);
 }
 
-/** Caller holds withIdentity's vault lock and has saved the published revision. */
-export function respondToLinkedDevice(slot: number, input: DeviceLinkApproval) {
-  return session(slot).key.respondToDeviceLink(input);
+export async function respondToLinkedDevice(_slot: number, input: DeviceLinkApproval) {
+  return (await diemClient()).deviceLink.respond(input);
+}
+
+/** Publish removal first. Telegram reset RPCs validate the fetched signed device set. */
+export async function removeSessionDevices(slot: number, devices: Uint8Array[], retired?: () => Promise<Uint8Array[]>) {
+  return withIdentity(slot, async(secret, info, save) => {
+    if(!secret.seed) throw new Error('Enter the recovery words on this device first.');
+    await retryHostedPublication(secret, info);
+    info = await latestPublishedProfile(slot, secret, info);
+    if(retired) devices = await retired();
+    const removed: string[] = [];
+    for(const device of devices) {
+      const id = Array.from(device, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      if(!info.devices.some((entry) => entry.id === id && !entry.current)) continue;
+      removed.push(id);
+      info = await diem('removeDevice', secret, {device}, slot);
+      secret.profile = encode(new Uint8Array(info.profile));
+    }
+    if(!removed.length) return;
+    if(retired) {
+      const latest = new Set((await retired()).map((device) => Array.from(device, (byte) => byte.toString(16).padStart(2, '0')).join('')));
+      if(removed.some((id) => !latest.has(id))) return;
+    }
+    await save(info);
+    if(await publish(secret, info)) await save(info, false);
+    else if(await publicationPending(info.domains, info.profile)) throw new Error('BLAH_PROFILE_NOT_PUBLISHED');
+  }, false);
+}
+
+/** Holders reconcile other devices' signed revisions before editing their device set. */
+async function latestPublishedProfile(slot: number, secret: IdentitySecret, info: IdentityInfo, kind: IdentityKind = 'user') {
+  const bytes = await fetchProfile(secret.domain);
+  if(!bytes) return info;
+  const client = await diemClient();
+  const published = await client.verifyProfile(bytes, Math.floor(Date.now() / 1000), {verify: verifySignature});
+  const local = await client.verifyProfile(new Uint8Array(info.profile), Math.floor(Date.now() / 1000), {verify: verifySignature});
+  if(published.id !== info.id) throw new Error('The published identity changed.');
+  if(BigInt(published.generation) > BigInt(local.generation) ||
+    (published.generation === local.generation && BigInt(published.revision) > BigInt(local.revision))) {
+    secret.profile = encode(bytes);
+    return diem('inspect', secret, {}, slot, kind);
+  }
+  return info;
+}
+
+export async function pruneSessionDevices(slot: number, snapshot: () => Promise<import('@lib/blah/sessions').SessionDevices>) {
+  // Absence from sessions says nothing about a device still completing sign-in.
+  await removeSessionDevices(slot, [], async() => (await snapshot()).retired.map((device) => new Uint8Array(device)));
+}
+
+function chatAttemptKey(slot: number, attempt: string) {
+  if(!attempt) throw new Error('Select a chat setup attempt.');
+  return `attempt:${getBlahConfig(slot).home.identity}:${attempt}`;
+}
+
+export function completeEnrollment(slot: number) {
+  return exclusively(() => storeEntries([['enrollment:' + slot, null]]));
+}
+
+export async function hasLinkedEnrollment(slot: number) {
+  return (await stored<{kind: string}>('enrollment:' + slot))?.kind === 'qr';
 }

@@ -9,7 +9,7 @@ vi.mock('@config/modes', () => ({default: {}}));
 vi.mock('@lib/langPack', () => ({default: {format: (key: string) => key}}));
 vi.mock('@lib/singleInstance', () => ({default: {}}));
 vi.mock('@lib/accounts/accountController', () => ({
-  default: {getUserIds: vi.fn().mockResolvedValue([])}
+  default: {getAccounts: vi.fn().mockResolvedValue([])}
 }));
 vi.mock('@lib/apiManagerProxy', () => ({
   default: {pushSingleManager: {getKeysIdsBase64: vi.fn().mockResolvedValue([])}}

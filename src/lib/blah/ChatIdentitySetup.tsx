@@ -1,14 +1,13 @@
-import {createSignal, Show, type JSX} from 'solid-js';
+import {createSignal, onMount, Show, type JSX} from 'solid-js';
 import Modes from '@config/modes';
 import Button from '@components/buttonTsx';
 import PopupElement, {createPopup, usePopupContext} from '@components/popups/indexTsx';
 import {i18n, LangPackKey} from '@lib/langPack';
 import {hostingMessage} from '@lib/blah/hostingMessage';
 import {HostedNameChooser} from '@lib/blah/HostedNameChooser';
-import IdentityInput from '@lib/blah/IdentityInput';
-import {PaperKeyWords} from '@lib/blah/IdentityDetails';
-import {exportIdentityFile} from '@lib/blah/identityFiles';
-import type {IdentityActions} from '@lib/blah/IdentityPanel';
+import {WordsDisplay, WordsVerify} from '@lib/blah/RecoveryWords';
+import {exportProfile} from '@lib/blah/profileFiles';
+import type {IdentityActions} from '@lib/blah/identity';
 import type {ChatIdentityChange, ChatIdentityRequest, ChatIdentityResponse, ChatIdentityResult} from '@lib/blah/chatIdentity';
 import focusWhenSettled from '@helpers/dom/focusWhenSettled';
 import {chatIdentityError} from '@lib/blah/chatIdentityError';
@@ -47,7 +46,6 @@ export default function showChatIdentitySetup(props: Props): Promise<ChatIdentit
       await Promise.allSettled([...operations]);
       if(finished) return;
       finished = true;
-      if(current?.identity) await props.identityAction({action: 'lock', id: current.identity.id}).catch(console.error);
       if(current?.result) resolve(current.result);
       else reject(new Error('BLAH_CHAT_CANCELLED'));
     };
@@ -56,11 +54,27 @@ export default function showChatIdentitySetup(props: Props): Promise<ChatIdentit
       const [state, setState] = createSignal(current);
       const [busy, setBusy] = createSignal(false);
       const [message, setMessage] = createSignal<JSX.Element>('');
-      const [password, setPassword] = createSignal('');
+      const [words, setWords] = createSignal<string[]>();
+      const [wordsStep, setWordsStep] = createSignal<'display' | 'verify' | 'done'>(current?.identity ? 'done' : 'display');
+      onMount(() => {
+        void track((async() => {
+          if(!current?.identity) {
+            const saved = await props.identityAction({action: 'attempt', kind: 'channel', attempt: props.attempt});
+            if(closed) return;
+            if(saved.identity) {
+              accept(saved);
+              setWordsStep('done');
+              focusSaved();
+              return;
+            }
+            const result = await props.identityAction({action: 'generateWords'});
+            if(!closed) setWords(result.words);
+          }
+        })()).catch((error) => { if(!closed) setMessage(error.message); });
+      });
       const [claimed, setClaimed] = createSignal(false);
       let exportButton: HTMLElement;
       let primaryButton: HTMLElement;
-      const [paper, setPaper] = createSignal(current?.paperKey);
       const identity = () => state()?.identity;
       const bound = () => !!state()?.result;
       const domain = () => identity()?.domain || props.domain;
@@ -73,23 +87,25 @@ export default function showChatIdentitySetup(props: Props): Promise<ChatIdentit
           if(!closed) setMessage((error as {type?: string}).type?.startsWith('BlahHosting') ? hostingMessage(error) : chatIdentityError(error));
         }).finally(() => setBusy(false));
       };
+      const focusSaved = () => {
+        const target = bound() ? primaryButton : exportButton;
+        if(Modes.a11y && target) focusWhenSettled(target, () => !closed);
+      };
       const accept = (value: ChatIdentityResponse) => {
         current = value;
         if(!closed) {
           setState(value);
-          if(Modes.a11y) focusWhenSettled(value.result ? primaryButton : exportButton, () => !closed);
+          focusSaved();
         }
       };
       const generate = () => run(async() => {
-        const result = await props.action({action: 'prepare', domain: props.domain, password: password(), attempt: props.attempt});
-        setPassword('');
+        const result = await props.action({action: 'prepare', domain: props.domain, phrase: words().join(' '), attempt: props.attempt});
         accept(result);
-        if(!closed) setPaper(result.paperKey);
+        if(!closed) setWords(undefined);
       });
       const bind = () => run(async() => {
         const result = await props.action({action: 'bind', id: identity().id, change: props.change});
         accept(result);
-        setPaper(undefined);
       });
       const recheck = () => run(async() => {
         let publication;
@@ -99,23 +115,18 @@ export default function showChatIdentitySetup(props: Props): Promise<ChatIdentit
         if(!closed) popup.hide();
       });
       return <div class={styles.panel}>
-        <Show when={identity()} fallback={<form onSubmit={(event) => { event.preventDefault(); if(!props.hosted) generate(); }}>
-          <Show when={!props.hosted}><p>{i18n('BlahChatIdentityIntro', [domain()])}</p></Show>
-          <IdentityInput label="BlahIdentityPassword" type="password" autocomplete="new-password" value={password()} onInput={setPassword} disabled={busy()} />
-          <Show when={!props.hosted}><Button primaryFilled text="BlahCreateIdentity" disabled={busy() || !password()} onClick={generate} /></Show>
-          <p class={styles.footnote}>{i18n('BlahIdentityCustody')}</p>
-        </form>}>
+        <Show when={wordsStep() === 'display' && words()}><WordsDisplay words={words()} onDone={() => setWordsStep('verify')} /></Show>
+        <Show when={wordsStep() === 'verify'}><WordsVerify words={words()} onVerified={() => {
+          setWordsStep('done'); if(!props.hosted) generate();
+        }} /></Show>
+        <Show when={wordsStep() === 'done'}>
+        <Show when={identity()} fallback={<Show when={!props.hosted}>
+          <p>{i18n('BlahChatIdentityIntro', [domain()])}</p>
+          <Button primaryFilled text="BlahCreateIdentity" disabled={busy()} onClick={generate} />
+        </Show>}>
           <Show when={bound()}><p>{i18n('BlahChatPublishNumbered')}</p></Show>
           <fieldset disabled={busy()}>
-            <Button primaryTransparent ref={(element) => exportButton = element} text="BlahSaveIdentityFile" onClick={() => run(async() => {
-              const {backup} = await props.identityAction({action: 'backup', id: identity().id});
-              if(!closed) exportIdentityFile(`${domain()}-identity.cbor`, new Uint8Array(backup));
-            })} />
-            <Show when={paper()}>{(value) => <>
-              <PaperKeyWords paper={value()} domain={domain()} />
-              <Button primaryTransparent text="BlahPaperKeyDone" onClick={() => setPaper(undefined)} />
-            </>}</Show>
-            <Button primaryTransparent text="BlahExportProfile" onClick={() => exportIdentityFile('profile.cbor', new Uint8Array(identity().profile))} />
+            <Button ref={(element) => exportButton = element} primaryTransparent text="BlahExportProfile" onClick={() => exportProfile('profile.cbor', new Uint8Array(identity().profile))} />
             <Show when={!identity().hostedNames} fallback={
               <p role="status">{i18n(identity().publicationPending ? 'BlahHostingPending' : 'BlahHostingPublished')}</p>
             }><p class={styles.footnote}>{i18n('BlahChatProfileHosting', [<code dir="ltr">{`https://${domain()}/.well-known/blah/profile.cbor`}</code> as HTMLElement])}</p></Show>
@@ -129,24 +140,24 @@ export default function showChatIdentitySetup(props: Props): Promise<ChatIdentit
           </fieldset>
         </Show>
         <Show when={props.hosted && !claimed() && !bound()}>
-          <HostedNameChooser signal={controller.signal} disabled={!identity() && !password()} onBusy={setBusy}
-            identity={props.initial?.identity}
+          <HostedNameChooser signal={controller.signal} disabled={busy()} onBusy={setBusy}
+            identity={identity()}
             action={(request) => {
               const operation = props.identityAction({...request, kind: 'channel'});
               return ['hostingPlan', 'hostingStatus'].includes(request.action) ? operation : track(operation);
             }}
             prepare={(host, label) => track((async() => {
-              const result = await props.action({action: 'prepare', domain: label + '.' + host, password: password(),
+              const result = await props.action({action: 'prepare', domain: label + '.' + host, phrase: words().join(' '),
                 attempt: props.attempt, hosted: {domain: host, label}});
-              setPassword('');
               accept(result);
-              if(!closed) setPaper(result.paperKey);
+              if(!closed) setWords(undefined);
               return result.identity;
             })())}
             onIdentity={(value) => accept({...current, identity: value})} onComplete={() => {
               setClaimed(true);
               if(Modes.a11y) focusWhenSettled(exportButton, () => !closed);
             }} />
+        </Show>
         </Show>
         <p role="status">{busy() ? i18n('PleaseWait') : message()}</p>
       </div>;

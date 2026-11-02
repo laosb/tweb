@@ -19,20 +19,17 @@ const requests = [
     user_id: {_: 'inputUserSelf'}, password: {_: 'inputCheckPasswordEmpty'}}]
 ] as const;
 
-it.each(requests)('automatically routes %s by its chat identity and refuses locked custody without sending', async(method, params) => {
+it.each(requests)('automatically routes %s by its chat identity automatically from stored custody', async(method, params) => {
   const wrapApiCall = vi.fn().mockResolvedValue({data: [1], expires_at: 100});
   const networker = {dcId: 1, wrapApiCall, getIdentityBinding: () => ({keyID: '1', sessionID: '2'}), isStopped: () => false} as unknown as MTPNetworker;
-  const identity = {id: 'chat-identity', domain: 'news.example.org', locked: false};
+  const identity = {id: 'chat-identity', domain: 'news.example.org'};
   mock.lookup.mockResolvedValue(identity);
   await invokeBlah(1, networker, method, params, {});
   expect(mock.lookup).toHaveBeenCalledWith(1, 25);
   expect(wrapApiCall.mock.calls.map(([method]) => method)).toEqual(['blah.requestIdentityChallenge', 'blah.invokeWithIdentityProof']);
   expect(wrapApiCall).toHaveBeenLastCalledWith('blah.invokeWithIdentityProof', expect.anything(), expect.objectContaining({blahResourceIdentity: identity.id}));
-  expect(mock.resource).toHaveBeenCalledWith(1, identity.id, expect.any(Function), true, false);
+  expect(mock.resource).toHaveBeenCalledWith(1, identity.id, expect.any(Function), false);
   wrapApiCall.mockClear();
-  mock.lookup.mockResolvedValue({...identity, locked: true});
-  await expect(invokeBlah(1, networker, method, params, {})).rejects.toEqual({type: 'BLAH_CHAT_IDENTITY_LOCKED', id: identity.id, domain: identity.domain});
-  expect(wrapApiCall).not.toHaveBeenCalled();
   mock.lookup.mockResolvedValue(undefined);
   const options = {ignoreErrors: true} as const;
   await invokeBlah(1, networker, method, params, options);

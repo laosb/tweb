@@ -101,4 +101,10 @@ describe('settings search index', () => {
       expect(byKey.has(key as any), `missing ${key}`).toBe(true);
     }
   });
+  it('indexes Blah settings rows without recovery or hosting popup internals', () => {
+    const keys = generated.entries.filter((entry) => entry.sectionId === 'AppBlahIdentityTab').map((entry) => entry.titleLangKey);
+    expect(keys).toContain('BlahRecoveryWords');
+    expect(keys).toContain('BlahRestoreChatIdentity');
+    for(const key of ['BlahRecoveryWord', 'BlahHostingLabel', 'BlahHostingHost', 'BlahDCDomain', 'BlahIdentityDetails', 'PleaseWait']) expect(keys).not.toContain(key);
+  });
 });

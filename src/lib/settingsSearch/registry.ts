@@ -45,7 +45,7 @@ const load = (data: GeneratedSettingsSearchData) => {
   );
   // the flag is fixed for the page's life (it comes from the URL), so it can be read here
   entries = data.entries.filter((entry) => sections.has(entry.sectionId) &&
-    (Modes.a11y || !A11Y_ONLY_ENTRIES.has(entry.id)) && (entry.titleLangKey !== 'BlahBrowserIdentity' || !!blah));
+    (Modes.a11y || !A11Y_ONLY_ENTRIES.has(entry.id)) && (entry.titleLangKey !== 'BlahIdentity' || !!blah));
   links = data.links.filter((link) => sections.has(link.sectionId));
 };
 

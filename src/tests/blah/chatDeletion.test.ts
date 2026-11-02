@@ -44,18 +44,6 @@ describe.each([
     expect(mock.toast).not.toHaveBeenCalled();
   });
 
-  it('cancels without retrying deletion or showing an error toast', async() => {
-    const manager = managers();
-    manager.appChatsManager.delete.mockRejectedValue({type: 'BLAH_CHAT_IDENTITY_LOCKED', id: 'chat', domain: 'news.example.org'});
-    const result = invoke(manager);
-    await vi.waitFor(() => expect(mock.close).toBeTypeOf('function'));
-    mock.close();
-    await expectNotDeleted(result);
-    expect(manager.appChatsManager.delete).toHaveBeenCalledOnce();
-    expect(manager.appAccountManager.blahIdentity).not.toHaveBeenCalled();
-    expect(mock.toast).not.toHaveBeenCalled();
-  });
-
   it.each(['CHAT_IDENTITY_REQUIRED', 'IDENTITY_PROOF_REQUIRED'])('explains %s without reporting deletion', async(type) => {
     const manager = managers();
     manager.appChatsManager.delete.mockRejectedValue({type});

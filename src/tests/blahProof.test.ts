@@ -39,10 +39,13 @@ beforeEach(() => {
 describe('Blah invocation boundary', () => {
   it('registers the layer-1 constructor and method IDs from Schemas/blah.tl', () => {
     const constructors = {
+      'blah.sessionDevice': 0x71d54a81,
+      'blah.sessionDevices': 0xbc65209e,
       'blah.identityChallenge': 0x2b2e0aab,
       'blah.resourceProfile': 0xc0d31b67
     };
     const methods = {
+      'blah.getSessionDevices': 0x0ea8e1b2,
       'blah.requestIdentityChallenge': 0xdceefd53,
       'blah.invokeWithIdentityProof': 0x61b4c668,
       'blah.getUserProfile': 0x517800c0,
@@ -83,7 +86,7 @@ describe('Blah invocation boundary', () => {
     const {networker, wrapApiCall, change} = connection();
     await invokeBlah(1, networker, 'channels.createChannel', {title: 'News', about: '', broadcast: true}, {blahResourceIdentity: 'channel-id'});
     expect(mocks.bind).not.toHaveBeenCalled();
-    expect(mocks.resource).toHaveBeenCalledWith(1, 'channel-id', expect.any(Function), true, false);
+    expect(mocks.resource).toHaveBeenCalledWith(1, 'channel-id', expect.any(Function), false);
     expect(wrapApiCall).toHaveBeenCalledWith('blah.requestIdentityChallenge', {domain: 'news.example.org'}, expect.anything());
     expect(mocks.diem).toHaveBeenLastCalledWith('prove', {domain: 'news.example.org'}, expect.objectContaining({keyID: '123', sessionID: '456'}), 1, 'channel');
     mocks.diem.mockImplementationOnce(async() => { change(); return {proof: [1]}; });

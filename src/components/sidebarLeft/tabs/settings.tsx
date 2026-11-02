@@ -397,7 +397,7 @@ const Settings = () => {
           <Show when={!!blah}>
             <Row clickable={() => tab.slider.createTab(AppBlahIdentityTab).open()}>
               <Row.Icon icon="key_filled" />
-              <Row.Title>{i18n('BlahBrowserIdentity')}</Row.Title>
+              <Row.Title>{i18n('BlahIdentity')}</Row.Title>
             </Row>
           </Show>
           <For each={subTabConfigs}>

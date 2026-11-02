@@ -95,22 +95,6 @@ export async function bindHomeStorage(binding: BlahConfig['home'], slot = 1) {
   });
 }
 
-/** Move pins with account caches, optionally clearing them under the same vault lock. */
-export async function shiftHomeStorage(upTo: number, beforeShift?: () => Promise<boolean>) {
-  await migrateHomeStorage();
-  return exclusively(async() => {
-    if(beforeShift && !await beforeShift()) return false;
-    const entries: [string, unknown][] = [];
-    for(let slot = upTo; slot <= 4; slot++) {
-      for(const prefix of ['home:', 'dc-profile:', 'slot:', 'reset-slot:']) {
-        entries.push([prefix + slot, slot < 4 ? await stored(prefix + (slot + 1)) ?? null : null]);
-      }
-    }
-    await storeEntries(entries);
-    return true;
-  });
-}
-
 /** Numeric user IDs are meaningful only within the same pinned home namespace. */
 export async function accountsShareHome(first: number, second: number) {
   const [a, b] = await Promise.all([stored<string>('home:' + first), stored<string>('home:' + second)]);
@@ -119,6 +103,8 @@ export async function accountsShareHome(first: number, second: number) {
 
 export async function requireHomeStorage() {
   if(!blah?.discovery && !blah?.home) return;
+  // A move may need passcode unlock; account admission replays it before state loading.
+  if(await stored('account-relocation')) return;
   for(let slot = 1; slot <= 4; slot++) {
     await bindHomeStorage(getBlahConfig(slot)?.home, slot);
   }

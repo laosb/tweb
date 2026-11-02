@@ -6,13 +6,15 @@ import PopupElement, {createPopup, usePopupContext} from '@components/popups/ind
 import blah from '@config/blah';
 import {i18n} from '@lib/langPack';
 import IdentityInput from '@lib/blah/IdentityInput';
-import type {IdentityActions} from '@lib/blah/IdentityPanel';
+import type {IdentityActions} from '@lib/blah/identity';
 import type {IdentityView} from '@lib/blah/identity';
 import {solveHostedProof} from '@lib/blah/hostingSolver';
 import {hostingMessage} from '@lib/blah/hostingMessage';
 import styles from '@lib/blah/identity.module.scss';
 
 type Props = {
+  addressOnly?: boolean,
+  onAddress?: (domain: string, label: string) => void,
   action: IdentityActions,
   identity?: IdentityView,
   signal: AbortSignal,
@@ -37,7 +39,7 @@ export function HostedNameChooser(props: Props) {
   const [identity, setIdentity] = createSignal(props.identity);
   const identityID = createMemo(() => identity()?.id);
   const [host, setHost] = createSignal(props.identity?.hostedNames?.domain || blah?.profileHostingDomain || '');
-  const [label, setLabel] = createSignal('');
+  const [label, setLabel] = createSignal(props.identity?.hostedNames?.unclaimed || '');
   const [plan, setPlan] = createSignal<HostingPlanName>();
   const [checking, setChecking] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
@@ -77,6 +79,7 @@ export function HostedNameChooser(props: Props) {
 
   async function claim() {
     if(busy() || props.disabled || !claimable() || closed) return;
+    if(props.addressOnly) { props.onAddress(domain(), name()); return; }
     setBusy(true); props.onBusy?.(true); setMessage(undefined); setAttempts(undefined);
     controller = new AbortController();
     const signal = controller.signal;
@@ -95,7 +98,7 @@ export function HostedNameChooser(props: Props) {
         if(polling) return;
         polling = true;
         try {
-          if(!(await props.action({action: 'hostingStatus', id})).unlocked) cancel();
+          if(!(await props.action({action: 'hostingStatus', id})).available) cancel();
         } catch{ cancel(); } finally { polling = false; }
       }, 500);
       // The pre-create plan uses a placeholder ID. Always get the identity-bound puzzle now.
@@ -137,7 +140,7 @@ export function HostedNameChooser(props: Props) {
       <Show when={plan()?.requiredBits > 0}>
         <p class={styles.footnote}>{i18n('BlahHostingEffort', [Math.pow(2, plan().requiredBits).toLocaleString()])}</p>
       </Show>
-      <Button primaryFilled text="BlahHostingClaim" disabled={busy() || props.disabled || !claimable()} onClick={claim} />
+      <Button primaryFilled text={props.addressOnly ? 'Continue' : 'BlahHostingClaim'} disabled={busy() || props.disabled || !claimable()} onClick={claim} />
     </fieldset>
     <Show when={busy()}>
       <p role="status">{attempts() === undefined ? i18n('PleaseWait') : i18n('BlahHostingProgress', [attempts().toLocaleString()])}</p>

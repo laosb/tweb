@@ -3,17 +3,21 @@ import type MTPNetworker from '@lib/mtproto/networker';
 import Schema from '@lib/mtproto/schema';
 import {TLSerialization} from '@lib/mtproto/tl_utils';
 import type {InvokeApiOptions} from '@types';
-import {bindIdentity, chatIdentityForId, numberIdentity, withIdentity, withResourceIdentity} from '@lib/blah/identity';
+import {bindIdentity, chatIdentityForId, numberIdentity, completeEnrollment, pruneSessionDevices, withIdentity, withResourceIdentity} from '@lib/blah/identity';
 import {diem} from '@lib/blah/wasm';
 
 // Keep chat dispatch in the same static worker graph as its signer/custody. A lazy
 // chunk importing the worker entry again loses the entry URL's query parameters
-// and creates a second instance of its unlocked-identity maps.
+// and creates a second instance of its custody state.
 export {chatIdentityAction} from '@lib/blah/chatIdentity';
 export {deviceLinkAction} from '@appManagers/blahDeviceLink';
 
 // Application schema extension: upstream generated Telegram schemas remain untouched.
 Schema.API.constructors.push(
+  {id: 0xbc65209e | 0, predicate: 'blah.sessionDevices', type: 'blah.SessionDevices',
+    params: [{name: 'sessions', type: 'Vector<blah.SessionDevice>'}, {name: 'retired', type: 'Vector<bytes>'}]},
+  {id: 0x71d54a81, predicate: 'blah.sessionDevice', type: 'blah.SessionDevice',
+    params: [{name: 'hash', type: 'long'}, {name: 'device', type: 'bytes'}]},
   {id: 0x0e8e43c5, predicate: 'blah.deviceLink', type: 'blah.DeviceLink',
     params: [{name: 'flags', type: '#'}, {name: 'request', type: 'bytes'}, {name: 'response', type: 'flags.0?bytes'}]},
   {id: 0x2b2e0aab, predicate: 'blah.identityChallenge', type: 'blah.IdentityChallenge',
@@ -23,6 +27,7 @@ Schema.API.constructors.push(
 );
 delete Schema.API.constructorsIndex;
 Schema.API.methods.push(
+  {id: 0x0ea8e1b2, method: 'blah.getSessionDevices', params: [], type: 'blah.SessionDevices'},
   {id: 0x0df49ce9, method: 'blah.getDeviceLink', params: [{name: 'token', type: 'bytes'}], type: 'blah.DeviceLink'},
   {id: 0xf7e9bfa5 | 0, method: 'blah.invokeWithDeviceLink', params: [{name: 'link', type: 'bytes'}, {name: 'query', type: '!X'}], type: 'X'},
   {id: 0xdceefd53 | 0, method: 'blah.requestIdentityChallenge', params: [{name: 'domain', type: 'string'}], type: 'blah.IdentityChallenge'},
@@ -37,14 +42,13 @@ export type BlahInvokeOptions = InvokeApiOptions & {blahResourceIdentity?: strin
 async function chatIdentityCall(slot: number, networker: MTPNetworker, method: string, params: any, options: BlahInvokeOptions) {
   const target = method === 'channels.deleteChannel' ? params.channel : params.peer;
   const identity = target?.channel_id && await chatIdentityForId(slot, Number(target.channel_id));
-  if(identity?.locked) throw {type: 'BLAH_CHAT_IDENTITY_LOCKED', id: identity.id, domain: identity.domain};
   return identity ? provenCall(slot, networker, method, params, {...options, blahResourceIdentity: identity.id}) :
     options.blahResourceIdentity ? provenCall(slot, networker, method, params, options) : networker.wrapApiCall(method, params, options);
 }
 
 export async function provenCall(slot: number, networker: MTPNetworker, method: string, params: unknown, options: BlahInvokeOptions = {}) {
   const resourceId = options.blahResourceIdentity;
-  const use = resourceId ? <T>(action: Parameters<typeof withIdentity<T>>[1]) => withResourceIdentity(slot, resourceId, action, true, false) :
+  const use = resourceId ? <T>(action: Parameters<typeof withIdentity<T>>[1]) => withResourceIdentity(slot, resourceId, action, false) :
     <T>(action: Parameters<typeof withIdentity<T>>[1]) => withIdentity(slot, action);
   const domain = resourceId ? await use(async(secret) => secret.domain) : await bindIdentity(slot);
   const challenge = await networker.wrapApiCall('blah.requestIdentityChallenge', {domain}, {ignoreErrors: true});
@@ -92,6 +96,7 @@ export function invokeBlah(slot: number, networker: MTPNetworker, method: string
     const authorization = (result?._ === 'auth.sentCodeSuccess' || result?._ === 'auth.loginTokenSuccess') ? result.authorization : result;
     if(authorization?._ === 'auth.authorization' && getBlahConfig(slot)?.home &&
       ['auth.exportLoginToken', 'auth.sendCode', 'auth.signIn', 'auth.signUp', 'auth.checkPassword', 'auth.recoverPassword'].includes(method)) {
+      await completeEnrollment(slot);
       await numberIdentity(slot, String(authorization.user.id));
       try {
         await provenCall(slot, networker, 'account.getAuthorizations', {});
@@ -99,6 +104,11 @@ export function invokeBlah(slot: number, networker: MTPNetworker, method: string
         const error = cause as {type?: string, message?: string};
         throw new Error('Publish the latest profile (now containing your account number), then sign in again. ' + (error.type || error.message));
       }
+    }
+    if(authorization?._ === 'auth.authorization' && ['auth.exportLoginToken', 'auth.sendCode', 'auth.signIn', 'auth.signUp', 'auth.checkPassword', 'auth.recoverPassword'].includes(method)) {
+      void (async() => {
+        await pruneSessionDevices(slot, () => networker.wrapApiCall('blah.getSessionDevices', {}));
+      })().catch(() => {});
     }
     return result;
   });

@@ -15,7 +15,7 @@ import '@lib/blah/resourceProfileTypes';
 export type ChatIdentityChange = {action: 'createChannel', options: ChannelsCreateChannel} |
   {action: 'createChat', title: string, userIds: UserId[]} |
   {action: 'edit', chatId: ChatId, title: string, changedTitle?: string, about?: string, photo?: InputFile};
-export type ChatIdentityRequest = {action: 'prepare', domain: string, password: string, attempt: string, hosted?: IdentityRequest['hosted']} |
+export type ChatIdentityRequest = {action: 'prepare', domain: string, phrase: string, attempt: string, hosted?: IdentityRequest['hosted']} |
   {action: 'claim', id: string} |
   {action: 'bind', id: string, change: ChatIdentityChange};
 export type ChatIdentityResult = {chatId: ChatId, missingInvitees: MissingInvitee[]};
@@ -63,7 +63,7 @@ async function bindChat(slot: number, managers: Managers, id: string, change: Ch
   const {apiManager, apiUpdatesManager, appChatsManager, appUsersManager, appPeersManager, appProfileManager} = managers;
   let attachment = await stored<Attachment>('metadata:' + id);
   if(attachment?.kind !== 'channel') throw new Error('Select a chat identity.');
-  const info = await withResourceIdentity(slot, id, async(_secret, info) => info, true, false);
+  const info = await withResourceIdentity(slot, id, async(_secret, info) => info, false);
   if(attachment.chatId && change.action === 'edit' && attachment.chatId !== change.chatId) throw new Error('This identity belongs to another chat.');
   const resuming = !!attachment.chatId;
   if(!resuming) {

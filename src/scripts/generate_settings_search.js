@@ -37,7 +37,8 @@ const INPUTS = new Set([__filename, LINKS_FILE]);
 // Files a settings tab may pull rows from. Anything outside is a shared widget.
 const HELPER_ROOTS = [
   path.join(SRC, 'components/sidebarLeft'),
-  path.join(SRC, 'components/sidebarRight')
+  path.join(SRC, 'components/sidebarRight'),
+  path.join(SRC, 'lib/blah')
 ];
 const HELPER_DEPTH = 3;
 
@@ -50,7 +51,7 @@ const DENY_PROPS = new Set([
   'caption', 'captionArgs', 'subtitle', 'description', 'placeholder', 'nameArgs',
   'inputLabel', 'buttonText', 'placeholderText', 'errorText', 'confirmText', 'descriptionText'
 ]);
-const DENY_KEY_SHAPE = /(Info\d*$|Caption|Desc$|Description|Help$|Notice|Hint$|Subtitle$|Warning|AreYouSure|Alert|Empty$|Loading|Error\.|Confirm|Cleared$|Copied)/;
+const DENY_KEY_SHAPE = /(^PleaseWait$|Info\d*$|Caption|Desc$|Description|Help$|Notice|Hint$|Subtitle$|Warning|AreYouSure|Alert|Empty$|Loading|Error\.|Confirm|Cleared$|Copied)/;
 // Too generic to ever be a useful hit on its own.
 const STOP_KEYS = new Set([
   'On', 'Off', 'Delete', 'Clear', 'Save', 'Done', 'Cancel', 'OK', 'Ok', 'Edit', 'Add', 'Close',
@@ -334,7 +335,7 @@ const langKeysFromExpression = (node, fileLiterals) => {
 const resolveModule = (fromFile, spec) => {
   const base = spec.startsWith('.') ?
     path.resolve(path.dirname(fromFile), spec) :
-    path.join(SRC, spec.replace(/^@\//, '').replace(/^@components\//, 'components/'));
+    path.join(SRC, spec.replace(/^@\//, '').replace(/^@components\//, 'components/').replace(/^@lib\//, 'lib/'));
   for(const candidate of [base + '.tsx', base + '.ts', path.join(base, 'index.tsx'), path.join(base, 'index.ts')]) {
     if(fs.existsSync(candidate)) return candidate;
   }
@@ -397,8 +398,16 @@ const relativeImports = (ast, file) => {
   babel.traverse(ast, {
     ImportDeclaration(p) {
       const spec = p.node.source.value;
-      if(!spec.startsWith('.')) return;
+      if(!spec.startsWith('.') && !spec.startsWith('@lib/blah/')) return;
       const resolved = resolveModule(file, spec);
+      if(spec.startsWith('@lib/blah/')) {
+        // Only rendered settings components contribute labels; popup openers do not.
+        const rendered = new Set();
+        walkNode(ast, (node) => {
+          if(node.type === 'JSXOpeningElement') rendered.add(jsxName(node));
+        });
+        if(!resolved?.endsWith('.tsx') || !p.node.specifiers.some((item) => rendered.has(item.local.name))) return;
+      }
       if(resolved && HELPER_ROOTS.some((root) => resolved.startsWith(root))) files.push(resolved);
     }
   });
@@ -486,6 +495,12 @@ const analyzeFile = (file, knownTabs) => {
   };
 
   babel.traverse(ast, {
+    FunctionDeclaration(p) {
+      if(!file.startsWith(path.join(SRC, 'lib/blah') + path.sep)) return;
+      // These helpers export their settings components; nested functions open popups.
+      if(!/^[A-Z]/.test(p.node.id?.name || '') ||
+        !(p.parentPath.isExportNamedDeclaration() || p.parentPath.isExportDefaultDeclaration())) p.skip();
+    },
     // in the order the file uses them: an import lists names in whatever order it was written
     ImportDeclaration(p) {
       p.skip();

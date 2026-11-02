@@ -5,7 +5,8 @@ import {describe, expect, it} from 'vitest';
 import {measure, readBudget} from '../../scripts/import-graph.mjs';
 
 // Blah config/discovery, worker fallback and sandbox stories count towards reloadPage, including dynamic imports.
-const BLAH_RELOAD_PAGE_ALLOWANCE = 17;
+// Seed custody and session management are shared with workers and cannot accept page HMR.
+const BLAH_RELOAD_PAGE_ALLOWANCE = 19;
 
 /**
  * A ratchet over the import graph (scripts/import-graph.mjs): the largest import cycle — what makes an edit reach

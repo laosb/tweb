@@ -143,7 +143,7 @@ it('resumes pending numbering and applies newly edited fields without another pr
 });
 
 it('prepares hosted channel custody without a bot or user creation path', async() => {
-  const request = {action: 'prepare', domain: 'news.id.example', password: 'x', attempt: 'hosted',
+  const request = {action: 'prepare', domain: 'news.id.example', phrase: 'recovery words', attempt: 'hosted',
     hosted: {domain: 'id.example', label: 'news'}} as const;
   await chatIdentityAction(2, managers() as any, request);
   expect(mock.identity).toHaveBeenCalledWith(2, {...request, action: 'create', kind: 'channel'});

@@ -1,73 +1,45 @@
-import {createSignal, For, onCleanup, onMount} from 'solid-js';
+import {createSignal, For, onCleanup, onMount, Show} from 'solid-js';
 import Section from '@components/section';
 import Row from '@components/rowTsx';
 import {useSuperTab} from '@components/solidJsTabs/superTabProvider';
-import {hotReloadGuard} from '@lib/solidjs/hotReloadGuardProvider';
-import {i18n} from '@lib/langPack';
+import I18n, {i18n} from '@lib/langPack';
 import showIdentitySetup from '@lib/blah/IdentitySetup';
+import showIdentityDetails, {IdentityDetails} from '@lib/blah/IdentityDetails';
 import {detailsSession} from '@lib/blah/detailsSession';
-import type {IdentityKind, IdentitySummary, IdentityView} from '@lib/blah/identity';
-import type {IdentityActions} from '@lib/blah/IdentityPanel';
-import styles from '@lib/blah/identity.module.scss';
-import focusWhenSettled from '@helpers/dom/focusWhenSettled';
+import type {IdentitySummary, IdentityView, IdentityActions} from '@lib/blah/identity';
 
 export default function IdentitySettings() {
   const [tab] = useSuperTab();
-  const [identities, setIdentities] = createSignal<IdentitySummary[]>([]);
+  const [identity, setIdentity] = createSignal<IdentityView>();
   const [chats, setChats] = createSignal<IdentitySummary[]>([]);
   const [message, setMessage] = createSignal('');
   let disposed = false;
   onCleanup(() => { disposed = true; });
   const action: IdentityActions = (request) => tab.managers.appAccountManager.blahIdentity(request);
-  const refresh = async() => {
-    try {
-      const [result, resources] = await Promise.all([action({action: 'list'}), action({action: 'list', kind: 'channel'})]);
-      if(!disposed) setChats(resources.identities || []);
-      const entries: IdentitySummary[] = result.identities || result.ids.map((id) => ({id}));
-      if(!disposed) setIdentities((previous) => entries
-        .map((entry) => previous.find((saved) => saved.id === entry.id && saved.domain === entry.domain) || entry));
-    } catch(error) { if(!disposed) setMessage((error as Error).message); }
-  };
-  onMount(refresh);
-
-  function openDetails(summary: IdentitySummary, identity?: IdentityView, opener = tab.container.ownerDocument.activeElement as HTMLElement) {
-    const session = detailsSession(action, summary.id, () => { void refresh(); });
-    void tab.slider.createTab(hotReloadGuard.tabs.AppBlahIdentityDetailsTab).open({summary, identity, action, session,
-      onIdentity: () => {},
-      onReturn: () => {
-        if(opener?.isConnected) focusWhenSettled(opener, () => !disposed && tab.container.classList.contains('active'));
-      }
-    });
+  const session = detailsSession(action, undefined, () => {});
+  onCleanup(() => { void session.close(); });
+  async function refresh() {
+    const resources = await action({action: 'list', kind: 'channel'});
+    if(!disposed) setChats(resources.identities || []);
   }
-
-  function setup(mode: 'create' | 'import' | 'paper', kind: IdentityKind = 'user') {
-    showIdentitySetup({mode, kind, action, onIdentity: (identity) => {
-      if(disposed) { void action({action: 'lock', id: identity.id}); return; }
-      void refresh();
-      openDetails(identity, identity);
-    }});
-  }
-
+  onMount(() => {
+    void refresh();
+    void action({action: 'inspect'}).then((result) => { if(!disposed) { setIdentity(result.identity); if(result.managed) setMessage(I18n.format('BlahNoAccountIdentityNotice', true)); } })
+    .catch((error) => { if(!disposed) setMessage(error.message === 'BLAH_IDENTITY_REQUIRED' ? I18n.format('BlahNoAccountIdentityNotice', true) : error.message); });
+  });
+  const details = (summary: IdentitySummary, identity?: IdentityView) => showIdentityDetails({summary, identity,
+    action: (request) => action({...request, kind: 'channel'}), onIdentity: () => { void refresh(); }});
   return <>
-    <Section name="BlahSavedIdentities">
-      <For each={identities()}>{(entry) => <Row clickable={(event) => openDetails(entry, undefined, event.currentTarget)}>
-        <Row.Icon icon="key" />
-        <Row.Title>{entry.domain || entry.id.slice(0, 6)}</Row.Title>
-        <Row.Subtitle><code class={styles.identifier} title={entry.id}>{entry.id}</code></Row.Subtitle>
-      </Row>}</For>
-    </Section>
+    <Show when={identity()}>{(value) => <IdentityDetails summary={value()} identity={value()} action={action} session={session}
+      onIdentity={setIdentity} />}</Show>
     <Section name="BlahChatIdentities">
-      <For each={chats()}>{(entry) => <Row clickable={(event) => openDetails(entry, undefined, event.currentTarget)}>
+      <For each={chats()}>{(entry) => <Row clickable={() => details(entry)}>
         <Row.Icon icon="key" /><Row.Title>{entry.title || entry.domain}</Row.Title>
         <Row.Subtitle>{entry.chatId ? entry.domain : i18n('BlahIdentityNotAttachedSubtitle')}</Row.Subtitle>
       </Row>}</For>
-      <Row clickable={() => setup('import', 'channel')}><Row.Icon icon="document" /><Row.Title>{i18n('BlahImportIdentity')}</Row.Title></Row>
-      <Row clickable={() => setup('paper', 'channel')}><Row.Icon icon="key" /><Row.Title>{i18n('BlahUseChatPaperKey')}</Row.Title></Row>
-    </Section>
-    <Section caption="BlahIdentityCustody">
-      <Row clickable={() => setup('create')}><Row.Icon icon="adduser" /><Row.Title>{i18n('BlahCreateIdentity')}</Row.Title></Row>
-      <Row clickable={() => setup('import')}><Row.Icon icon="document" /><Row.Title>{i18n('BlahImportIdentity')}</Row.Title></Row>
-      <Row clickable={() => setup('paper')}><Row.Icon icon="key" /><Row.Title>{i18n('BlahUsePaperKey')}</Row.Title></Row>
+      <Row clickable={() => showIdentitySetup({action, onIdentity: (identity) => { void refresh(); details(identity, identity); }})}>
+        <Row.Icon icon="key" /><Row.Title>{i18n('BlahRestoreChatIdentity')}</Row.Title>
+      </Row>
     </Section>
     <p role="status">{message()}</p>
   </>;
