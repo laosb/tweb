@@ -315,6 +315,14 @@ at build time, with stable codepoints and glyph IDs. The build rejects unlisted
 bundle usages or names missing upstream. The browser harness compares every
 retained glyph and observed icon with the original font, including editor/viewer tools.
 
+### Background manager contracts
+
+The widget replaces unused call managers with account-bound implementations in
+[`src/widget/managers/`](../src/widget/managers/). Ingestion and inherited entry
+points keep explicit typed contracts. The [contract guard](../scripts/widget-manager-contracts.ts)
+checks page and worker call sites and requires a new audit when upstream manager
+or lifecycle wiring changes; aliases and dynamic method access fail closed.
+
 ### Language keys
 
 [`languageKeys.json`](../src/widget/languageKeys.json) is the reviewed set of literal
