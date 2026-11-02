@@ -295,6 +295,12 @@ The widget service worker closes RTMP requests with 404; ordinary streaming,
 downloads and cache lifecycle remain. Its [graph guard](../scripts/widget-service-worker.ts)
 rejects RTMP muxers and codecs.
 
+The [reviewed SCSS omissions](../src/widget/omittedStyles.json) remove hidden screens
+from the upstream style entry without maintaining a second copy. The
+[style guard](../scripts/widget-styles.ts) checks every expected import and rejects
+returning feature selectors. Shared reply, confirmation and reaction-tab styles
+stay, alongside chat, media, editor, viewer, accessibility and RTL controls.
+
 ### Language keys
 
 [`languageKeys.json`](../src/widget/languageKeys.json) is the reviewed set of literal

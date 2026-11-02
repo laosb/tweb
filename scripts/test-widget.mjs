@@ -20,6 +20,7 @@ import {assertWidgetLanguageKeys} from '../src/widget/languageKeys.mjs';
 import {checkLanguageSurfaces} from '../tests/widget/languageSurfaces.mjs';
 import {readEnglishPack, languageCoveragePlugin, installLanguageRecorder, checkLanguageCoverage} from '../tests/widget/languageCoverage.mjs';
 import {objectStorage} from '../tests/widget/objectStorage.mjs';
+import {checkReactionParticipants} from '../tests/widget/reactionParticipants.mjs';
 import {checkHiddenControllers} from '../tests/widget/hiddenControllers.mjs';
 import {checkSidebars, checkSidebarBootstrap} from '../tests/widget/sidebars.mjs';
 import {checkTheme, checkStatusTheme} from '../tests/widget/theme.mjs';
@@ -403,6 +404,7 @@ try {
   await expect.poll(() => bubble('Widget video regression').locator('video').evaluate(v => v.readyState)).toBeGreaterThanOrEqual(2);
   await expect(bubble('Widget file regression').getByText('widget-file.txt', {exact: true})).toHaveCount(1);
   await expect.poll(() => bubble('Widget photo regression').locator('img.media-photo').last().evaluate(img => img.naturalWidth)).toBeGreaterThan(0);
+  await checkReactionParticipants({page, frame: widgetFrame(), bubble, artifacts});
   for(const rtl of [false, true]) {
     await widgetFrame().evaluate(rtl => window.I18n.forceRTL(rtl), rtl);
     await bubble('Widget photo regression').scrollIntoViewIfNeeded();
