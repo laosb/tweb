@@ -7,6 +7,7 @@ import widgetBuildRevision from './scripts/widget-build-revision';
 import widgetLanguage from './scripts/widget-language';
 import widgetBranches from './scripts/widget-branches';
 import {widgetThemeDeclaration, widgetCssSelector} from './scripts/widget-theme-css';
+import {widgetStyles, widgetStyleSelector} from './scripts/widget-styles';
 import {assertWidgetServiceWorkerModules} from './scripts/widget-service-worker';
 import {assertWidgetCleanupAssets, assertWidgetCleanupModules} from './scripts/widget-cleanup-guards';
 // @ts-ignore no type declarations
@@ -263,6 +264,7 @@ function chunkName(id: string, context: ChunkingContext) {
   return allModules.has(id) ? 'media-editor' : null;
 }
 
+const WIDGET_TRANSFORMED = ['src/scss/style.scss'];
 const workerModulePaths = new Set<string>();
 function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
   return {
@@ -285,6 +287,7 @@ function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
       // A widget wrapper may delegate to the unchanged upstream implementation.
       if(id.endsWith('?widget-original')) return;
       const path = relative(__dirname, id.split('?')[0]);
+      if(path === 'src/scss/style.scss') return widgetStyles(readFileSync(id, 'utf8'));
       if(path === 'src/lib/serviceWorker/rtmp.ts') {
         const names = exportNames(this.parse(readFileSync(id, 'utf8'), {lang: 'ts'})).sort();
         if(names.join(',') !== 'onRtmpFetch,onRtmpLeftCall') this.error('widget SW RTMP contract changed');
@@ -311,7 +314,7 @@ function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
         for(const path of paths) workerModulePaths.add(path);
         return;
       }
-      const missing = [...Object.keys(WIDGET_REPLACED), ...WIDGET_INERT].filter((path) => !ids.has(resolve(__dirname, path)) && !workerModulePaths.has(path));
+      const missing = [...Object.keys(WIDGET_REPLACED), ...WIDGET_INERT, ...WIDGET_TRANSFORMED].filter((path) => !ids.has(resolve(__dirname, path)) && !workerModulePaths.has(path));
       if(missing.length) this.error('no longer in the build: ' + missing.join(', '));
       const eager = [...omittedLazily].filter((id) => ids.has(id)).map((id) => relative(__dirname, id));
       if(eager.length) this.error('omitted lazily but also imported eagerly: ' + eager.join(', '));
@@ -393,7 +396,7 @@ export default mergeConfig(upstream, defineConfig({
     Rule: (rule) => {
       // Keep the widget's own hide/layout rules; filter only inherited client CSS.
       if(/[\\/]src[\\/]widget[\\/]/.test(rule.source?.input.file || '')) return;
-      const selectors = rule.selectors.filter(widgetCssSelector);
+      const selectors = rule.selectors.filter(selector => widgetStyleSelector(selector) && widgetCssSelector(selector));
       if(!selectors.length) rule.remove();
       else if(selectors.length !== rule.selectors.length) rule.selectors = selectors;
     },
