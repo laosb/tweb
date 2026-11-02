@@ -1,4 +1,4 @@
-import {createSignal, lazy, Show, onCleanup, onMount} from 'solid-js';
+import {createSignal, Show, onCleanup, onMount} from 'solid-js';
 
 import Button from '@components/buttonTsx';
 import LanguageChangeButton from '@components/languageChangeButton';
@@ -28,7 +28,6 @@ if(import.meta.hot) import.meta.hot.accept();
 
 type Spec = Extract<CardSpec, {name: 'signQR'}>;
 
-const LinkPassword = lazy(() => import('@lib/blah/DeviceLinkPassword'));
 const FETCH_INTERVAL = 3;
 const QR_SIZE = 240;
 
@@ -50,7 +49,6 @@ export default function SignQRCard(_props: {spec: Spec}) {
   const attempt = crypto.randomUUID();
   let parameter = '';
   let started = false;
-  const [needsPassword, setNeedsPassword] = createSignal(false);
   const [error, setError] = createSignal('');
   const [linkURL, setLinkURL] = createSignal('');
   const [copied, setCopied] = createSignal(false);
@@ -61,7 +59,6 @@ export default function SignQRCard(_props: {spec: Spec}) {
   async function applyLinkedResult(result: DeviceLinkResult) {
     if(stopped) return true;
     parameter = result.parameter || parameter;
-    if(result.needsPassword) { setNeedsPassword(true); return true; }
     if(result.loginToken?._ === 'auth.loginTokenSuccess') {
       const authorization = result.loginToken.authorization;
       if(authorization._ !== 'auth.authorization') throw new Error('DEVICE_LINK_INVALID');
@@ -70,18 +67,6 @@ export default function SignQRCard(_props: {spec: Spec}) {
       return true;
     }
     return false;
-  }
-
-  async function finishLink(password: string) {
-    try {
-      await applyLinkedResult(await managers.appAccountManager.blahDeviceLink({action: 'complete', attempt, password}));
-    } catch(error) {
-      if(stopped) return;
-      if((error as ApiError).type === 'SESSION_PASSWORD_NEEDED') {
-        stopped = true;
-        navigate({name: 'password'});
-      } else throw error;
-    }
   }
 
   // Latest token we've drawn — kept so the theme_changed listener can repaint
@@ -162,7 +147,7 @@ export default function SignQRCard(_props: {spec: Spec}) {
   /* ---------- theme_changed: repaint with new CSS-variable colors ---------- */
 
   const onThemeChanged = () => {
-    if(stopped || needsPassword() || !lastDrawnToken) return;
+    if(stopped || !lastDrawnToken) return;
     paintQR(lastDrawnToken);
   };
   rootScope.addEventListener('theme_changed', onThemeChanged);
@@ -285,7 +270,7 @@ export default function SignQRCard(_props: {spec: Spec}) {
       inputWrapper={false}
       header={
         <MediaHeader>
-          <Show when={!needsPassword()} fallback={<h1 class={`${mediaHeaderStyles.title} text-center text-overflow-wrap`}>{i18n('BlahLinkPasswordTitle')}</h1>}>
+
             <MediaHeader.Sticker ref={stickerHost} class={styles.qrContainer} size={QR_SIZE}/>
             <h1
               class={`${mediaHeaderStyles.title} text-center text-overflow-wrap`}
@@ -294,14 +279,11 @@ export default function SignQRCard(_props: {spec: Spec}) {
               {i18n('Login.QR.Title')}
             </h1>
             <MediaHeader.Subtitle class="secondary">{i18n('Login.QR.Subtitle')}</MediaHeader.Subtitle>
-          </Show>
         </MediaHeader>
       }
     >
-      <Show when={needsPassword()} fallback={helpList}>
-        <LinkPassword onSubmit={finishLink} />
-      </Show>
-      <Show when={blah && !needsPassword()}>
+      {helpList}
+      <Show when={blah}>
         <Button class="btn-primary btn-secondary btn-primary-transparent primary" text={copied() ? 'LinkCopied' : 'CopyLink'}
           disabled={!linkURL() || stopped} onClick={async() => {
             try { await navigator.clipboard.writeText(linkURL()); setCopied(true); }

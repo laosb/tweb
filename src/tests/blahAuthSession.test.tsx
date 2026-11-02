@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   reload: vi.fn()
 }));
 
+vi.mock('@components/confirmationPopup', () => ({default: vi.fn()}));
 vi.mock('@config/blah', () => ({
   default: {discovery: true},
   getBlahConfig: mocks.config,
@@ -21,7 +22,7 @@ vi.mock('@/pages/authFlow', () => ({
 }));
 vi.mock('@lib/blah/discovery', () => ({connectDC: mocks.connect, savedDC: mocks.saved}));
 vi.mock('@lib/apiManagerProxy', () => ({default: {reloadEveryTab: mocks.reload}}));
-vi.mock('@lib/blah/IdentityPanel', () => ({default: () => <div data-identity-panel />}));
+vi.mock('@/pages/cards/BlahIdentityCards', () => ({}));
 vi.mock('@lib/langPack', () => ({default: {format: (key: string) => key}, i18n: (key: string) => key}));
 vi.mock('@helpers/dom/focusWhenSettled', () => ({default: () => () => {}}));
 vi.mock('@components/inputField', () => ({
@@ -29,6 +30,7 @@ vi.mock('@components/inputField', () => ({
   default: class {
     input = document.createElement('input');
     container = this.input;
+    constructor(options: any) { this.input.addEventListener('input', () => options.onRawInput?.()); }
     set value(value: string) { this.input.value = value }
     get value() { return this.input.value }
     setState() {}
@@ -91,4 +93,15 @@ it('does not reload when the sign-in starts leaving during DC discovery', async(
   finish({});
   await settle();
   expect(mocks.reload).not.toHaveBeenCalled();
+});
+
+it('keeps a typed home domain when a delayed saved-domain read finishes', async() => {
+  dispose(); container.replaceChildren();
+  let finish: (value: unknown) => void;
+  mocks.saved.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  dispose = render(() => <BlahSignInCard />, container);
+  const input = container.querySelector('input');
+  input.value = 'typed.example.org'; input.dispatchEvent(new Event('input', {bubbles: true}));
+  finish({domain: 'saved.example.org'}); await settle();
+  expect(input.value).toBe('typed.example.org');
 });

@@ -12,6 +12,9 @@ export function diemClient(): Promise<DiemClient> {
   })().catch((error) => { ready = undefined; throw error; });
 }
 
-export const verifySignature: CryptoBackend['verify'] = async(key, data, signature) => crypto.subtle.verify('Ed25519',
-  await crypto.subtle.importKey('raw', new Uint8Array(key), 'Ed25519', false, ['verify']),
-  new Uint8Array(signature), new Uint8Array(data));
+export const verifySignature: CryptoBackend['verify'] = async(key, data, signature) => {
+  const algorithm = key.length === 32 ? 'Ed25519' : {name: 'ECDSA', namedCurve: 'P-256'};
+  const publicKey = await crypto.subtle.importKey('raw', new Uint8Array(key), algorithm, false, ['verify']);
+  return crypto.subtle.verify(key.length === 32 ? 'Ed25519' : {name: 'ECDSA', hash: 'SHA-256'},
+    publicKey, new Uint8Array(signature), new Uint8Array(data));
+};

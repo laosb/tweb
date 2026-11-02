@@ -41,6 +41,9 @@ const ActiveSessions: Component = () => {
   const [appSettings, setAppSettings] = useAppSettings();
 
   const [authorizations, setAuthorizations] = createSignal(tab.payload.authorizations || []);
+  const [canManage, setCanManage] = createSignal(!blah);
+  const [canLink, setCanLink] = createSignal(false);
+  const refreshHolder = () => tab.managers.appAccountManager.blahIdentity({action: 'inspect'}).then((result) => { setCanManage(!!result.managed || !!result.identity?.holder); setCanLink(!!result.identity?.holder); }, () => { setCanManage(false); setCanLink(false); });
   const [connectedBot, setConnectedBot] = createSignal(tab.payload.connectedBot);
   const ttlDaysSignal = createSignal(tab.payload.ttlDays || 0);
   const [ttlDays, setTtlDays] = ttlDaysSignal;
@@ -85,6 +88,7 @@ const ActiveSessions: Component = () => {
   });
 
   onMount(() => {
+    if(blah) void refreshHolder();
     if(tab.payload.ttlDays === undefined) {
       refresh();
     }
@@ -220,7 +224,7 @@ const ActiveSessions: Component = () => {
   const openSession = (authorization: Authorization.authorization) => {
     tab.slider.createTab(hotReloadGuard.tabs.AppSessionTab).open({
       authorization,
-      onTerminate: authorization.pFlags.current ? undefined : () => terminateSession(authorization),
+      onTerminate: authorization.pFlags.current || !canManage() ? undefined : () => terminateSession(authorization),
       onSettingsChanged: (updated) => setAuthorizations((list) => {
         return list.map((item) => isSameHash(item, updated) ? {...item, pFlags: updated.pFlags} : item);
       })
@@ -249,7 +253,7 @@ const ActiveSessions: Component = () => {
         clickable={() => openSession(authorization())}
         role="button"
         tabIndex={0}
-        contextMenu={isCurrent() ? undefined : terminateMenu(() => {
+        contextMenu={isCurrent() || !canManage() ? undefined : terminateMenu(() => {
           terminateSession(authorization());
         })}
       >
@@ -297,7 +301,7 @@ const ActiveSessions: Component = () => {
 
   return (
     <>
-      <Show when={blah}>
+      <Show when={blah && canLink()}>
         <Section>
           <Button text="BlahLinkDevice" icon="qr" onClick={async() => {
             const managers = tab.managers;
@@ -309,12 +313,12 @@ const ActiveSessions: Component = () => {
       <Section
         name="CurrentSession"
         nameRight={renameAnchor()}
-        caption={hasOtherSessions() ? 'ClearOtherSessionsHelp' : undefined}
+        caption={hasOtherSessions() && canManage() ? 'ClearOtherSessionsHelp' : undefined}
       >
         <Show when={currentSession()}>
           {(authorization) => <SessionRow authorization={authorization()} />}
         </Show>
-        <Show when={hasOtherSessions()}>
+        <Show when={hasOtherSessions() && canManage()}>
           <Button
             class="btn-primary btn-transparent danger"
             icon="stop"
@@ -343,7 +347,16 @@ const ActiveSessions: Component = () => {
         </Section>
       </Show>
 
-      <Show when={ttlDays()}>
+      <Show when={blah && !canManage()}>
+        <Section caption="BlahSessionsWordsRequired">
+          <Button text="BlahEnterRecoveryWords" onClick={async() => {
+            const manager = tab.managers.appAccountManager;
+            const {enterRecoveryWords} = await import('@lib/blah/RecoveryWords');
+            enterRecoveryWords((request) => manager.blahIdentity(request), () => { void refreshHolder(); });
+          }} />
+        </Section>
+      </Show>
+      <Show when={ttlDays() && canManage()}>
         <Section name="AuthSessions.TerminateIfAwayTitle">
           <InactivityPeriodRow
             title="AuthSessions.TerminateIfAwayFor"

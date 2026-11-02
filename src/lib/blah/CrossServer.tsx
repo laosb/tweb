@@ -36,7 +36,7 @@ export default function useCrossServer(chat?: Chat.chat | Chat.channel) {
     void managers.appAccountManager.blahIdentity({action: 'hostingCapability'}).then((result) => {
       if(alive) setHostingAvailable(!!result.hostingAvailable);
     }).catch(() => {});
-    // Public metadata supplies a suggestion even while the account identity is locked.
+    // Use the account identity domain as the initial suggestion.
     void managers.appAccountManager.blahIdentity({action: 'suggestDomain'}).then(({domain}) => {
       if(alive && domain) setPlaceholder(`news.${domain}`);
     }).catch(() => {});

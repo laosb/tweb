@@ -18,12 +18,13 @@ export default function HomeDCCard() {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal(blahStartupErrors.get(slot) || '');
   let cancelled = false;
+  let edited = false;
   const isGone = () => cancelled || isLeaving();
   let form: HTMLFormElement;
   const field = new InputField({
     label: 'BlahDCDomain', plainText: true, name: 'dc-domain', required: true,
     autocomplete: 'url',
-    onRawInput: () => { field.setState(InputState.Neutral); setError(''); }
+    onRawInput: () => { edited = true; field.setState(InputState.Neutral); setError(''); }
   });
   const input = field.input as HTMLInputElement;
   input.autocapitalize = 'none';
@@ -33,7 +34,7 @@ export default function HomeDCCard() {
 
   onMount(() => {
     void savedDC(slot).then((saved) => {
-      if(isGone()) return;
+      if(isGone() || edited) return;
       field.value = saved?.domain || new URL(location.href).searchParams.get('dc') || '';
       setError(blahStartupErrors.get(slot) || '');
     }).catch((error) => { if(!isGone()) setError(String(error)); });
@@ -63,7 +64,7 @@ export default function HomeDCCard() {
   }
 
   return <AuthCard inputWrapper={false} header={<MediaHeader>
-    <MediaHeader.Title>{i18n('BlahDCConnect')}</MediaHeader.Title>
+    <MediaHeader.Title tag="h1">{i18n('BlahDCConnect')}</MediaHeader.Title>
     <MediaHeader.Subtitle>{i18n('BlahDCDescription')}</MediaHeader.Subtitle>
   </MediaHeader>}>
     <form ref={form} class="input-wrapper" onSubmit={connect} aria-busy={busy()}>

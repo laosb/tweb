@@ -48,7 +48,7 @@ const load = (data: GeneratedSettingsSearchData) => {
   entries = data.entries.filter((entry) => sections.has(entry.sectionId) &&
     (Modes.a11y || !A11Y_ONLY_ENTRIES.has(entry.id)) &&
     (isWalletReleased() || !WALLET_ENTRIES.has(entry.id)) &&
-    (entry.titleLangKey !== 'BlahBrowserIdentity' || !!blah));
+    (entry.titleLangKey !== 'BlahIdentity' || !!blah));
   links = data.links.filter((link) => sections.has(link.sectionId));
 };
 

@@ -52,16 +52,6 @@ function emit(name: string, ...args: unknown[]) {
 function button(text: string) {
   return [...host.querySelectorAll('button')].find(value => value.textContent === text);
 }
-async function showPassword() {
-  mock.link.mockImplementation(async(request) => request.action === 'begin' ? next :
-    request.action === 'poll' ? {needsPassword: true} : {});
-  await mount();
-  await vi.advanceTimersByTimeAsync(3000);
-  await vi.dynamicImportSettled();
-  await settle();
-  expect(host.querySelector('input[type=password]')).not.toBeNull();
-}
-
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
@@ -114,29 +104,21 @@ describe('Blah SignQRCard lifecycle', () => {
     expect(mock.toIm).not.toHaveBeenCalled();
   });
 
-  it('submits the new local password and enters chats only after loginTokenSuccess', async() => {
-    await showPassword();
+  it('enters chats directly after the worker stores custody and returns success', async() => {
+    await mount();
     const user = {_: 'user', id: 42};
     mock.link.mockResolvedValueOnce({loginToken: {_: 'auth.loginTokenSuccess', authorization: {_: 'auth.authorization', user}}});
-    const input = host.querySelector<HTMLInputElement>('input[type=password]');
-    input.value = 'new local password';
-    button('BlahSignIn').click();
-    await settle();
-    expect(mock.link.mock.lastCall[0]).toMatchObject({action: 'complete', password: 'new local password'});
-    expect(input.value).toBe('');
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(host.querySelector('input[type=password]')).toBeNull();
     expect(mock.setUser).toHaveBeenCalledExactlyOnceWith(user);
     expect(mock.toIm).toHaveBeenCalledOnce();
   });
-
-  it('continues SESSION_PASSWORD_NEEDED through the existing password card', async() => {
-    await showPassword();
+  it('continues Telegram 2FA through the existing password card', async() => {
+    await mount();
     mock.link.mockRejectedValueOnce({type: 'SESSION_PASSWORD_NEEDED'});
-    host.querySelector<HTMLInputElement>('input[type=password]').value = 'new local password';
-    button('BlahSignIn').click();
-    await settle();
+    await vi.advanceTimersByTimeAsync(3000);
     expect(mock.navigate).toHaveBeenCalledExactlyOnceWith({name: 'password'});
     expect(mock.toIm).not.toHaveBeenCalled();
-    expect(mock.setUser).not.toHaveBeenCalled();
   });
 
   it('cancel and unmount release the worker attempt, polling timer and subscriptions', async() => {
