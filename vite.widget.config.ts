@@ -11,7 +11,7 @@ import {widgetThemeDeclaration, widgetCssSelector} from './scripts/widget-theme-
 import {assertWidgetEmojiSource, assertWidgetEmojiConsumer, assertWidgetEmojiModules} from './scripts/widget-emoji-guards';
 import {widgetStyles, widgetStyleSelector} from './scripts/widget-styles';
 import {assertWidgetServiceWorkerModules} from './scripts/widget-service-worker';
-import {assertWidgetCleanupAssets, assertWidgetCleanupModules, assertWidgetWalletOutput} from './scripts/widget-cleanup-guards';
+import {assertWidgetCleanupAssets, assertWidgetCleanupModules, assertWidgetCleanupReferences, assertWidgetWalletOutput} from './scripts/widget-cleanup-guards';
 // @ts-ignore no type declarations
 import keepAsset from './keepAsset.js';
 
@@ -29,7 +29,7 @@ const WIDGET_OMITTED_PUBLIC = [
   /^assets\/tgs\/(?!ReactionGeneric)/,
   /^assets\/fonts\/(?!tgico\.ttf$)/, // the icon font, whose first source is the .ttf
   /^assets\/blah(\/|$)/,
-  /^assets\/img\/(blank\.gif|doc-in|icon-verified|logo|masked|monoforum|favicon|apple-touch-icon-precomposed|pattern|bg\.|android-chrome|mstile|favicon-|favicon_unread|icon_square|safari-pinned|logo_512|screenshot|camomile|password-monkey|premium|stars|anon_paid|amex|card|diners|discover|jcb|mastercard|mir|unionpay|visa|accounts-limit|add-chats-to-folder|android-device|EmptyChats\.svg|chat-thread-separator-dash)/,
+  /^assets\/img\/(blank\.gif|doc-in|icon-verified|logo|masked|monoforum|favicon|apple-touch-icon|pattern|bg\.|android-chrome|mstile|favicon-|favicon_unread|icon_square|safari-pinned|logo_512|screenshot|camomile|password-monkey|premium|stars|anon_paid|amex|card|diners|discover|jcb|mastercard|mir|unionpay|visa|accounts-limit|add-chats-to-folder|android-device|EmptyChats\.svg|chat-thread-separator-dash)/,
   /^(encoderWorker\.min\.|recorder\.min\.js)/
 ];
 
@@ -343,6 +343,7 @@ function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
       assertWidgetCleanupAssets(Object.values(bundle).flatMap((item: any) => [item.fileName, ...(item.originalFileNames || [])]));
       for(const item of Object.values(bundle)) {
         if(/\.(?:js|css|html)$/.test(item.fileName)) assertWidgetWalletOutput(item.type === 'chunk' ? item.code : String(item.source));
+        if(item.type === 'asset' && /\.(?:html|webmanifest)$/.test(item.fileName)) assertWidgetCleanupReferences(String(item.source));
       }
     }
   };
