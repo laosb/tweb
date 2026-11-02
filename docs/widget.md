@@ -291,6 +291,10 @@ node scripts/test-widget-setup.mjs
 BLAH_SERVER_REPO=/path/to/Teleblah node scripts/test-widget.mjs
 ```
 
+The widget service worker closes RTMP requests with 404; ordinary streaming,
+downloads and cache lifecycle remain. Its [graph guard](../scripts/widget-service-worker.ts)
+rejects RTMP muxers and codecs.
+
 ### Language keys
 
 [`languageKeys.json`](../src/widget/languageKeys.json) is the reviewed set of literal
