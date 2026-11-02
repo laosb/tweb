@@ -1,0 +1,12 @@
+{
+  "appCallsManager": {
+    "source": "src/lib/appManagers/appCallsManager.ts",
+    "sha256": "22e9bdb1d5d54421a5b3c18d832935edc067eedf18a3b5fe081dcb73d929c1dd",
+    "replacement": "src/widget/managers/calls.ts"
+  },
+  "appGroupCallsManager": {
+    "source": "src/lib/appManagers/appGroupCallsManager.ts",
+    "sha256": "3b19796c59aef71f8c02fdd709b51fcb2765203da7589e0aed38f085b7919b9b",
+    "replacement": "src/widget/managers/groupCalls.ts"
+  }
+}
