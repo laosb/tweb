@@ -8,7 +8,7 @@ import memoryReport from '@/widget/omitted/memoryReport';
 import {createPeakRecorder, readThreadMemory} from '@/widget/omitted/memoryStats';
 import {getLogEntries, isLogBufferEnabled, setLogBufferEnabled} from '@/widget/omitted/logsBuffer';
 import {getMemoryLogEntries, isMemoryWatchOn, startMemoryWatch} from '@/widget/omitted/memoryWatch';
-import {assertWidgetCleanupAssets, assertWidgetCleanupModules} from '../../scripts/widget-cleanup-guards';
+import {assertWidgetCleanupAssets, assertWidgetCleanupModules, assertWidgetCleanupReferences} from '../../scripts/widget-cleanup-guards';
 
 it('never acquires recording devices or creates panels', () => {
   const input = new Proxy({}, {get() { throw new Error('capture touched the input'); }});
@@ -107,8 +107,14 @@ it('allows the exact replacements and retained playback/editor code', () => {
   ], ['src/components/chat/recording/chatRecording.ts'])).not.toThrow();
 });
 
-it.each(['rnnoise-abc.wasm', 'assets/weights-abc.bin', 'src/vendor/rnnoise/renamed.bin', 'assets/img/EmptyChats.svg', 'assets/img/chat-thread-separator-dash-black.svg'])(
+it.each(['assets/img/apple-touch-icon.png', 'assets/img/apple-touch-icon-precomposed.png', 'rnnoise-abc.wasm', 'assets/weights-abc.bin', 'src/vendor/rnnoise/renamed.bin', 'assets/img/EmptyChats.svg', 'assets/img/chat-thread-separator-dash-black.svg'])(
   'rejects emitted omitted assets: %s', path => {
     expect(() => assertWidgetCleanupAssets([path])).toThrow('widget omitted assets are emitted');
   }
 );
+
+it('rejects HTML or manifest references to the omitted touch icon', () => {
+  expect(() => assertWidgetCleanupReferences('<link href="assets/img/apple-touch-icon.png">')).toThrow('references omitted');
+  expect(() => assertWidgetCleanupReferences('{"icons":[{"src":"assets/img/apple-touch-icon.png"}]}')).toThrow('references omitted');
+  expect(() => assertWidgetCleanupReferences('<link rel="icon" href="data:image/png;base64,abc">')).not.toThrow();
+});

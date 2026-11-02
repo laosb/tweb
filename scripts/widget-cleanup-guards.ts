@@ -54,6 +54,11 @@ export function assertWidgetCleanupModules(paths: string[], replaced: string[]) 
 }
 
 export function assertWidgetCleanupAssets(paths: string[]) {
-  const unexpected = paths.filter(path => /rnnoise|noiseSuppression|(?:^|\/)weights(?:[.-]|$)|EmptyChats\.svg|chat-thread-separator-dash/i.test(path));
+  const unexpected = paths.filter(path => /apple-touch-icon(?:-precomposed)?\.png|rnnoise|noiseSuppression|(?:^|\/)weights(?:[.-]|$)|EmptyChats\.svg|chat-thread-separator-dash/i.test(path));
   if(unexpected.length) throw new Error('widget omitted assets are emitted: ' + unexpected.join(', '));
+}
+
+// The orphan is safe to leave out only while no release entry/manifest names it.
+export function assertWidgetCleanupReferences(source: string) {
+  if(/apple-touch-icon\.png/.test(source)) throw new Error('widget references omitted apple-touch-icon.png');
 }
