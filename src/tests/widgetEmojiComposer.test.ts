@@ -1,3 +1,4 @@
+import '@/tests/mocks/widgetEmoji';
 import '@/tests/mocks/chatInputEditorEngineUi';
 import {mountChatInputEditor} from '@/tests/helpers/chatInputEditor';
 import {chatEmojiImagesKey} from '@components/chat/inputEditor/extensions/emojiImages';

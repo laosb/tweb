@@ -23,6 +23,7 @@ import {readEnglishPack, languageCoveragePlugin, installLanguageRecorder, checkL
 import {objectStorage} from '../tests/widget/objectStorage.mjs';
 import {installIconCoverage, checkIconCoverage} from '../tests/widget/iconCoverage.mjs';
 import {checkReactionParticipants} from '../tests/widget/reactionParticipants.mjs';
+import {withWorkerConsole, observeWorkerConsole, assertWorkerConsole, checkManagerMessages} from '../tests/widget/managerContracts.mjs';
 import {checkHiddenControllers} from '../tests/widget/hiddenControllers.mjs';
 import {checkSidebars, checkSidebarBootstrap} from '../tests/widget/sidebars.mjs';
 import {checkTheme, checkStatusTheme} from '../tests/widget/theme.mjs';
@@ -38,6 +39,7 @@ assert(['auto', 'http', 'ws'].includes(transport));
 const transportQuery = transport === 'http' ? 'http=1' : transport === 'ws' ? 'noMultipleTransports=1' : '';
 let httpRequests = 0;
 let widgetDist = process.env.WIDGET_DIST || repo + '/dist/widget';
+const managerContracts = !!process.env.WIDGET_TEST_MANAGER_CONTRACTS;
 const browserName = process.env.WIDGET_BROWSER || 'chromium';
 assert(['chromium', 'webkit'].includes(browserName), 'WIDGET_BROWSER must be chromium or webkit');
 const tele = process.env.BLAH_SERVER_REPO;
@@ -50,7 +52,7 @@ if(!languageStrings) console.log('Language coverage skipped: set WIDGET_LANGPACK
 const artifacts = process.env.WIDGET_TEST_ARTIFACTS || repo + '/tmp/widget';
 await mkdir(artifacts, {recursive: true});
 const proxy = httpProxy.createProxyServer({ws: true});
-let child, browser, edge;
+let child, browser, edge, workerRecords;
 const storage = await objectStorage();
 const errors = [], logs = [], mediaErrors = [];
 const optionalFixtureErrors = ['METHOD_NOT_FOUND', 'METHOD_NOT_IMPLEMENTED'];
@@ -69,6 +71,7 @@ try {
   await writeFile(dir + '/seed', randomBytes(32));
   const customers = [1000501, 1000502, 1000503].map((id) => ({id, token: id + ':' + randomBytes(24).toString('base64url')}));
   const [alice, bob, support] = customers;
+  const supportDriverToken = managerContracts ? support.id + ':' + randomBytes(24).toString('base64url') : support.token;
   await writeFile(dir + '/local.json', JSON.stringify({options: {supportUserId: support.id, supportName: 'Customer Care'},
     applications: [{id: 12345, ownerUserID: support.id, apiHashVerifier: createHash('sha256').update('Blah/app-hash:1:12345:' + 'ab'.repeat(16)).digest('hex')}]}));
   const startDC = async() => {
@@ -107,6 +110,8 @@ try {
     seed.prepare('INSERT INTO federation_aliases (kind, scope, local_id, canonical) VALUES (\'user\', ?, ?, ?)')
       .run(new Uint8Array(), customer.id, canonical);
   }
+  if(managerContracts) seed.prepare('UPDATE users SET super_token_hash = ? WHERE id = ?')
+    .run(createHash('sha256').update(supportDriverToken).digest('hex'), support.id);
   seed.close();
   await startDC();
 
@@ -118,6 +123,7 @@ try {
       plugins: [languageCoveragePlugin(languageStrings)], build: {outDir: instrumented, emptyOutDir: false}});
     widgetDist = instrumented;
   }
+  if(managerContracts) widgetDist = await withWorkerConsole(widgetDist, dir + '/worker-console');
   await build({configFile: repo + '/vite.widget.config.ts', logLevel: 'warn',
     ...(transport === 'http' ? {define: {'import.meta.env.VITE_MTPROTO_HAS_WS': 'false', 'import.meta.env.VITE_MTPROTO_HTTP': 'true', 'import.meta.env.VITE_MTPROTO_AUTO': 'false'}} : {}), build: {
     outDir: dir + '/driver', lib: {entry: repo + '/tests/widget/driver.ts', formats: ['es'], fileName: () => 'driver.js'}
@@ -200,6 +206,7 @@ try {
       if(optionalErrors.includes(event.reason?.type)) event.preventDefault();
     });
   }, {optionalErrors: optionalFixtureErrors, transportQuery, origin});
+  if(managerContracts) workerRecords = await observeWorkerConsole(context);
   const page = await context.newPage(), urls = [];
   page.on('crash', () => logs.push('PAGE_CRASH'));
   page.on('pageerror', (err) => errors.push({message: err.message, stack: err.stack}));
@@ -256,7 +263,7 @@ try {
   driver.on('console', (msg) => driverErrors.push(msg.text()));
   await driver.goto(origin + '/driver?' + transportQuery);
   await driver.waitForFunction(() => !!window.widgetTestDriver).catch((error) => { throw new Error(driverErrors.join('\n') || error.message); });
-  await driver.evaluate(async({config, token}) => window.widgetTestDriver.connect(config, token).catch(error => { throw new Error(JSON.stringify(error, Object.getOwnPropertyNames(error || {}))); }), {config, token: support.token});
+  await driver.evaluate(async({config, token}) => window.widgetTestDriver.connect(config, token).catch(error => { throw new Error(JSON.stringify(error, Object.getOwnPropertyNames(error || {}))); }), {config, token: supportDriverToken});
 
   await page.bringToFront();
   await navigate(alice.token);
@@ -737,6 +744,8 @@ try {
   await page.locator('iframe').evaluate((iframe) => { iframe.style.width = '280px'; iframe.style.height = '480px'; });
   assert(await frame.locator('body').evaluate((body) => body.scrollWidth <= body.clientWidth));
 
+  if(managerContracts) await checkManagerMessages({page, frame: widgetFrame(), driver, customerId: alice.id, bubble, send, messageMids});
+
   // A new document must retire the saved authorization before switching users.
   await navigate(bob.token, true);
   if(languageStrings) await checkSidebarBootstrap(widgetFrame());
@@ -771,10 +780,13 @@ try {
   await checkStatusTheme({page, frame: widgetFrame(), artifacts});
   const rejections = logs.filter((line) => line.startsWith('REJECTION ')).map((line) => line.slice(10));
   assert.deepEqual(rejections.filter((type) => !optionalFixtureErrors.includes(type)), []);
+  if(managerContracts) assertWorkerConsole(workerRecords);
   assert.deepEqual(mediaErrors, []);
   await checkIconCoverage({frame: widgetFrame(), observed: observedIcons, repo, artifacts});
   assert.deepEqual(errors, []);
-  for(const {token} of customers) assert(!logs.join('\n').includes(token), 'tokens must not appear in console logs');
+  for(const token of [...customers.map(customer => customer.token), supportDriverToken]) {
+    assert(!logs.join('\n').includes(token), 'tokens must not appear in console logs');
+  }
   assert.deepEqual([...paths], transport === 'http' ? [] : ['/exact/socket?widget=1']);
   if(transport === 'http') assert(httpRequests > 0);
   if(transport === 'ws') assert.equal(httpRequests, 0);
@@ -798,6 +810,7 @@ try {
   throw error;
 } finally {
   if(languageStrings) await writeFile(artifacts + '/language-resolutions.json', JSON.stringify([...languageRecords.values()], null, 2) + '\n');
+  if(workerRecords) await writeFile(artifacts + '/worker-console.json', JSON.stringify([...workerRecords.values()], null, 2) + '\n');
   await writeFile(artifacts + '/browser.log', JSON.stringify({errors, logs}, null, 2));
   await browser?.close();
   if(child && child.exitCode === null) { const exited = once(child, 'exit'); child.kill('SIGTERM'); await exited; }
