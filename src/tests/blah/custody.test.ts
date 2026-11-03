@@ -135,13 +135,25 @@ describe('per-slot seed custody', () => {
     await completeEnrollment(2);
     await expect(identityAction(2, {action: 'discardEnrollment', id: first.identity.id})).rejects.toThrow('already complete');
   });
-  it('publishes DC profiles through the public JSON renewal endpoint', async() => {
-    const fetch = vi.fn().mockResolvedValue({ok: true, status: 204}); vi.stubGlobal('fetch', fetch);
-    const bytes = new TextEncoder().encode(JSON.stringify({id: 'dc', kind: 'dc', revision: 2}));
-    const profile = btoa(String.fromCharCode(...bytes));
-    await publish({domain: 'dc.example.org', profile} as any, {id: 'dc', domains: ['dc.example.org'], profile: [...bytes]} as any);
-    expect(fetch).toHaveBeenCalledWith(new URL('https://dc.example.org/api/v1/renewal'), expect.objectContaining({
-      method: 'POST', body: JSON.stringify({profile}), headers: {'Content-Type': 'application/json'}
-    }));
+  it('restores and renews DC profiles through ordinary apex hosting', async() => {
+    const {identity} = await create();
+    state.published = new TextEncoder().encode(JSON.stringify({...JSON.parse(new TextDecoder().decode(new Uint8Array(identity.profile))),
+      kind: 'dc', domains: ['dc.example.org']}));
+    state.policy.mockResolvedValue({domain: 'dc.example.org', apex: true});
+    const restored = await identityAction(2, {action: 'restore', domain: 'dc.example.org', phrase});
+    expect(state.policy.mock.calls).toEqual([['dc.example.org']]);
+    expect(restored.identity.publicationPending).toBe(false);
+    expect(restored.identity.hostedNames).toEqual({domain: 'dc.example.org', held: [], proofs: {}, unclaimed: undefined, pending: undefined});
+    expect(state.publish).toHaveBeenLastCalledWith('dc.example.org', restored.identity.profile, {via: {apex: true}});
+    const renewed = await identityAction(2, {action: 'renew'});
+    expect(state.publish).toHaveBeenLastCalledWith('dc.example.org', renewed.identity.profile, {via: {apex: true}});
+    expect(state.plan).not.toHaveBeenCalled();
+  });
+  it('leaves profiles without hosted routing for manual publication regardless of kind', async() => {
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    const bytes = new TextEncoder().encode(JSON.stringify({id: 'dc', kind: 'dc'}));
+    await expect(publish({profile: btoa(String.fromCharCode(...bytes))} as any,
+      {id: 'dc', domains: ['dc.example.org']} as any)).resolves.toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

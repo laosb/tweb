@@ -61,6 +61,22 @@ try {
   const hostedProfile = Buffer.from(renewed.profile);
   await page.route('https://alice.example.org/.well-known/blah/profile.cbor', (route) => route.fulfill({
     contentType: 'application/cbor', body: hostedProfile}));
+  await page.route('**/.well-known/diem/hosting', (route) => route.fulfill({
+    status: new URL(route.request().url()).hostname === 'alice.example.org' ? 200 : 404,
+    contentType: 'application/json', body: JSON.stringify({domain: 'alice.example.org', apex: true})}));
+  const apexPublications = [];
+  await page.route('https://alice.example.org/.well-known/diem/profile.cbor', async(route) => {
+    const request = route.request();
+    assert.equal(request.method(), 'PUT');
+    assert.equal(request.headers()['content-type'], 'application/cbor');
+    assert.equal(request.headers()['diem-hosting-proof'], undefined);
+    const bytes = [...request.postDataBuffer()];
+    apexPublications.push(bytes);
+    const facts = await page.evaluate(async(bytes) => (await fixture.diemClient()).verifyProfile(
+      bytes, Math.floor(Date.now() / 1000), {verify: fixture.verifySignature}), bytes);
+    await route.fulfill({contentType: 'application/json', body: JSON.stringify({
+      identity: Buffer.from(facts.id, 'hex').toString('base64url'), revision: Number(facts.revision), domains: facts.domains})});
+  });
   // A new slot shares the same home but always creates a different device.
   const recovered = await page.evaluate(async({words, home}) => {
     fixture.setBlahConfig(3, {discovery: true, home, defaultDcId: 1, dcs: [], expiresAt: '9999999999'});
@@ -69,6 +85,10 @@ try {
   assert.equal(recovered.identity.id, created.identity.id);
   assert.equal(recovered.identity.devices.length, 2);
   assert.notEqual(recovered.identity.devices.find((device) => device.current).id, created.identity.devices[0].id);
+  assert.equal(recovered.identity.hostedNames.domain, 'alice.example.org');
+  assert.equal(recovered.identity.publicationPending, false);
+  assert.deepEqual(apexPublications, [recovered.identity.profile]);
+  console.log('PASS apex-first restoration and runtime apex PUT with exact CBOR bytes and no proof header.');
   const upgraded = await page.evaluate(async(words) => {
     await fixture.identityAction(1, {action: 'removeWords'});
     const nonHolder = await fixture.identityAction(1, {action: 'inspect'});

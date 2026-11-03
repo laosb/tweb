@@ -69,8 +69,12 @@ Each field has BIP 39 autocomplete; pasting a whole phrase fills all fields. The
 checks the word count and checksum. The browser fetches and verifies the domain's
 profile, derives the identity and rejects mismatched words before saving anything.
 It enrolls a fresh device, publishes the revision and signs in. Recovery never reuses
-another session's device. Hosted-name routing is rediscovered from the hosting policy;
-own domains use manual public-profile export.
+another session's device. Publication routing is rediscovered from the first profile domain's hosting
+policy: `apex: true` selects publication at the domain itself; otherwise a parent policy
+with `names` selects child-name hosting. Unavailable or invalid policies fall through
+to the next choice, then manual public-profile export. Apex publication uses the runtime's
+`{apex: true}` target and PUTs the signed CBOR to
+`https://<domain>/.well-known/diem/profile.cbor` without proof of work.
 
 For QR sign-in, open the ordinary QR card after selecting the home. On a seed-holding
 device, open **Settings → Devices → Link device by QR code** and scan or paste the link.
@@ -120,8 +124,8 @@ is independent of account logout and remains encrypted in this browser.
 
 A home move signs a newer home epoch and clears the account number. Publish it before
 signing in at the destination. The old account is removed; chats, contacts and settings
-do not move. DC operator sign-in uses the DC domain and its recovery words and publishes
-DC-kind profile revisions through the DC's public renewal endpoint.
+do not move. DC operator sign-in uses the DC domain and its recovery words; its profile
+revisions use the same apex hosting discovery and publication as any other identity.
 
 ## Chat identities
 

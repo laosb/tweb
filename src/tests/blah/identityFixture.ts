@@ -2,7 +2,7 @@ import {webcrypto} from 'node:crypto';
 import {afterEach, beforeEach, vi} from 'vitest';
 
 const state = vi.hoisted(() => ({store: new Map<string, any>(), published: undefined as Uint8Array,
-  serial: 0, transaction: vi.fn(), operation: vi.fn(), publish: vi.fn()}));
+  serial: 0, transaction: vi.fn(), operation: vi.fn(), publish: vi.fn(), policy: vi.fn(), plan: vi.fn()}));
 vi.mock('@config/blah', () => ({default: {home: {}}, ensureBlahConfig: async() => {},
   getBlahConfig: () => ({home: {identity: 'ab'.repeat(32), generation: '1', domain: 'dc.example.org'}})}));
 vi.mock('@lib/blah/homeStorage', () => ({bindHomeStorage: vi.fn(), requireHomeStorage: vi.fn(), clearAccountCaches: vi.fn()}));
@@ -39,7 +39,7 @@ vi.mock('@lib/blah/runtime', () => ({verifySignature: vi.fn(), diemClient: async
     const info = JSON.parse(new TextDecoder().decode(bytes));
     return {...info, home: {dc: 'ab'.repeat(32), epoch: '1', account: info.account || null}, generation: '1', revision: String(info.revision)};
   }, deviceLink: {respond: async() => new Uint8Array([99])},
-  hosting: {publish: state.publish}
+  hosting: {publish: state.publish, policy: state.policy, plan: state.plan}
 })}));
 import {identityAction, withIdentity} from '@lib/blah/identity';
 import type {IdentitySecret} from '@lib/blah/wasm';
@@ -91,9 +91,11 @@ beforeEach(() => {
     }
   });
   state.operation.mockReset().mockImplementation(operate);
+  state.policy.mockReset().mockRejectedValue({type: 'unexpectedStatus', status: 404});
+  state.plan.mockReset();
   state.publish.mockReset().mockImplementation(async(_domain: string, bytes: number[]) => {
     state.published = new Uint8Array(bytes);
-    return {identity: '01'.repeat(32), revision: '1', domains: ['alice.example.org']};
+    return {identity: '01'.repeat(32), revision: '1', domains: JSON.parse(new TextDecoder().decode(state.published)).domains};
   });
 });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); });
