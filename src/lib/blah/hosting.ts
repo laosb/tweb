@@ -1,18 +1,19 @@
-import type {HostingPlanName} from '@blahdiem/diem';
+import type {HostingPlanName, HostingTarget} from '@blahdiem/diem';
 import {diemClient} from '@lib/blah/runtime';
 import {profileDomain} from '@lib/blah/profile';
 import {stored} from '@lib/blah/vault';
 
 export type PortableHosting = {domain: string, held: string[], proofs: Record<string, number[]>};
 
-/** Public claim state; only domain, held and proofs travel in sealed grants. */
+/** Public claim state; domain equal to the identity's first domain routes to the apex.
+ * Only domain, held and proofs travel in sealed grants. */
 export type HostedNames = {
   domain: string,
   held: string[],
   proofs: Record<string, number[]>,
   unclaimed?: string,
   // Written before PUT. An unanswered request must be replayed before a newer revision.
-  pending?: {profile: number[], via: string, labels: string[]}
+  pending?: {profile: number[], via: HostingTarget, labels: string[]}
 };
 
 /** Preserve held routing first; obsolete released-name proofs need not grow metadata forever. */
@@ -58,15 +59,21 @@ export async function hostingCall<T>(call: () => Promise<T>): Promise<T> {
 
 export async function planHostedName(domain: string, label: string, id: string): Promise<HostingPlanName> {
   try { domain = profileDomain(domain); } catch{ throw {type: 'BlahHostingInvalid'}; }
-  return hostingCall(async() => (await (await hostingAPI()).plan(domain, [label], id))[0]);
+  return hostingCall(async() => {
+    const api = await hostingAPI();
+    const policy = await api.policy(domain);
+    if(policy.domain !== domain || !policy.names) throw {type: 'BlahHostingUnavailable'};
+    return (await api.plan(domain, [label], id))[0];
+  });
 }
 
 /** Caller serializes custody. Public metadata advances only after an acknowledged PUT. */
 export async function publishHosted(id: string, profile: number[], domains: string[]): Promise<boolean> {
   let state = await stored<HostedNames>('hosting:' + id);
   if(!state) return false;
+  const apex = state.domain === domains[0];
   const desired = hostedLabels(state.domain, domains);
-  if(!desired.length && !state.held.length && !state.pending) return false;
+  if(!apex && !desired.length && !state.held.length && !state.pending) return false;
   await hostingCall(async() => {
     const api = await hostingAPI();
     async function acknowledged(labels: string[]) {
@@ -75,17 +82,18 @@ export async function publishHosted(id: string, profile: number[], domains: stri
     }
     async function send() {
       try {
-        const proofs = Object.fromEntries(Object.entries(state.proofs).filter(([label]) => state.pending.labels.includes(label) && !state.held.includes(label)));
-        const result = await api.publish(state.domain, state.pending.profile, {via: state.pending.via, proofs});
+        const proofs = typeof state.pending.via === 'string' ?
+          {proofs: Object.fromEntries(Object.entries(state.proofs).filter(([label]) => state.pending.labels.includes(label) && !state.held.includes(label)))} : {};
+        const result = await api.publish(state.domain, state.pending.profile, {via: state.pending.via, ...proofs});
         await acknowledged(hostedLabels(state.domain, result.domains));
       } catch(error) {
         // A completed final release has no held route for its idempotent retry.
         // Reconcile all previously held names through the native planner first.
         const problem = error as {type?: string, code?: string, labels?: {label: string}[]};
-        if(problem.type === 'hostingProblem' && problem.code === 'proof-required') {
+        if(typeof state.pending.via === 'string' && problem.type === 'hostingProblem' && problem.code === 'proof-required') {
           state = {...state, held: state.held.filter((label) => !problem.labels?.some((entry) => entry.label === label))};
         }
-        if(problem.type === 'hostingProblem' && problem.code === 'host-not-listed' &&
+        if(typeof state.pending.via === 'string' && problem.type === 'hostingProblem' && problem.code === 'host-not-listed' &&
           !state.pending.labels.length && state.held.length) {
           const names = await api.plan(state.domain, state.held, id);
           if(names.every((name) => name.status !== 'held')) { await acknowledged([]); return; }
@@ -104,7 +112,7 @@ export async function publishHosted(id: string, profile: number[], domains: stri
       await send();
       if(previous.length === profile.length && previous.every((byte, index) => byte === profile[index])) return;
     }
-    const via = desired.find((label) => state.held.includes(label)) || desired[0] || state.held[0];
+    const via: HostingTarget = apex ? {apex: true} : desired.find((label) => state.held.includes(label)) || desired[0] || state.held[0];
     if(!via) return;
     state = {...state, pending: {profile, via, labels: desired}};
     await stored('hosting:' + id, state);
