@@ -6,6 +6,7 @@ import {readFile, mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {blahDiemRuntimeURL} from './blah-config.mjs';
 import {localDiemRuntime, routeDiemRuntime} from '../tests/blah/localRuntime.mjs';
 
@@ -64,31 +65,65 @@ try {
   await page.route('**/.well-known/diem/hosting', (route) => route.fulfill({
     status: new URL(route.request().url()).hostname === 'alice.example.org' ? 200 : 404,
     contentType: 'application/json', body: JSON.stringify({domain: 'alice.example.org', apex: true})}));
+  await page.route('https://alice.example.org/.well-known/diem/hosting/names/@', (route) => route.fulfill({
+    contentType: 'application/json', body: JSON.stringify({label: '@', status: 'available', requiredBits: 4})}));
   const apexPublications = [];
   await page.route('https://alice.example.org/.well-known/diem/profile.cbor', async(route) => {
     const request = route.request();
     assert.equal(request.method(), 'PUT');
     assert.equal(request.headers()['content-type'], 'application/cbor');
-    assert.equal(request.headers()['diem-hosting-proof'], undefined);
     const bytes = [...request.postDataBuffer()];
     apexPublications.push(bytes);
+    if(apexPublications.length === 1) {
+      assert.equal(request.headers()['diem-hosting-proof'], undefined);
+      await route.fulfill({status: 403, contentType: 'application/problem+json', body: JSON.stringify({
+        type: 'urn:diem:profile-hosting:proof-required', title: 'Proof required', detail: 'Claim verification required', status: 403,
+        labels: [{label: '@', reason: 'proof-required', requiredBits: 4}]})});
+      return;
+    }
+    if(apexPublications.length === 2) {
+      const header = request.headers()['diem-hosting-proof'];
+      assert.match(header, /^@=[A-Za-z0-9_-]+$/);
+      const nonce = Buffer.from(header.slice(2), 'base64url');
+      const digest = createHash('sha256').update('diem-profile-hosting-pow-v1\0alice.example.org\0@\0')
+        .update(Buffer.from(created.identity.id, 'hex')).update(nonce).digest();
+      assert.equal(digest[0] >>> 4, 0, 'apex nonce must solve the domain/label/identity-bound puzzle');
+    }
     const facts = await page.evaluate(async(bytes) => (await fixture.diemClient()).verifyProfile(
       bytes, Math.floor(Date.now() / 1000), {verify: fixture.verifySignature}), bytes);
     await route.fulfill({contentType: 'application/json', body: JSON.stringify({
       identity: Buffer.from(facts.id, 'hex').toString('base64url'), revision: Number(facts.revision), domains: facts.domains})});
   });
   // A new slot shares the same home but always creates a different device.
-  const recovered = await page.evaluate(async({words, home}) => {
+  const recovered = await page.evaluate(async({words, home, id}) => {
     fixture.setBlahConfig(3, {discovery: true, home, defaultDcId: 1, dcs: [], expiresAt: '9999999999'});
-    return fixture.identityAction(3, {action: 'restore', domain: 'alice.example.org', phrase: words.join(' ')});
-  }, {words: created.words, home});
+    try {
+      await fixture.identityAction(3, {action: 'restore', domain: 'alice.example.org', phrase: words.join(' ')});
+      throw new Error('Expected apex proof refusal');
+    } catch(error) { if(error.type !== 'BlahHostingProofFailed') throw new Error('Unexpected apex refusal: ' + JSON.stringify(error)); }
+    // The same persisted proofs the chooser supplies, solved by the real runtime.
+    const key = 'hosting:' + id;
+    const state = await fixture.stored(key);
+    if(state.held.includes('@') || state.pending) throw new Error('Apex refusal was not reconciled');
+    const {hostingPlan: plan} = await fixture.identityAction(3, {action: 'hostingPlan', id,
+      hosted: {domain: state.domain, label: '@'}});
+    if(plan.label !== '@' || plan.status !== 'needsProof') throw new Error('Expected apex proof plan');
+    const nonce = await (await fixture.diemClient()).hosting.solve(plan.puzzle);
+    await fixture.withIdentity(3, async(secret, info, save) => {
+      await fixture.stored(key, {...state, proofs: {...state.proofs, '@': nonce}});
+      if(!await fixture.publish(secret, info)) throw new Error('Apex retry was not published');
+      await save(info, false);
+    }, false);
+    return fixture.identityAction(3, {action: 'inspect'});
+  }, {words: created.words, home, id: created.identity.id});
   assert.equal(recovered.identity.id, created.identity.id);
   assert.equal(recovered.identity.devices.length, 2);
   assert.notEqual(recovered.identity.devices.find((device) => device.current).id, created.identity.devices[0].id);
   assert.equal(recovered.identity.hostedNames.domain, 'alice.example.org');
+  assert.deepEqual(recovered.identity.hostedNames.held, ['@']);
   assert.equal(recovered.identity.publicationPending, false);
-  assert.deepEqual(apexPublications, [recovered.identity.profile]);
-  console.log('PASS apex-first restoration and runtime apex PUT with exact CBOR bytes and no proof header.');
+  assert.deepEqual(apexPublications, [recovered.identity.profile, recovered.identity.profile]);
+  console.log('PASS apex-first restoration, proof-required reconciliation, real-runtime @ proof and exact-byte PUT retry with @= header.');
   const upgraded = await page.evaluate(async(words) => {
     await fixture.identityAction(1, {action: 'removeWords'});
     const nonHolder = await fixture.identityAction(1, {action: 'inspect'});

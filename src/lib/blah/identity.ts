@@ -9,7 +9,7 @@ import {dcDomain, fetchDCProfile, profileConfig, type SavedDC} from '@lib/blah/d
 import {decode, encode, exclusively, identityIDs, stored, storeEntries} from '@lib/blah/vault';
 import {diem, IdentityInfo, IdentitySecret} from '@lib/blah/wasm';
 import {custodyKey, openCustody, sealCustody} from '@lib/blah/custody';
-import {HostedNames, hostingAPI, planHostedName, portableHosting, publishHosted} from '@lib/blah/hosting';
+import {HostedNames, hostedDomain, hostingAPI, planHostedName, portableHosting, publishHosted} from '@lib/blah/hosting';
 
 export type IdentityKind = 'user' | 'channel';
 export type IdentityMetadata = {kind: IdentityKind, chatId?: ChatId, title?: string, namespace?: string, home?: string};
@@ -232,7 +232,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
     if(profile && runtime.hosting) {
       try {
         const policy = await runtime.hosting.policy(hostingDomain);
-        if(policy.domain === hostingDomain && policy.apex === true) restoredHosting = {domain: hostingDomain, held: [], proofs: {}};
+        if(policy.domain === hostingDomain && policy.apex === true) restoredHosting = {domain: hostingDomain, held: ['@'], proofs: {}};
       } catch{ /* Try the parent when apex hosting is unavailable. */ }
       if(!restoredHosting && parentDomain.includes('.')) {
         try {
@@ -260,7 +260,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         if(verified && verified.id !== identity.id) throw new Error('The recovery words do not match this domain.');
         if(request.hosted) {
           await hostingAPI();
-          if(domain !== request.hosted.label + '.' + profileDomain(request.hosted.domain)) throw {type: 'BlahHostingInvalid'};
+          if(domain !== hostedDomain(profileDomain(request.hosted.domain), request.hosted.label)) throw {type: 'BlahHostingInvalid'};
         }
         secret = {domain, profile: profile ? encode(profile) : '', seed, identity,
           device: await client.deviceKeys.generate(), renewal: renewalPolicy(request.renewal), publicationPending: true};
@@ -325,8 +325,8 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
       const domain = profileDomain(request.hosted.domain);
       const state = await stored<HostedNames>('hosting:' + current.id);
       if(state && state.domain !== domain) throw {type: 'BlahHostingDomainMismatch'};
-      const name = profileDomain(request.hosted.label + '.' + domain);
-      const abandoned = state?.unclaimed && !state.held.includes(state.unclaimed) ? state.unclaimed + '.' + domain : undefined;
+      const name = profileDomain(hostedDomain(domain, request.hosted.label));
+      const abandoned = state?.unclaimed && !state.held.includes(state.unclaimed) ? hostedDomain(domain, state.unclaimed) : undefined;
       const domains = current.domains.filter((name) => name !== abandoned);
       domains.push(name);
       const unique = [...new Set(domains)];

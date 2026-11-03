@@ -143,10 +143,10 @@ describe('per-slot seed custody', () => {
     const restored = await identityAction(2, {action: 'restore', domain: 'dc.example.org', phrase});
     expect(state.policy.mock.calls).toEqual([['dc.example.org']]);
     expect(restored.identity.publicationPending).toBe(false);
-    expect(restored.identity.hostedNames).toEqual({domain: 'dc.example.org', held: [], proofs: {}, unclaimed: undefined, pending: undefined});
-    expect(state.publish).toHaveBeenLastCalledWith('dc.example.org', restored.identity.profile, {via: {apex: true}});
+    expect(restored.identity.hostedNames).toEqual({domain: 'dc.example.org', held: ['@'], proofs: {}, unclaimed: undefined, pending: undefined});
+    expect(state.publish).toHaveBeenLastCalledWith('dc.example.org', restored.identity.profile, {via: '@', proofs: {}});
     const renewed = await identityAction(2, {action: 'renew'});
-    expect(state.publish).toHaveBeenLastCalledWith('dc.example.org', renewed.identity.profile, {via: {apex: true}});
+    expect(state.publish).toHaveBeenLastCalledWith('dc.example.org', renewed.identity.profile, {via: '@', proofs: {}});
     expect(state.plan).not.toHaveBeenCalled();
   });
   it('leaves profiles without hosted routing for manual publication regardless of kind', async() => {

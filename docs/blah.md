@@ -72,9 +72,9 @@ It enrolls a fresh device, publishes the revision and signs in. Recovery never r
 another session's device. Publication routing is rediscovered from the first profile domain's hosting
 policy: `apex: true` selects publication at the domain itself; otherwise a parent policy
 with `names` selects child-name hosting. Unavailable or invalid policies fall through
-to the next choice, then manual public-profile export. Apex publication uses the runtime's
-`{apex: true}` target and PUTs the signed CBOR to
-`https://<domain>/.well-known/diem/profile.cbor` without proof of work.
+to the next choice, then manual public-profile export. The apex is an ordinary hosted name,
+keyed `@` in held labels, plans and proofs. It PUTs the signed CBOR to
+`https://<domain>/.well-known/diem/profile.cbor`; the host decides whether a proof is required.
 
 For QR sign-in, open the ordinary QR card after selecting the home. On a seed-holding
 device, open **Settings → Devices → Link device by QR code** and scan or paste the link.
