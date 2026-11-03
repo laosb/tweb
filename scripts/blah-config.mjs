@@ -4,6 +4,8 @@ import {readFileSync} from 'node:fs';
 import {loadEnv} from 'vite';
 import blahBrandingPlugin from './blah-branding.mjs';
 
+export const BLAH_DIEM_WEB_RELEASE = '20261103-6015';
+
 const domainNamePattern = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /** Keep the release path pinned while allowing an operator's HTTPS CDN hostname. */
@@ -12,7 +14,7 @@ export function blahDiemRuntimeURL(cdnHost = '') {
   if(host.trim() !== host || host.length > 253 || !domainNamePattern.test(host)) {
     throw new Error('BLAH_DIEM_CDN_HOST must be a DNS hostname without a scheme, port or path');
   }
-  return `https://${host}/bd-web/20261103-6015/diem.js`;
+  return `https://${host}/bd-web/${BLAH_DIEM_WEB_RELEASE}/diem.js`;
 }
 
 /**
