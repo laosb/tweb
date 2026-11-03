@@ -339,9 +339,16 @@ export class AppNavigationController {
       // * otherwise browser will eat the event if you do push and back together
       this.modifyHistoryFromEvent(() => {
         this.log('onItemDeleted: back');
+        if(USE_NAVIGATION_API && !(navigation as Navigation & {canGoBack: boolean}).canGoBack) {
+          this.modificationResolve?.();
+          return;
+        }
+
         this.ignoreNextNavigations.unshift('traverse');
         if(USE_NAVIGATION_API) {
-          navigation.back();
+          this.modifyNavigation(() => navigation.back(), () => {
+            this.ignoreNextNavigations.shift();
+          });
           // const entries = navigation.entries().reverse().filter((entry) => entry.getState() === this.id);
           // const currentEntryIndex = entries.findIndex((entry) => entry.key === navigation.currentEntry.key);
           // if(currentEntryIndex !== -1) entries.splice(0, currentEntryIndex);
@@ -428,7 +435,7 @@ export class AppNavigationController {
     this.manual = false;
 
     if(USE_NAVIGATION_API) {
-      navigation.navigate(location.href, {state: this.id, history: 'push'});
+      this.modifyNavigation(() => navigation.navigate(location.href, {state: this.id, history: 'push'}));
     } else {
       history.pushState(this.id, '');
     }
@@ -443,7 +450,7 @@ export class AppNavigationController {
     }
 
     if(USE_NAVIGATION_API) {
-      navigation.navigate(url/* url.hash || '#' */, {state: this.id, history: 'replace'});
+      this.modifyNavigation(() => navigation.navigate(url/* url.hash || '#' */, {state: this.id, history: 'replace'}));
     } else {
       history.replaceState(this.id, '', url);
     }
@@ -481,6 +488,21 @@ export class AppNavigationController {
     return () => {
       this.escapeHandlers = this.escapeHandlers.filter((fn) => fn !== handler);
     };
+  }
+
+  private modifyNavigation(callback: () => unknown, onError?: () => void) {
+    // * capture before the call: navigate can fire synchronously, resolving this step
+    const resolve = this.modificationResolve;
+    const result = callback() as {committed: Promise<unknown>, finished: Promise<unknown>};
+    const onReject = () => {
+      // * a navigation aborted later must not resolve the next queued step
+      if(resolve && this.modificationResolve === resolve) {
+        onError?.();
+        resolve();
+      }
+    };
+    result.committed.catch(onReject);
+    result.finished.catch(onReject);
   }
 
   private modifyHistoryFromEvent(callback?: () => void) {
