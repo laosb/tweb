@@ -40,11 +40,6 @@ const renewalTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export {requireHomeStorage} from '@lib/blah/homeStorage';
 
-async function profileKind(encoding: Uint8Array): Promise<IdentityKind> {
-  const profile = await (await diemClient()).verifyProfile(encoding, Math.floor(Date.now() / 1000), {verify: verifySignature});
-  return profile.kind === 'channel' ? 'channel' : 'user';
-}
-
 /** Public DC domains this browser knows: account slots' DCs and home-change destinations. */
 async function knownDCDomain(dc: string) {
   for(let slot = 1; slot <= 4; slot++) {
@@ -150,29 +145,13 @@ export async function bindIdentity(slot: number) {
   });
 }
 
-function publicationURL(value: string) {
-  const url = new URL(value);
-  if(url.protocol !== 'https:' || url.username || url.password || url.hash) throw new Error('Use an HTTPS publication endpoint.');
-  return url;
-}
-
 async function retryHostedPublication(secret: IdentitySecret, info: IdentityInfo) {
   if((await stored<HostedNames>('hosting:' + info.id))?.pending) return publish(secret, info);
   return false;
 }
 
 export async function publish(secret: IdentitySecret, info?: IdentityInfo) {
-  if(info && await publishHosted(info.id, Array.from(decode(secret.profile)), info.domains)) return true;
-  const dcProfile = info && await (await diemClient()).verifyProfile(new Uint8Array(info.profile), Math.floor(Date.now() / 1000), {verify: verifySignature});
-  const endpoint = dcProfile?.kind === 'dc' ? `https://${info.domains[0]}/api/v1/renewal` : undefined;
-  if(!endpoint) return;
-  const url = publicationURL(endpoint);
-  const response = await fetch(url, {method: 'POST', redirect: 'error', credentials: 'omit', cache: 'no-store',
-    signal: AbortSignal.timeout(15_000),
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({profile: secret.profile})});
-  if(!response.ok) throw new Error('Profile publication failed: HTTP ' + response.status);
-  return true;
+  if(info) return publishHosted(info.id, Array.from(decode(secret.profile)), info.domains);
 }
 
 async function listIdentities() {
@@ -246,20 +225,28 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
     const profile = request.action === 'restore' && await fetchProfile(domain);
     if(request.action === 'restore' && !profile) throw new Error('No profile is published at this domain.');
     const runtime = await diemClient();
+    const verified = profile && await runtime.verifyProfile(profile, Math.floor(Date.now() / 1000), {verify: verifySignature});
+    const hostingDomain = verified ? profileDomain(verified.domains[0]) : domain;
     let restoredHosting: HostedNames;
-    const parentDomain = domain.split('.').slice(1).join('.');
-    if(profile && runtime.hosting && parentDomain.includes('.')) {
+    const parentDomain = hostingDomain.split('.').slice(1).join('.');
+    if(profile && runtime.hosting) {
       try {
-        const policy = await runtime.hosting.policy(parentDomain);
-        if(policy.domain === parentDomain) restoredHosting = {domain: parentDomain, held: [domain.split('.')[0]], proofs: {}};
-      } catch{ /* Own-domain profiles use manual publication. */ }
+        const policy = await runtime.hosting.policy(hostingDomain);
+        if(policy.domain === hostingDomain && policy.apex === true) restoredHosting = {domain: hostingDomain, held: [], proofs: {}};
+      } catch{ /* Try the parent when apex hosting is unavailable. */ }
+      if(!restoredHosting && parentDomain.includes('.')) {
+        try {
+          const policy = await runtime.hosting.policy(parentDomain);
+          if(policy.domain === parentDomain && policy.names) restoredHosting = {domain: parentDomain, held: [hostingDomain.split('.')[0]], proofs: {}};
+        } catch{ /* Own-domain profiles use manual publication. */ }
+      }
     }
     return exclusively(async() => {
       const client = runtime;
       const seed = await client.seeds.restore(request.phrase || '');
       let secret: IdentitySecret;
       try {
-        if(profile && await profileKind(profile) !== kind) throw new Error('The profile has a different identity kind.');
+        if(verified && (verified.kind === 'channel' ? 'channel' : 'user') !== kind) throw new Error('The profile has a different identity kind.');
         const attemptKey = request.attempt && kind === 'channel' && chatAttemptKey(slot, request.attempt);
         const previous = attemptKey && await stored<string>(attemptKey);
         if(previous) return await useIdentity(slot, async(secret, info) => {
@@ -270,10 +257,7 @@ export async function identityAction(slot: number, request: IdentityRequest): Pr
         if(kind === 'user' && await stored(custodyKey(slot))) throw new Error('This account slot already has an identity.');
         const identity = await client.seeds.identity(seed);
         if(kind === 'channel' && await stored(custodyKey(slot, identity.id))) throw new Error('This chat identity is already held in this browser.');
-        if(profile) {
-          const verified = await client.verifyProfile(profile, Math.floor(Date.now() / 1000), {verify: verifySignature});
-          if(verified.id !== identity.id) throw new Error('The recovery words do not match this domain.');
-        }
+        if(verified && verified.id !== identity.id) throw new Error('The recovery words do not match this domain.');
         if(request.hosted) {
           await hostingAPI();
           if(domain !== request.hosted.label + '.' + profileDomain(request.hosted.domain)) throw {type: 'BlahHostingInvalid'};

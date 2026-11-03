@@ -97,13 +97,17 @@ export interface HostingWorkInfo {
     bitsPerShorterCharacter: number;
     referenceLength: number;
 }
-export interface HostingPolicyInfo {
-    domain: string;
+export interface HostingNamesInfo {
     labelPattern: string;
     maxClaimsPerIdentity: number;
     maxUpdatesPerIdentityPerHour: number;
     claimGraceAfterExpiry: number;
     proofOfWork: HostingWorkInfo;
+}
+export interface HostingPolicyInfo {
+    domain: string;
+    apex: boolean;
+    names: HostingNamesInfo | null;
 }
 export interface HostingPuzzleInfo {
     label: string;
@@ -207,7 +211,8 @@ export type Exports = {
     respondToDeviceLink(input: DeviceLinkApproval, crypto: any): Promise<number[]>;
     hostingPolicy(domain: string, callbacks: any): Promise<HostingPolicyInfo>;
     hostingPlan(domain: string, labels: string[], identity: number[], callbacks: any): Promise<HostingNameInfo[]>;
-    hostingPublish(domain: string, encoding: number[], via: string | null, proofs: HostingProofInfo[], solve: boolean, callbacks: any): Promise<HostingPublishedInfo>;
+    hostingPublish(domain: string, encoding: number[], via: string | null, apex: boolean, proofs: HostingProofInfo[], solve: boolean, callbacks: any): Promise<HostingPublishedInfo>;
+    hostingProfile(domain: string, label: string | null, apex: boolean, callbacks: any): Promise<number[] | null>;
     /**
      * Verifies public profiles without a discovery domain or any private keys.
      */
