@@ -10,6 +10,7 @@ import type {IdentityActions} from '@lib/blah/identity';
 import type {IdentityView} from '@lib/blah/identity';
 import {solveHostedProof} from '@lib/blah/hostingSolver';
 import {hostingMessage} from '@lib/blah/hostingMessage';
+import {hostedDomain} from '@lib/blah/hosting';
 import styles from '@lib/blah/identity.module.scss';
 
 type Props = {
@@ -134,7 +135,7 @@ export function HostedNameChooser(props: Props) {
     <fieldset disabled={busy()}>
       <IdentityInput label="BlahHostingHost" value={host()} onInput={setHost} disabled={!!identity()?.hostedNames} ref={(input) => input.dir = 'ltr'} />
       <IdentityInput label="BlahHostingLabel" value={label()} onInput={setLabel} ref={(input) => input.dir = 'ltr'} />
-      <p dir="ltr"><bdi>{name() && domain() ? `${name()}.${domain()}` : ''}</bdi></p>
+      <p dir="ltr"><bdi>{name() && domain() ? hostedDomain(domain(), name()) : ''}</bdi></p>
       <p role="status">{checking() ? i18n('BlahHostingCheck') : plan() ? i18n(plan().status === 'taken' ? 'BlahHostingTaken' :
         plan().status === 'invalid' ? 'BlahHostingInvalid' : plan().status === 'held' ? 'BlahHostingHeld' : 'BlahHostingAvailable') : ''}</p>
       <Show when={plan()?.requiredBits > 0}>

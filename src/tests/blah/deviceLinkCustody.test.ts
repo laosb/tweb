@@ -37,6 +37,17 @@ describe('QR opaque custody installation', () => {
     await expect(installLinkedIdentity(2, opened, () => true)).rejects.toThrow('Quota exceeded');
     expect(state.store.has('custody:slot:2')).toBe(false);
   });
+  it('restores native grant hosting metadata with the apex held label and proof', async() => {
+    const opened = await grant();
+    const hosting = {domain: opened.domain, held: ['@'], proofs: {'@': [1, 2, 3]}};
+    await installLinkedIdentity(2, {...opened, metadata: new TextEncoder().encode(JSON.stringify({hosting}))}, () => true);
+    expect(state.store.get('custody:slot:2').hosting).toEqual(hosting);
+    expect(state.store.get('hosting:' + '01'.repeat(32))).toEqual(hosting);
+    state.publish.mockClear();
+    await identityAction(2, {action: 'renew'});
+    expect(state.publish).toHaveBeenCalledOnce();
+    expect(state.publish.mock.calls[0][2]).toEqual({via: '@', proofs: {}});
+  });
   it('refuses a populated slot and a conflicting binding', async() => {
     const opened = await grant();
     await expect(installLinkedIdentity(1, opened, () => true)).rejects.toMatchObject({type: 'BLAH_LINK_IDENTITY_EXISTS'});
