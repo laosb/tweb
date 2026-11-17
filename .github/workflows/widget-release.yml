@@ -156,6 +156,11 @@ jobs:
           test -s .cloudflare/widget/setup.html
           cp "$release_dir/feedback-widget.tar.gz" "$release_dir/SHA256SUMS" .cloudflare/widget/
           cp widget/hosting/_headers widget/hosting/_redirects .cloudflare/widget/
+          # Content-hashed chunks, workers and wasm are immutable; sw-*.js keeps its no-store rule.
+          (cd .cloudflare/widget && for file in *-????????.js *-????????.css *-????????.wasm; do
+            case "$file" in sw-*|'*'*) continue;; esac
+            printf '\n/%s\n  Cache-Control: public, max-age=31536000, immutable\n' "$file"
+          done) >> .cloudflare/widget/_headers
       - name: Validate Worker assets
         if: steps.latest.outputs.current == 'true'
         run: pnpm --allow-build=esbuild,workerd dlx "wrangler@$WRANGLER_VERSION" deploy --dry-run --config wrangler.widget.jsonc

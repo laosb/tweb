@@ -116,6 +116,8 @@ Telegram endpoint/key, discovery or numeric DC migration. HTTP uses the same pin
 host and port over HTTPS at `/apiw1`, without the WebSocket path or query. The TLS
 proxy must forward those POSTs to the DC's MTProto listener with its configured
 real-IP header. Transport selection follows `.env`; `?http=1` selects HTTP only.
+A first visit creates its auth key over HTTPS without waiting for the WebSocket probe,
+which moves the session to a WebSocket once one opens within the probe's 2 seconds.
 Query parameters such as `test=1` and `debug=1` cannot move the widget off its pinned
 DC or enable credential logging.
 Configure the support account in the DC's admin UI.
@@ -158,10 +160,11 @@ signs in; removing the token logs out. Changes to the fragment in a running fram
 reload it and follow the same path. A revoked or invalid token shows an error with no
 login form, and the chat stays hidden.
 
-Startup is bounded to 45 seconds, including opening the support conversation. If
-the DC cannot be reached or startup fails, the widget shows an error and
-**Reconnect**, which reloads the page. A timeout keeps the token and session intact;
-it does not sign out.
+A spinner paints with the stylesheet, before the client script loads, and stays
+beside the connecting status. Startup is bounded to 45 seconds, including opening
+the support conversation. If the DC cannot be reached or startup fails, the widget
+shows an error and **Reconnect**, which reloads the page. A timeout keeps the token
+and session intact; it does not sign out.
 
 The widget is the ordinary client with its storage: the session and message cache
 live in the widget origin's IndexedDB and storage, with its workers. Reloading

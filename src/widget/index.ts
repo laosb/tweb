@@ -25,13 +25,22 @@ function errorText(code: string): LangPackKey {
   return 'BfbConnectionFailed';
 }
 
+/** The spinner widget/index.html shows before any script runs; in-progress statuses keep it. */
+function spinner() {
+  const element = document.createElement('span');
+  element.className = 'widget-spinner';
+  element.setAttribute('aria-hidden', 'true');
+  return element;
+}
+
 /** The only UI before the chat opens: a status line, or an error with a retry. Never a login form. */
-function showStatus(key: LangPackKey, error?: boolean) {
+function showStatus(key: LangPackKey, state?: 'busy' | 'error') {
+  const error = state === 'error';
   const container = document.getElementById('widget');
   const message = document.createElement('p');
   I18n._i18n(message, key);
   message.setAttribute('role', error ? 'alert' : 'status');
-  container.replaceChildren(message);
+  container.replaceChildren(...(state === 'busy' ? [spinner()] : []), message);
   if(error) {
     const retry = document.createElement('button');
     retry.type = 'button';
@@ -42,7 +51,7 @@ function showStatus(key: LangPackKey, error?: boolean) {
 }
 
 function logOut() {
-  showStatus('BfbSigningOut');
+  showStatus('BfbSigningOut', 'busy');
   return rootScope.managers.apiManager.logOut();
 }
 
@@ -78,7 +87,7 @@ export async function startWidget(authState: AuthState) {
     else showStatus('BfbTokenRequired');
     return;
   }
-  showStatus('BfbConnecting');
+  showStatus('BfbConnecting', 'busy');
   // Keep partially constructed chat UI hidden and unfocusable until every stage succeeds.
   const chats = document.getElementById('page-chats');
   chats.inert = true;
@@ -136,7 +145,7 @@ export async function startWidget(authState: AuthState) {
       await logOut();
       return;
     }
-    showStatus(errorText(code), true);
+    showStatus(errorText(code), 'error');
   } finally {
     clearTimeout(timer);
   }

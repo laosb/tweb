@@ -23,6 +23,7 @@ import bytesXor from '@helpers/bytes/bytesXor';
 import {bigIntFromBytes} from '@helpers/bigInt/bigIntConversion';
 import bigInt from 'big-integer';
 import Modes from '@config/modes';
+import blah from '@config/blah';
 import {randomBytes} from '@helpers/random';
 import {MTAuthKey} from '@lib/mtproto/authKey';
 import safeAssign from '@helpers/object/safeAssign';
@@ -609,7 +610,10 @@ export class Authorizer {
   }
 
   private getTransportType = () => {
-    if(!import.meta.env.VITE_MTPROTO_AUTO || !Modes.multipleTransports) {
+    // The widget's first key exchange goes out over HTTPS at once: behind a slow WebSocket
+    // upgrade (a CDN), waiting on the probe adds its whole timeout to a first visit. The
+    // controller's background probe still moves the session to a WebSocket that answers.
+    if(!import.meta.env.VITE_MTPROTO_AUTO || !Modes.multipleTransports || blah?.widget) {
       return;
     }
 
