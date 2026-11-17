@@ -96,7 +96,6 @@ export function pruneWidgetWallet(source: string, path: string, parse: (source: 
       '      gramBadge: !!this.dom.gramBadge,',
       '      [\'gramBadge\', !!options.gram],',
       '    if(options.gram) this.createGramBadge();',
-      '      options.gram,',
       '      gramBadge: !!options.gram,'
     ]) replace(line);
   }
@@ -112,7 +111,7 @@ export function pruneWidgetWallet(source: string, path: string, parse: (source: 
   if(path.endsWith('/wrapUrl.ts')) {
     const start = source.indexOf(' else if(/^ton:');
     const end = source.indexOf(' else if((tgMatch', start);
-    if(start < 0 || end < start || !source.slice(start, end).includes('onclick = \'tc_tonconnect\'')) fail('link protocols');
+    if(start < 0 || end < start || !source.slice(start, end).includes('getAnchorHandlerName(\'tonconnect\', \'tc\')')) fail('link protocols');
     result.remove(start, end);
     const sendStart = source.indexOf(' else if(\n      // * the wallet');
     const sendEnd = source.indexOf(' else if(path[0])', sendStart);

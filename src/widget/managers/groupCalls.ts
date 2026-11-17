@@ -2,7 +2,7 @@ import type {AppGroupCallsManager as Original} from '@appManagers/appGroupCallsM
 import {AppManager} from '@appManagers/manager';
 import makeError from '@helpers/makeError';
 
-type Contract = Pick<Original, 'saveGroupCall' | 'getGroupCallFull' | 'createGroupCall' |
+type Contract = Pick<Original, 'saveGroupCall' | 'getGroupCallFull' | 'getRunningGroupCall' | 'createGroupCall' |
   'resolveConferenceCallPreview' | 'fetchRtmpState' | 'fetchRtmpPart' |
   'getGroupCallJoinAs' | 'saveDefaultGroupCallJoinAs'>;
 
@@ -25,6 +25,10 @@ export class AppGroupCallsManager extends AppManager implements Contract {
   // methods. Settle them with the protocol's unavailable-call error, before any
   // request, rather than returning a descriptor their callers could dereference.
   public getGroupCallFull(..._args: Parameters<Contract['getGroupCallFull']>): ReturnType<Contract['getGroupCallFull']> {
+    return Promise.reject(makeError('GROUPCALL_INVALID'));
+  }
+
+  public getRunningGroupCall(..._args: Parameters<Contract['getRunningGroupCall']>): ReturnType<Contract['getRunningGroupCall']> {
     return Promise.reject(makeError('GROUPCALL_INVALID'));
   }
 

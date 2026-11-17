@@ -13,6 +13,7 @@ vi.mock('@components/chat/chat', () => ({default: class {
   public _isLikeGroup() { return false; }
   public initSearch() { upstream(); }
   public isPinnedMessagesNeeded() { return true; }
+  public canChooseTheme() { return true; }
   public recomputePaddings() { upstream(); }
 }}));
 vi.mock('@components/chat/bubbles', () => ({default: class {
@@ -56,6 +57,7 @@ it('uses native group rendering and disables search and pinned messages', async(
   const chat = Object.create(Chat.prototype);
   expect(await chat._isLikeGroup()).toBe(true);
   expect(chat.isPinnedMessagesNeeded()).toBe(false);
+  expect(chat.canChooseTheme()).toBe(false);
   chat.initSearch();
   expect(upstream).not.toHaveBeenCalled();
 });

@@ -11,7 +11,7 @@ export function restrictChatPresentation() {
   const bubbles = ChatBubbles.prototype as any;
   const targets = [
     [chat, '_isLikeGroup'], [chat, 'recomputePaddings'],
-    [chat, 'init'], [chat, 'initSearch'], [chat, 'isPinnedMessagesNeeded'],
+    [chat, 'init'], [chat, 'initSearch'], [chat, 'isPinnedMessagesNeeded'], [chat, 'canChooseTheme'],
     [bubbles, 'attachContainerListeners'], [bubbles, 'createTitle'], [PeerTitle.prototype, 'update']
   ];
   for(const [object, key] of targets) {
@@ -19,6 +19,8 @@ export function restrictChatPresentation() {
   }
   chat.initSearch = (): undefined => undefined;
   chat.isPinnedMessagesNeeded = () => false;
+  // The embedding page owns the theme: a theme or wallpaper service message only shows.
+  chat.canChooseTheme = () => false;
   chat._isLikeGroup = () => Promise.resolve(true);
 
   const init = chat.init;
