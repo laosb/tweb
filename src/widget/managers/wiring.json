@@ -2,6 +2,6 @@
   "src/lib/appManagers/manager.ts": "b9f7955a3264b04acb6e79a44038f31485d23198bdbb0c1f6b50ffabc62f7bc9",
   "src/lib/appManagers/createManagers.ts": "c07ab5e82ff4f16770916d2d0160750c4e1fc44db497f89bb8bf8302ff95ae1e",
   "src/lib/appManagers/appManagersManager.ts": "9596c7ad4712744f86ea862fd1a85111aa0fbaa64b5d814da4b675d0be312e9a",
-  "src/lib/appManagers/apiUpdatesManager.ts": "446911a95e0400332b3a883be2498ff405a039dd46b3dda19021e6470a87dd00",
+  "src/lib/appManagers/apiUpdatesManager.ts": "adfcac342e671794527a3d316e154c4ba741fb4c59cfdd9114a2291e72adfd9c",
   "src/lib/getProxiedManagers.ts": "c27806185a3919d43cdb8de77becf5629cfd539c3f2c8826e84931a315a34b29"
 }

@@ -12,6 +12,8 @@ export const SuggestBirthdayBubble = wrapUnsupportedMessagePlate;
 export const NoForwardsRequestContent = wrapUnsupportedMessagePlate;
 export const NoForwardsRequestReplyMarkup = wrapUnsupportedMessagePlate;
 export const DelimiterWithText = wrapUnsupportedMessagePlate;
+export const ChatThemeGiftBubble = wrapUnsupportedMessagePlate;
+export const ChatWallPaperBubble = wrapUnsupportedMessagePlate;
 export const showStarGiftOfferButtons = () => false;
 export const getGiftAssetName = () => '';
 export const onGiveawayClick = () => {};

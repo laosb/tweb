@@ -18,6 +18,9 @@ declare module '@helpers/addAnchorListener?widget-original' {
 declare module '@lib/richTextProcessor/wrapUrl?widget-original' {
   const wrap: typeof import('@lib/richTextProcessor/wrapUrl').default;
   export default wrap;
+  export const PROXY_LINK_TYPES: typeof import('@lib/richTextProcessor/wrapUrl').PROXY_LINK_TYPES;
+  export const getAnchorHandlerName: typeof import('@lib/richTextProcessor/wrapUrl').getAnchorHandlerName;
+  export const isAnchorHandlerName: typeof import('@lib/richTextProcessor/wrapUrl').isAnchorHandlerName;
 }
 
 declare module '@components/wrappers/keyboardButton?widget-original' {

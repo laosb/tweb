@@ -1,6 +1,8 @@
 import wrapUrl from '@lib/richTextProcessor/wrapUrl?widget-original';
 import {isWidgetExternalUrl} from '@/widget/linkPolicy';
 
+export {PROXY_LINK_TYPES, getAnchorHandlerName, isAnchorHandlerName} from '@lib/richTextProcessor/wrapUrl?widget-original';
+
 export default function widgetWrapUrl(...args: Parameters<typeof wrapUrl>) {
   const result = wrapUrl(...args);
   if(/^tg:/i.test(args[0])) result.url = args[0];

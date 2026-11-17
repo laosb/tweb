@@ -30,7 +30,7 @@ export function pruneWidgetPeerTitle(source: string) {
 // Remove the Wallet menu records before constructors resolve their hidden labels/icons.
 export function pruneWidgetWalletMenu(source: string) {
   const records = [...source.matchAll(/    \}, \{\n      \/\/ \* [^\n]+\n      icon: 'wallet',[\s\S]*?(?=\n    \}, \{)/g)];
-  if(records.length !== 1 || !/text: 'Wallet\.(Menu|SendMoney)'/.test(records[0][0])) {
+  if(records.length !== 1 || !/text: 'Wallet(AttachMoney|SendMoney)'/.test(records[0][0])) {
     throw new Error('WIDGET_BRANCH_TARGET_CHANGED: wallet menu');
   }
   const record = records[0];

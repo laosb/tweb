@@ -54,6 +54,9 @@ const WIDGET_REPLACED: Record<string, string> = {
   'src/lib/calls/rtmpCallsController.ts': omitted('callsController.ts'),
   'src/lib/serviceWorker/rtmp.ts': omitted('serviceWorkerRtmp.ts'),
   // Composer and recipients.
+  'src/components/chat/aiRewriteEffect.ts': omitted('aiSendEffects.ts'),
+  'src/components/chat/aiSendFlight.ts': omitted('aiSendEffects.ts'),
+  'src/components/chat/aiSendSparkles.ts': omitted('aiSendEffects.ts'),
   'src/components/chat/botCommands.ts': omitted('botCommands.ts'),
   'src/components/chat/commandsHelper.ts': omitted('commandsHelper.ts'),
   'src/components/chat/emojiHelper.ts': omitted('autocompleteHelper.ts'),
@@ -85,6 +88,8 @@ const WIDGET_REPLACED: Record<string, string> = {
   // Message actions and received content.
   'src/components/chat/bubbleParts/paidServiceMessage.ts': omitted('paidServiceMessage.ts'),
   'src/components/chat/bubbleParts/pollMessageContent/index.ts': omitted('poll.ts'),
+  'src/components/chat/bubbles/chatThemeGift.tsx': omitted('receivedContent.ts'),
+  'src/components/chat/bubbles/chatWallPaper.tsx': omitted('receivedContent.ts'),
   'src/components/chat/bubbles/noForwardsRequest.tsx': omitted('receivedContent.ts'),
   'src/components/chat/bubbles/premiumGift.tsx': omitted('receivedContent.ts'),
   'src/components/chat/bubbles/starGift.tsx': omitted('receivedContent.ts'),
@@ -108,6 +113,7 @@ const WIDGET_REPLACED: Record<string, string> = {
   'src/components/autonomousDialogList/monoforumThreads.ts': omitted('monoforumList.ts'),
   'src/components/chat/bubbles/chatBackground.tsx': omitted('chatBackground.ts'),
   'src/components/chat/bubbles/unknownUser.tsx': omitted('unknownUser.ts'),
+  'src/components/chat/themeChooser.tsx': omitted('themeChooser.ts'),
   'src/components/chat/topbar.ts': omitted('topbar.ts'),
   'src/components/dialogsPinnedReorder.ts': omitted('dialogsPinnedReorder.ts'),
   'src/components/folderTags/dialogFolderTags.tsx': omitted('dialogFolderTags.ts'),
@@ -229,6 +235,7 @@ const WIDGET_UNREACHABLE = [
   /^src\/components\/avatarEdit\./, // excluded suggested-profile-photo service action
   /^src\/components\/chat\/bubbleParts\/(adminLogsResolver\/|suggestedPost)/,
   /^src\/components\/chat\/(logFiltersPopup|suggestPostPopup)\//,
+  /^src\/components\/popups\/chatWallPaper(Preview)?\./, // excluded chat wallpaper service action
   /^src\/components\/popups\/(createPoll|aiEditorPopup|translate)\//,
   // Navigation, settings and profiles.
   /^src\/components\/(communities|forumTab|addToFolderDropdownMenu|passcodeLock|iconLibrary)\//,
