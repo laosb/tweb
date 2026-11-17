@@ -226,6 +226,21 @@ body.blah-widget {
     margin: 0;
   }
 
+  // In widget/index.html too: it paints with the stylesheet, before the client's script loads.
+  .widget-spinner {
+    justify-self: center;
+    width: 2rem;
+    height: 2rem;
+    border: .1875rem solid var(--widget-accent-color, #285cc4);
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: widget-spinner 1s linear infinite;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation-duration: 3s;
+    }
+  }
+
   [role="alert"] {
     color: var(--widget-danger-color, inherit);
   }
@@ -240,6 +255,12 @@ body.blah-widget {
     color: #fff;
     background: var(--widget-accent-color, #285cc4);
     cursor: pointer;
+  }
+}
+
+@keyframes widget-spinner {
+  to {
+    transform: rotate(1turn);
   }
 }
 

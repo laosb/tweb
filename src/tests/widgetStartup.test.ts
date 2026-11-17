@@ -61,9 +61,13 @@ it.each(['account', 'authorize', 'support', 'save', 'bootstrap', 'open'] as cons
   const pending = deferred();
   mocks[stage].mockReturnValue(pending.promise);
   const started = startWidget(signedIn);
+  await vi.advanceTimersByTimeAsync(0);
+  // The connecting status keeps the page's pre-script spinner; an error drops it.
+  expect(document.querySelector('#widget .widget-spinner + [role="status"]')).not.toBeNull();
   await vi.advanceTimersByTimeAsync(45_000);
   await started;
   expect(document.querySelector('[role="alert"]').textContent).toContain('took too long');
+  expect(document.querySelector('#widget .widget-spinner')).toBeNull();
   expect(document.querySelector('#widget button').textContent).toBe('Reconnect');
   expect(document.querySelector<HTMLElement>('#page-chats').inert).toBe(true);
   pending.resolve();
