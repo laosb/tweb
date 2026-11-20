@@ -167,6 +167,11 @@ signs in; removing the token logs out. Changes to the fragment in a running fram
 reload it and follow the same path. A revoked or invalid token shows an error with no
 login form, and the chat stays hidden.
 
+Startup overlaps what does not depend on the token: the language pack loads alongside
+revalidation, and a restored session of the token's account also asks for its support
+account meanwhile. That answer is used only after the token succeeds; otherwise the
+lookup runs after sign-in. The chat is built only once the language is applied.
+
 A spinner paints with the stylesheet, before the client script loads, and stays
 beside the connecting status. Startup is bounded to 45 seconds, including opening
 the support conversation. If the DC cannot be reached or startup fails, the widget
@@ -191,7 +196,8 @@ Missing or malformed strings fall back to the widget’s bundled English, includ
 plural forms. A cached pack matching `lang` and the current bundled strings applies
 before rendering and catches up with server differences within five seconds;
 otherwise the widget starts in English and, when `lang` is valid, tries a full fetch
-within the same deadline.
+within the same deadline. The deadline runs concurrently with connecting; the chat and
+any error wait for the pack, never beyond it.
 
 ## Theme with CSS variables
 

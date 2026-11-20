@@ -56,6 +56,18 @@ function logOut() {
 }
 
 /**
+ * Opening the chat waits for this peer-independent configuration; a new session would
+ * otherwise request it only after the support lookup. The managers deduplicate and cache
+ * it, so the chat's own requests reuse these, and a late result has no visible effect.
+ */
+const CHAT_CONFIG = ['getConfig', 'getAppConfig', 'getPeerColors', 'getPeerProfileColors'] as const;
+function prefetchChatConfig(apiManager: Record<typeof CHAT_CONFIG[number], () => unknown>) {
+  for(const method of CHAT_CONFIG) {
+    Promise.resolve().then(() => apiManager[method]()).catch(() => {});
+  }
+}
+
+/**
  * Runs instead of the auth flow: the URL fragment's managed-account token is the only
  * credential, revalidated on every load, and the client then shows one conversation
  * with the home DC's support account. Returns once the chat is open or a status shows.
@@ -102,19 +114,28 @@ export async function startWidget(authState: AuthState) {
   });
   try {
     await Promise.race([timeout, (async() => {
-      await language;
-      attempt.signal.throwIfAborted();
+      // The language pack loads alongside the token stages (it needs no authorization)
+      // and is awaited before anything else renders: the chat and every status below.
       // `<user id>:<secret>`: another account's session goes before this one signs in.
       const {userId} = await AccountController.get(getCurrentAccount());
       attempt.signal.throwIfAborted();
       if(signedIn && String(userId) !== token.split(':')[0]) {
+        await language;
+        attempt.signal.throwIfAborted();
         await logOut();
         return;
       }
+      // A restored session is already this account's, so its support lookup overlaps the
+      // revalidation. Its result is used only after the token succeeds; on any failure
+      // the ordinary request below runs after it. A new session must sign in first.
+      const early = signedIn ?
+        managers.apiManager.invokeApi('help.getSupport', {}, {ignoreErrors: true}).catch((): undefined => undefined) :
+        undefined;
       // Also for a restored session: a revoked or rotated token must not reopen the chat.
       await managers.appAccountManager.importManagedAccountAuthorization(token);
       attempt.signal.throwIfAborted();
-      const result = await managers.apiManager.invokeApi('help.getSupport', {});
+      prefetchChatConfig(managers.apiManager);
+      const result = await early ?? await managers.apiManager.invokeApi('help.getSupport', {});
       attempt.signal.throwIfAborted();
       const user = result.user;
       await managers.appUsersManager.saveApiUser(user);
@@ -122,6 +143,8 @@ export async function startWidget(authState: AuthState) {
       if(user._ !== 'user' || user.pFlags?.deleted || user.id === +token.split(':')[0]) {
         throw new Error('SUPPORT_UNAVAILABLE');
       }
+      await language;
+      attempt.signal.throwIfAborted();
       const peerId = user.id.toPeerId(false);
       const appImManager = restrictToSupport(peerId, getPeerActiveUsernames(user));
       const {bootstrapIm} = await import('@/pages/bootstrapIm');
@@ -140,6 +163,8 @@ export async function startWidget(authState: AuthState) {
   } catch(error) {
     // Pending RPCs may still settle. They must neither advance startup nor clear this status.
     attempt.abort();
+    // Bounded by its own deadline, which a startup timeout has already passed.
+    await language;
     const code = (error as ApiError)?.type || (error as Error)?.message;
     if(AUTH_ERRORS.has(code) && signedIn) {
       await logOut();
