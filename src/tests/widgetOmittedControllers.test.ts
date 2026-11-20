@@ -8,6 +8,9 @@ import memoryReport from '@/widget/omitted/memoryReport';
 import {createPeakRecorder, readThreadMemory} from '@/widget/omitted/memoryStats';
 import {getLogEntries, isLogBufferEnabled, setLogBufferEnabled} from '@/widget/omitted/logsBuffer';
 import {getMemoryLogEntries, isMemoryWatchOn, startMemoryWatch} from '@/widget/omitted/memoryWatch';
+import Countries from '@/widget/omitted/countries';
+import {formatPhoneNumber} from '@helpers/formatPhoneNumber';
+import I18n from '@lib/langPack';
 import {assertWidgetCleanupAssets, assertWidgetCleanupModules, assertWidgetCleanupReferences, assertWidgetWalletOutput} from '../../scripts/widget-cleanup-guards';
 
 it('never acquires recording devices or creates panels', () => {
@@ -74,6 +77,12 @@ it('keeps worker diagnostic shapes without collecting, scheduling or registering
   expect(getMemoryLogEntries()).toEqual([]);
   expect((window as any).memoryWatch).toBeUndefined();
   expect((window as any).memoryReport).toBeUndefined();
+});
+
+it('ships no country list and leaves phone numbers as sent', () => {
+  expect(Countries).toEqual({_: 'help.countriesList', countries: [], hash: 0});
+  expect(I18n.countriesList).toEqual([]);
+  expect(formatPhoneNumber('+1 555 0100')).toEqual({formatted: '15550100', country: undefined, code: undefined, leftPattern: ''});
 });
 
 it.each([

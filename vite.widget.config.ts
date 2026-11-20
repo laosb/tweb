@@ -110,6 +110,7 @@ const WIDGET_REPLACED: Record<string, string> = {
   'src/components/wrappers/messageActionTextNew.ts': omitted('messageActionText.ts'),
   'src/components/wrappers/messageForReply.ts': omitted('messageForReply.ts'),
   'src/components/wrappers/webPage.tsx': omitted('receivedContent.ts'),
+  'src/countries.ts': omitted('countries.ts'),
   'src/helpers/parseVcard.ts': omitted('vcard.ts'),
   // Navigation, settings and profiles.
   'src/components/autonomousDialogList/monoforumThreads.ts': omitted('monoforumList.ts'),
