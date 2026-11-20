@@ -32,7 +32,7 @@ export function pruneWidgetWallet(source: string, path: string, parse: (source: 
     result.overwrite(start, start + before.length, after);
   };
   const program = parse(source);
-  const cases = path.endsWith('/messageActionTextNewUnsafe.ts') ? ['messageActionGramTransfer', 'messageActionWalletTonConnectRequest'] :
+  const cases = path.endsWith('/messageActionTextNewUnsafe.ts') ? ['messageActionGramTransfer', 'messageActionWalletTonConnectRequest', 'messageActionNoPaidMessagesTokenUsed'] :
     path.endsWith('/messagePreviewIcon.ts') ? ['messageActionGramTransfer'] :
     path.endsWith('/wrapRichText.ts') ? ['messageEntityTonAddress'] :
     path.endsWith('/wrapTelegramRichText.ts') ? ['textTonAddress'] : [];
@@ -64,6 +64,10 @@ export function pruneWidgetWallet(source: string, path: string, parse: (source: 
   visit(program);
   for(const name of [...cases, ...members]) if(!found.has(name)) fail(name);
 
+  if(path.endsWith('/messageActionTextNewUnsafe.ts')) {
+    replace('const UNSUPPORTED_ACTIONS = new Set<string>([\'messageActionGramTransfer\', \'messageActionWalletTonConnectRequest\']);');
+    replace('(UNSUPPORTED_ACTIONS.has(_) ? UNSUPPORTED_LANG_PACK_KEY : `[${action._}]`)', '`[${action._}]`');
+  }
   if(path.endsWith('/appMessagesManager.ts')) {
     replace('import GramTransferDrafts, {GramTransferDraftContent, WALLET_FIRST_GRAMS_SUGGESTION} from \'@lib/wallet/transferMessages\';');
     replace('    this.gramTransferDrafts.clear();');

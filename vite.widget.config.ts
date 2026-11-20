@@ -7,13 +7,14 @@ import widgetBuildRevision from './scripts/widget-build-revision';
 import widgetLanguage from './scripts/widget-language';
 import widgetIconFont from './scripts/widget-icon-font';
 import widgetBranches from './scripts/widget-branches';
+import widgetUpstream from './scripts/widget-upstream';
 import widgetWallet from './scripts/widget-wallet';
 import widgetManagerContracts, {widgetManagerReplacements} from './scripts/widget-manager-contracts';
 import {widgetThemeDeclaration, widgetCssSelector} from './scripts/widget-theme-css';
 import {assertWidgetEmojiSource, assertWidgetEmojiConsumer, assertWidgetEmojiModules} from './scripts/widget-emoji-guards';
 import {widgetStyles, widgetStyleSelector} from './scripts/widget-styles';
 import {assertWidgetServiceWorkerModules} from './scripts/widget-service-worker';
-import {assertWidgetCleanupAssets, assertWidgetCleanupModules, assertWidgetCleanupReferences, assertWidgetWalletOutput} from './scripts/widget-cleanup-guards';
+import {assertWidgetCleanupAssets, assertWidgetCleanupModules, assertWidgetCleanupReferences, assertWidgetWalletOutput, assertWidgetUpstreamOutput} from './scripts/widget-cleanup-guards';
 // @ts-ignore no type declarations
 import keepAsset from './keepAsset.js';
 
@@ -27,6 +28,7 @@ const isRuntimePublic = (name: string, directory: boolean) => (directory || keep
 // sign-in, notifications, QR codes and the installable app's icons.
 const WIDGET_OMITTED_PUBLIC = [
   /^assets\/img\/emoji(\/|$)/,
+  /^assets\/img\/qr(\/|$)/,
   /^assets\/audio\/(?!message_sent|notification)/,
   /^assets\/tgs\/(?!ReactionGeneric)/,
   /^assets\/fonts\/(?!tgico\.ttf$)/, // the icon font, whose first source is the .ttf
@@ -167,6 +169,7 @@ const WIDGET_INERT = [
   'src/lib/debug/mountLogExport.ts',
   // Emoji and sticker pickers.
   'src/components/emoticonsDropdown/search.tsx',
+  'src/components/emoticonsDropdown/bindDisposablePicker.ts',
   'src/components/emoticonsDropdown/tabs/SuperStickerRenderer.ts',
   'src/components/mediaEditor/tabs/stickersTab.tsx',
   'src/components/popups/createPoll/stickersDropdown.ts',
@@ -310,7 +313,7 @@ function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
       }
       if(path === 'src/lib/richTextProcessor/emojiImage.ts') {
         const names = exportNames(this.parse(readFileSync(id, 'utf8'), {lang: 'ts'})).sort();
-        if(names.join(',') !== 'areAllEmojiNative,getEmojiImageUrl,isEmojiNative') this.error('widget native emoji contract changed');
+        if(names.join(',') !== 'areAllEmojiNative,getEmojiImageUrl,getImageEmojis,isEmojiNative') this.error('widget native emoji contract changed');
       }
       if(path === 'src/scss/style.scss') return widgetStyles(readFileSync(id, 'utf8'));
       if(path === 'src/lib/serviceWorker/rtmp.ts') {
@@ -352,7 +355,11 @@ function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
     generateBundle(_, bundle) {
       assertWidgetCleanupAssets(Object.values(bundle).flatMap((item: any) => [item.fileName, ...(item.originalFileNames || [])]));
       for(const item of Object.values(bundle)) {
-        if(/\.(?:js|css|html)$/.test(item.fileName)) assertWidgetWalletOutput(item.type === 'chunk' ? item.code : String(item.source));
+        if(/\.(?:js|css|html)$/.test(item.fileName)) {
+          const source = item.type === 'chunk' ? item.code : String(item.source);
+          assertWidgetWalletOutput(source);
+          assertWidgetUpstreamOutput(source);
+        }
         if(item.type === 'asset' && /\.(?:html|webmanifest)$/.test(item.fileName)) assertWidgetCleanupReferences(String(item.source));
       }
     }
@@ -403,7 +410,7 @@ export default mergeConfig(upstream, defineConfig({
         if(/^assets\/blah\/|\.webmanifest$/.test(fileName)) delete bundle[fileName];
       }
     }}
-  }, widgetOmittedModules(), widgetManagerContracts(__dirname), widgetWallet(), widgetBranches(), widgetLanguage(__dirname), {
+  }, widgetOmittedModules(), widgetManagerContracts(__dirname), widgetWallet(), widgetBranches(), widgetUpstream(), widgetLanguage(__dirname), {
     name: 'widget-public-assets',
     apply: (config) => !config.build?.lib,
     async writeBundle(options) {
@@ -447,6 +454,8 @@ export default mergeConfig(upstream, defineConfig({
     emptyOutDir: true,
     sourcemap: false
   },
-  worker: {plugins: () => [widgetOmittedModules(false), widgetManagerContracts(__dirname), widgetWallet(false)], rolldownOptions: {output: {codeSplitting: false}}},
-  test: {root: __dirname, include: ['src/tests/widget*.test.ts'], provide: {widgetBuild: true}}
+  worker: {plugins: () => [widgetOmittedModules(false), widgetManagerContracts(__dirname), widgetWallet(false), widgetUpstream(false)], rolldownOptions: {output: {codeSplitting: false}}},
+  // Upstream's bot HTML-widget suites belong to the main client, whose runtime
+  // this build deliberately removes. Keep the support-widget suites here.
+  test: {root: __dirname, include: ['src/tests/widget*.test.ts'], exclude: ['src/tests/widgetSandbox*.test.ts', 'src/tests/widgetMessageShell.test.ts'], provide: {widgetBuild: true}}
 }));
