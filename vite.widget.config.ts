@@ -15,6 +15,7 @@ import {assertWidgetEmojiSource, assertWidgetEmojiConsumer, assertWidgetEmojiMod
 import {widgetStyles, widgetStyleSelector} from './scripts/widget-styles';
 import {assertWidgetServiceWorkerModules} from './scripts/widget-service-worker';
 import {assertWidgetDeferredModules, widgetDeferredFacade, WIDGET_DEFERRED_ORIGINAL} from './scripts/widget-deferred';
+import widgetMethods from './scripts/widget-methods';
 import {assertWidgetCleanupAssets, assertWidgetCleanupModules, assertWidgetCleanupReferences, assertWidgetWalletOutput, assertWidgetUpstreamOutput} from './scripts/widget-cleanup-guards';
 // @ts-ignore no type declarations
 import keepAsset from './keepAsset.js';
@@ -488,7 +489,7 @@ export default mergeConfig(upstream, defineConfig({
         if(/^assets\/blah\/|\.webmanifest$/.test(fileName)) delete bundle[fileName];
       }
     }}
-  }, widgetOmittedModules(), widgetManagerContracts(__dirname), widgetWallet(), widgetBranches(), widgetUpstream(), widgetLanguage(__dirname), {
+  }, widgetOmittedModules(), widgetManagerContracts(__dirname), widgetWallet(), widgetMethods(), widgetBranches(), widgetUpstream(), widgetLanguage(__dirname), {
     name: 'widget-public-assets',
     apply: (config) => !config.build?.lib,
     async writeBundle(options) {
@@ -532,7 +533,7 @@ export default mergeConfig(upstream, defineConfig({
     emptyOutDir: true,
     sourcemap: false
   },
-  worker: {plugins: () => [widgetOmittedModules(false), widgetManagerContracts(__dirname), widgetWallet(false), widgetUpstream(false), widgetEarlyKeyExchange()], rolldownOptions: {output: {codeSplitting: false}}},
+  worker: {plugins: () => [widgetOmittedModules(false), widgetManagerContracts(__dirname), widgetWallet(false), widgetMethods(false), widgetUpstream(false), widgetEarlyKeyExchange()], rolldownOptions: {output: {codeSplitting: false}}},
   // Upstream's bot HTML-widget suites belong to the main client, whose runtime
   // this build deliberately removes. Keep the support-widget suites here.
   test: {root: __dirname, include: ['src/tests/widget*.test.ts'], exclude: ['src/tests/widgetSandbox*.test.ts', 'src/tests/widgetMessageShell.test.ts'], provide: {widgetBuild: true}}

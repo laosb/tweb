@@ -26,6 +26,16 @@ Telegram constructors. Re-audit those producers before adding a supported wire
 field: pruning a field that the DC can send would desynchronize TL decoding.
 Ordinary chat/reply schemas and the fork’s runtime schema extensions remain.
 
+The worker build also drops API *methods* that no code in the worker chunk names
+([`scripts/widget-methods.ts`](../scripts/widget-methods.ts)): the schema module is
+rewritten with a placeholder and, once the chunk is rendered, the methods whose name
+is a string literal in it are restored (dynamic names like `channels.${what}` keep
+the `channels.` methods whose suffix is a literal). Replies are decoded by constructor
+id, so only outgoing calls need the table; constructors are never pruned. The rule is
+derived from the code, not listed, and the build fails if final code names a reviewed
+omission. A call to a pruned method throws `No method … found` in the serializer.
+Manager code that stays in the worker keeps its methods, so the saving is bounded.
+
 Received photos, documents (including audio and stickers), checklists, rich messages
 and service text remain. Stickers and custom emoji render and play, with Copy but
 no pack popups, attribution or pack menu items. Code blocks have no syntax
