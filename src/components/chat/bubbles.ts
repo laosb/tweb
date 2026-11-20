@@ -283,6 +283,7 @@ import {isPagingSlideshowTarget} from '@components/slideshow';
 import {isWidgetHorizontalDragTarget} from '@lib/widgetSandbox/gestures';
 import {keepWidgetHeights} from '@lib/widgetSandbox/heights';
 import isEphemeralMessage from '@appManagers/utils/messages/isEphemeralMessage';
+import {getCustomActionText} from '@lib/blah/customActionText';
 import isAnchoredEphemeralMessage from '@appManagers/utils/messages/isAnchoredEphemeralMessage';
 import canReplyToEphemeralMessage from '@appManagers/utils/messages/canReplyToEphemeralMessage';
 import isEphemeralMessageId from '@appManagers/utils/messageId/isEphemeralMessageId';
@@ -9556,6 +9557,7 @@ export default class ChatBubbles {
 
       const s = document.createElement('div');
       s.classList.add('service-msg');
+      if(getCustomActionText(message)) s.classList.add('is-text-selectable');
       // * set by an action that shows its text inside its own card
       let hideServiceText = false;
       if(action) {

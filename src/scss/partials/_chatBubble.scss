@@ -3678,6 +3678,10 @@ $message-out-gradient-phases: 0, 1, 2, 3, 4, 5, 6, 7;
     word-break: break-word;
     white-space: break-spaces;
 
+    &.is-text-selectable {
+      user-select: auto; // * Blah: a custom action's text selects like the bubble's content
+    }
+
     .expired-story-icon {
       margin-top: -4px;
     }

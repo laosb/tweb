@@ -108,6 +108,7 @@ import isEphemeralMessage from '@appManagers/utils/messages/isEphemeralMessage';
 import isAnchoredEphemeralMessage from '@appManagers/utils/messages/isAnchoredEphemeralMessage';
 import canReplyToEphemeralMessage from '@appManagers/utils/messages/canReplyToEphemeralMessage';
 import {flattenRichMessageSummary, isRichMessagePart} from '@lib/richMessage';
+import {asCopyableMessage, getCustomActionText} from '@lib/blah/customActionText';
 import verifyMenuItem from '@helpers/verifyMenuItem';
 import getStickeredMedia from '@appManagers/utils/stickers/getStickeredMedia';
 import {getStickerSetInputById} from '@appManagers/utils/stickers/getStickerSetInput';
@@ -956,7 +957,7 @@ export default class ChatContextMenu {
 
     // * copying the selected text, or anything that hands it out to be copied (the search field)
     const canCopySelectedText = () => this.canCopyText() &&
-      !!((this.message as Message.message).message || (this.message as Message.message).rich_message) &&
+      !!((this.message as Message.message).message || (this.message as Message.message).rich_message || getCustomActionText(this.message)) &&
       this.isTextSelected;
 
     const verifyFavoriteSticker = async(toAdd: boolean) => {
@@ -1230,7 +1231,7 @@ export default class ChatContextMenu {
         for(const [peerId, mids] of this.chat.selection.selectedMids) {
           const storageKey: MessagesStorageKey = `${peerId}_${this.chat.type === ChatType.Scheduled ? 'scheduled' : 'history'}`;
           for(const mid of mids) {
-            const message = (await this.managers.appMessagesManager.getMessageFromStorage(storageKey, mid)) as Message.message;
+            const message = asCopyableMessage(await this.managers.appMessagesManager.getMessageFromStorage(storageKey, mid)) as Message.message;
             if(!!(message.message || message.rich_message)) {
               return true;
             }
@@ -2372,12 +2373,12 @@ export default class ChatContextMenu {
         return;
       }
 
-      rawMessages = [message as Message.message];
+      rawMessages = [asCopyableMessage(message) as Message.message];
     } else {
       // read selected messages from their own (scheduled vs history) storage; re-fetching by a
       // bare id resolves against history/global and can pull a same-id message from another peer
       // (e.g. copying in Scheduled would grab a message from a different chat)
-      rawMessages = await this.chat.selection.getSelectedMessages() as Message.message[];
+      rawMessages = (await this.chat.selection.getSelectedMessages()).map(asCopyableMessage) as Message.message[];
     }
 
     // sort by send time so the copied text follows the chronological order, not the selection order (#357)
