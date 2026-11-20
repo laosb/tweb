@@ -14,6 +14,8 @@ export function widgetStyles(source: string) {
 // own hide rules are excluded by the caller. Shared .reply, .popup-peer and
 // .tabs-container styles deliberately remain in their upstream partials.
 const HIDDEN_CLASS_ROOTS = [
+  'widget-message',
+  'time-widget-network',
   'wallet',
   'tonconnect',
   'ton-connect',
@@ -93,6 +95,15 @@ const HIDDEN_ROOTS = new RegExp(
 // Existing hidden fragments inside shared button/chat-bubble partials. Discard
 // only these exact selectors; any new feature rule still fails the guard.
 const SHARED_HIDDEN_SELECTORS = new Set([
+  '.bubble.widget-message.is-full-width .bubble-content-wrapper',
+  '.bubble.widget-message.is-full-width .bubble-content',
+  '.bubble.widget-message .attachment',
+  '.bubble.widget-message .time-widget-network',
+  '.bubble:not(.has-webpage).widget-message:not(.is-reply) .bubble-content > .name',
+  '.bubble:not(.has-webpage).widget-message .bubble-name-chip-container',
+  '.bubble:not(.has-webpage).widget-message.is-reply .bubble-name-chip-container',
+  '.bubble.is-out.widget-message',
+  '.bubble.is-out.widget-message:not(.just-media) .bubble-content.has-gradient',
   '.chatlist-chat.active .dialog-subtitle-badge-gram',
   '.chatlist .dialog-subtitle-badge-gram',
   '.chatlist .is-muted.backwards .dialog-subtitle-badge-gram',

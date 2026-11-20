@@ -1,5 +1,11 @@
 // Assert whole feature graphs, including new eager imports after an upstream rename.
 const OMITTED_GRAPHS = [
+  /^src\/(?:components|lib)\/widgetSandbox\//,
+  /^src\/components\/chat\/bubbleParts\/widgetEdit\./,
+  /^src\/lib\/appManagers\/appWidgetsManager\./,
+  /^src\/components\/star3D\//,
+  /^src\/vendor\/(?:widget-sandbox(?:-quickjs)?|telegram-3d-star)\//,
+  /(?:^|\/)node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?(?:quickjs-emscripten(?:-core)?|@telegram\/widget-sandbox-quickjs)(?:\/|$)/,
   /^src\/components\/wallet\//,
   /^src\/lib\/wallet\//,
   /^src\/lib\/appManagers\/appWalletManager\./,
@@ -58,7 +64,7 @@ export function assertWidgetCleanupModules(paths: string[], replaced: string[]) 
 }
 
 export function assertWidgetCleanupAssets(paths: string[]) {
-  const unexpected = paths.filter(path => /apple-touch-icon(?:-precomposed)?\.png|(?:^|[/_.-])(?:wallet|tonconnect|ton-connect|onramp)(?:[/_.-]|$)|rnnoise|noiseSuppression|(?:^|\/)weights(?:[.-]|$)|EmptyChats\.svg|chat-thread-separator-dash/i.test(path));
+  const unexpected = paths.filter(path => /apple-touch-icon(?:-precomposed)?\.png|(?:^|[/_.-])(?:wallet|tonconnect|ton-connect|onramp)(?:[/_.-]|$)|assets\/img\/qr\/|rnnoise|noiseSuppression|quickjs|widget-sandbox|telegram-3d-star|emscripten-module|star(?:[-.][^/]*)?\.mesh|flecks|(?:^|\/)weights(?:[.-]|$)|EmptyChats\.svg|chat-thread-separator-dash/i.test(path));
   if(unexpected.length) throw new Error('widget omitted assets are emitted: ' + unexpected.join(', '));
 }
 
@@ -72,5 +78,13 @@ export function assertWidgetCleanupReferences(source: string) {
 export function assertWidgetWalletOutput(source: string) {
   if(/wallet[.]|tonconnect|ton_connect|ton_transfer|toncenter[.]|WalletTransaction|WalletState|messageActionGramTransfer|gram_filled|gram_refund|dialog-subtitle-badge-gram|onramp/i.test(source)) {
     throw new Error('widget Wallet code is emitted');
+  }
+}
+
+/** Reject bot HTML execution, storage and wire surfaces in every emitted page and worker. */
+export function assertWidgetUpstreamOutput(source: string) {
+  const match = /quickjs|widget-sandbox|telegram-3d-star|appWidgetsManager|widgets__encrypted|messageMediaWidget|botInlineMessageWidget|Widget\.NetworkMarker|watchFirstScreenSight|setChatAvailableReactions|reactionsSaves|shareTheme|noPaidMessagesToken/i.exec(source);
+  if(match) {
+    throw new Error('widget unreachable upstream feature is emitted: ' + match[0]);
   }
 }

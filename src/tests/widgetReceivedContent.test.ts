@@ -26,7 +26,7 @@ it.each(['StarGift', 'StarGiftUnique', 'StarGiftPurchaseOffer', 'GiftPremium', '
 });
 
 it.each(['Game', 'Giveaway', 'GiveawayResults', 'Contact', 'Geo', 'GeoLive', 'Venue',
-  'Invoice', 'PaidMedia', 'Story', 'Dice', 'WebPage'])('replaces media %s and removes special-renderer inputs', type => {
+  'Invoice', 'PaidMedia', 'Story', 'Dice', 'WebPage', 'Widget'])('replaces media %s and removes special-renderer inputs', type => {
   const message = {_: 'message', media: {_: 'messageMedia' + type}, message: 'caption', grouped_id: '1',
     rich_message: {}, reply_markup: {}, totalEntities: []} as unknown as Message;
   const result = widgetReceivedMessage(message) as Message.message;

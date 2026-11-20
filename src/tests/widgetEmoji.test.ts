@@ -7,7 +7,7 @@ import getEmojiUnified from '@lib/richTextProcessor/getEmojiUnified';
 import parseEntities from '@lib/richTextProcessor/parseEntities';
 import mergeEntities from '@lib/richTextProcessor/mergeEntities';
 import fixEmoji from '@lib/richTextProcessor/fixEmoji';
-import {areAllEmojiNative, isEmojiNative} from '@/widget/omitted/emojiImage';
+import {areAllEmojiNative, isEmojiNative, getImageEmojis} from '@/widget/omitted/emojiImage';
 
 const source = readFileSync('src/lib/richTextProcessor/getEmojiUnified.ts', 'utf8');
 const parse = (source: string) => parseSync(source, {configFile: false, parserOpts: {plugins: ['typescript']}});
@@ -40,6 +40,7 @@ describe('Unicode native widget emoji', () => {
 
   it('uses native emoji without artwork', () => {
     expect(areAllEmojiNative()).toBe(true);
+    expect(getImageEmojis('😀🤼🏻')).toEqual([]);
     expect(isEmojiNative('1f93c-1f3fb')).toBe(true);
   });
 

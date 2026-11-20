@@ -62,7 +62,25 @@
     "inputWalletCardSticker",
     "wallet.cardSticker",
     "wallet.card",
-    "payments.starGiftDepositPayload"
+    "payments.starGiftDepositPayload",
+    "inputMediaWidget",
+    "inputMediaWidgetId",
+    "messageMediaWidget",
+    "inputBotInlineMessageWidget",
+    "inputBotInlineMessageWidgetId",
+    "botInlineMessageWidget",
+    "userWallet",
+    "widgetQueryTypeData",
+    "widgetQueryTypeSignData",
+    "widgetQueryTypeSentTransaction",
+    "updateBotWidgetQuery",
+    "updateInlineBotWidgetQuery",
+    "updateBotWidgetCopyQuery",
+    "updateMessageWidgetData",
+    "messages.botWidgetQueryAnswer",
+    "messages.widgetPublicDataNotModified",
+    "messages.widgetPublicData",
+    "updateTranscribedAudioFile"
   ],
   "methods": [
     "contacts.exportNoPaidMessagesToken",
@@ -109,7 +127,16 @@
     "wallet.tonConnectNextEventId",
     "wallet.tonConnectCloseSession",
     "wallet.tonConnectGetSessions",
-    "wallet.setCardStickers"
+    "wallet.setCardStickers",
+    "messages.getBotWidgetQueryAnswer",
+    "messages.setBotWidgetQueryAnswer",
+    "messages.editMessageWidgetData",
+    "messages.editInlineBotMessageWidgetData",
+    "messages.editWidgetData",
+    "messages.getWidgetPublicData",
+    "messages.transcribeAudioFile",
+    "messages.getTranscriptionLangs",
+    "messages.setChatAvailableReactions"
   ],
   "params": {
     "userFull": [
