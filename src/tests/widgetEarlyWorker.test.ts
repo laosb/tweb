@@ -17,6 +17,16 @@ class FakeSharedWorker {
   }
 }
 
+class FakeWorker extends EventTarget {
+  static created: FakeWorker[] = [];
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  constructor(public url: string | URL, public options?: WorkerOptions) {
+    super();
+    FakeWorker.created.push(this);
+    this.addEventListener('message', (event) => this.onmessage?.(event as MessageEvent));
+  }
+}
+
 function setMeta(value: WidgetConfig) {
   document.head.innerHTML = Object.entries({
     'dc-id': value.dcId, 'dc-url': value.url, 'rsa-modulus': value.rsaKey.modulus,
@@ -25,11 +35,12 @@ function setMeta(value: WidgetConfig) {
 }
 
 /** Loads the page side as widget/index.html does, before the client. */
-async function startPage(search = '?lang=zh_Hans', hash = TOKEN) {
+async function startPage(search = '?lang=zh_Hans', hash = TOKEN, shared = true) {
   history.replaceState(null, '', '/' + search + hash);
   vi.resetModules();
   vi.stubGlobal('__BLAH_WIDGET__', true);
-  vi.stubGlobal('SharedWorker', FakeSharedWorker);
+  vi.stubGlobal('SharedWorker', shared ? FakeSharedWorker : undefined);
+  vi.stubGlobal('Worker', FakeWorker);
   const {startEarlyWorker} = await import('@/widget/earlyWorker');
   startEarlyWorker();
 }
@@ -47,13 +58,16 @@ async function askAsWorker() {
 
 beforeEach(() => {
   FakeSharedWorker.created = [];
+  FakeWorker.created = [];
   localStorage.clear();
   resetEarlyAuthKey();
   setMeta(config);
 });
 
 afterEach(async() => {
-  await askAsWorker(); // a page answers once; leave no page listening for the next test
+  // Leave no page listening for the next test: a page stops once a key is stored.
+  localStorage.setItem('dc2_auth_key', '1');
+  await askAsWorker();
   vi.unstubAllGlobals();
   vi.doUnmock('@config/blah');
   vi.restoreAllMocks();
@@ -84,6 +98,70 @@ it('starts the main worker at the URL the client will ask for, and hands the cli
   expect(FakeSharedWorker.created).toHaveLength(3);
 });
 
+/** The client's URL for its main worker, as apiManagerProxy.registerWorker builds it. */
+async function clientWorkerURL() {
+  const {makeWorkerURL} = await import('@helpers/setWorkerProxy');
+  const {THREADED_WORKER_PROTOCOL_QUERY_PARAM, THREADED_WORKER_PROTOCOL_VERSION} = await import('@lib/threadedWorkerTypes');
+  const {default: MainWorkerURL} = await import('@lib/mainWorker/index.worker.ts?worker&url');
+  const url = makeWorkerURL(MainWorkerURL);
+  url.searchParams.set(THREADED_WORKER_PROTOCOL_QUERY_PARAM, THREADED_WORKER_PROTOCOL_VERSION + '');
+  return url;
+}
+
+const message = (data: string) => new MessageEvent('message', {data});
+
+it('starts a dedicated main worker without shared workers and replays what it said before the client listened', async() => {
+  await startPage('?lang=zh_Hans&noSharedWorker=1', TOKEN, false);
+  expect(FakeSharedWorker.created).toHaveLength(0);
+  expect(FakeWorker.created).toHaveLength(1);
+  const [early] = FakeWorker.created;
+  const url = await clientWorkerURL();
+  expect(String(early.url)).toBe(url.href);
+  expect(early.options).toEqual({type: 'module'});
+
+  early.dispatchEvent(message('first'));
+  early.dispatchEvent(new Event('error'));
+  early.dispatchEvent(message('second'));
+
+  // The crypto and lottie workers are the client's own.
+  const crypto = new Worker('https://support.example/crypto.worker.js', {type: 'module'});
+  expect(crypto).not.toBe(early);
+  expect(crypto.addEventListener).toBe(EventTarget.prototype.addEventListener);
+
+  const worker = new Worker(url, {type: 'module'});
+  expect(worker).toBe(early);
+  expect(new Worker(url, {type: 'module'})).not.toBe(early);
+  const received: string[] = [];
+  worker.addEventListener('message', (event) => received.push(event.data));
+  expect(received).toEqual([]);
+  await Promise.resolve();
+  expect(received).toEqual(['first', 'second']);
+  early.dispatchEvent(message('third'));
+  expect(received).toEqual(['first', 'second', 'third']);
+
+  const errors: Event[] = [];
+  worker.addEventListener('error', (event) => errors.push(event));
+  await Promise.resolve();
+  expect(errors).toHaveLength(1);
+  // Every kind is listened for: the worker is an ordinary one again.
+  expect(Object.prototype.hasOwnProperty.call(worker, 'addEventListener')).toBe(false);
+  early.dispatchEvent(message('fourth'));
+  expect(received).toEqual(['first', 'second', 'third', 'fourth']);
+});
+
+it('replays to an onmessage handler too', async() => {
+  await startPage('', TOKEN, false);
+  const [early] = FakeWorker.created;
+  early.dispatchEvent(message('first'));
+  const worker = new Worker(await clientWorkerURL(), {type: 'module'});
+  expect(worker).toBe(early);
+  const received: string[] = [];
+  worker.onmessage = (event) => received.push(event.data);
+  await Promise.resolve();
+  early.dispatchEvent(message('second'));
+  expect(received).toEqual(['first', 'second']);
+});
+
 it('leaves a different worker URL to the client', async() => {
   await startPage();
   const [early] = FakeSharedWorker.created;
@@ -111,7 +189,11 @@ it('starts nothing for invalid pins or without shared workers', async() => {
 it('lets the worker exchange a key only for a token and no stored key', async() => {
   await startPage();
   expect(await askAsWorker()).toEqual(['start']);
-  // Once: a later worker of the same load is not answered.
+  // Another tab's dedicated worker asks too; the answer follows the storage of the moment.
+  expect(await askAsWorker()).toEqual(['start']);
+  localStorage.setItem('account1', JSON.stringify({dc2_auth_key: 'ab'.repeat(256)}));
+  expect(await askAsWorker()).toEqual([]);
+  localStorage.clear();
   expect(await askAsWorker()).toEqual([]);
 
   await startPage('', '');
