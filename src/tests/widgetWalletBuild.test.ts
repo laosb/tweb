@@ -5,6 +5,7 @@ import {mergeConfig} from 'vite';
 import {languageCoveragePlugin} from '../../tests/widget/languageCoverage.mjs';
 import {pruneWidgetSchema} from '../../scripts/widget-schema';
 import omitted from '@/widget/omittedSchema.json';
+import contracts from '@/widget/managers/contracts.json';
 
 const parse = (source: string) => parseSync(source, {configFile: false, parserOpts: {plugins: ['typescript', 'estree']}});
 const transform = (path: string, source = readFileSync(path, 'utf8')) => pruneWidgetWallet(source, path, parse).toString();
@@ -56,7 +57,9 @@ it.each([
 });
 
 it('omits the suggestion invalidation used only by first-transfer notifications', () => {
-  expect(transform('src/lib/appManagers/appPromoManager.ts')).not.toContain('public invalidateSuggestion');
+  // The whole promo manager is replaced by a widget contract with no members.
+  expect(contracts.appPromoManager.source).toBe('src/lib/appManagers/appPromoManager.ts');
+  expect(readFileSync(contracts.appPromoManager.replacement, 'utf8')).not.toContain('invalidateSuggestion');
 });
 
 it('drops Wallet link handlers and classification while retaining ordinary link handling', () => {

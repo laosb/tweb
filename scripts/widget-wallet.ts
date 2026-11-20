@@ -8,7 +8,6 @@ const TARGETS = [
   'src/lib/internalLinkProcessor.ts',
   'src/lib/internalLink.ts',
   'src/lib/uiNotificationsManager.ts',
-  'src/lib/appManagers/appPromoManager.ts',
   'src/lib/richTextProcessor/wrapUrl.ts',
   'src/lib/richTextProcessor/wrapRichText.ts',
   'src/lib/richTextProcessor/wrapTelegramRichText.ts',
@@ -18,8 +17,7 @@ const TARGETS = [
   'src/components/dialogElement.ts',
   'src/icons.ts',
   'src/components/chat/messageRender.ts',
-  'src/helpers/rowIconBackground.ts',
-  'src/lib/appManagers/utils/payments/starsTransaction.ts'
+  'src/helpers/rowIconBackground.ts'
 ];
 
 export function pruneWidgetWallet(source: string, path: string, parse: (source: string) => any) {
@@ -39,7 +37,7 @@ export function pruneWidgetWallet(source: string, path: string, parse: (source: 
   const members = path.endsWith('/appMessagesManager.ts') ? [
     'createGramTransferDraft', 'failGramTransferDraft', 'dropGramTransferDraft',
     'getSendingGramTransferDraft', 'adoptGramTransferDraft', 'dispatchTonConnectRequest', 'gramTransferDrafts'
-  ] : path.endsWith('/internalLinkProcessor.ts') ? ['processWalletSendLink', 'processTonConnectLink'] : path.endsWith('/dialogElement.ts') ? ['createGramBadge'] : path.endsWith('/appPromoManager.ts') ? ['invalidateSuggestion'] : [];
+  ] : path.endsWith('/internalLinkProcessor.ts') ? ['processWalletSendLink', 'processTonConnectLink'] : path.endsWith('/dialogElement.ts') ? ['createGramBadge'] : [];
   const found = new Set<string>();
   const visit = (node: any) => {
     if(!node || typeof(node) !== 'object') return;
@@ -107,7 +105,7 @@ export function pruneWidgetWallet(source: string, path: string, parse: (source: 
     for(const entry of ['  gram_filled: \'eaa7\',', '  gram_refund: \'eaa8\',', '  gram: \'eaa9\',', '  wallet: \'eb00\',']) replace(entry);
   }
   if(path.endsWith('/rowIconBackground.ts')) replace('  gram_filled: \'blue\',');
-  if(path.endsWith('/messageRender.ts') || path.endsWith('/starsTransaction.ts')) replace('\'gram_filled\'', '\'ton\'');
+  if(path.endsWith('/messageRender.ts')) replace('\'gram_filled\'', '\'ton\'');
   if(path.endsWith('/internalLinkProcessor.ts')) {
     replace(',\n      [INTERNAL_LINK_TYPE.WALLET_SEND]: this.processWalletSendLink,\n      [INTERNAL_LINK_TYPE.TON_CONNECT]: this.processTonConnectLink');
   }

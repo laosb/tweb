@@ -27,8 +27,9 @@ export function assertWidgetManagerSource(source: string, expected: string, path
 
 // Check every transformed module of both graphs, including dormant methods left
 // behind runtime restrictions. An alias/escape must be audited explicitly; never
-// assume a manager passed elsewhere will only use today's named methods.
-export function assertWidgetManagerCalls(program: any, methods: Methods, id: string) {
+// assume a manager passed elsewhere will only use today's named methods. Only the
+// hash-pinned wiring may name a manager in a string (createManagers' after() order).
+export function assertWidgetManagerCalls(program: any, methods: Methods, id: string, pinnedWiring = false) {
   const fail = (detail: string) => { throw new Error('WIDGET_MANAGER_CONTRACT: ' + id + ': ' + detail); };
   walk(program, (node, parent) => {
     if(['MemberExpression', 'OptionalMemberExpression'].includes(node.type) && methods.has(nameOf(node.property))) {
@@ -46,7 +47,7 @@ export function assertWidgetManagerCalls(program: any, methods: Methods, id: str
     if(['Property', 'ObjectProperty'].includes(node.type) && methods.has(nameOf(node.key)) && parent?.type === 'ObjectPattern') {
       fail('destructured manager: ' + nameOf(node.key));
     }
-    if(['Literal', 'StringLiteral'].includes(node.type) && methods.has(node.value) &&
+    if(!pinnedWiring && ['Literal', 'StringLiteral'].includes(node.type) && methods.has(node.value) &&
       !(['MemberExpression', 'OptionalMemberExpression'].includes(parent?.type) && parent.computed && parent.property === node)) {
       fail('indirect manager name: ' + node.value);
     }
@@ -86,7 +87,7 @@ export default function widgetManagerContracts(root: string): Plugin {
       if(Object.values(contracts).some(item => id === resolve(root, item.source) + '?widget-original')) {
         this.error('WIDGET_MANAGER_ORIGINAL_REINTRODUCED: ' + id);
       }
-      assertWidgetManagerCalls(this.parse(source), methods, id);
+      assertWidgetManagerCalls(this.parse(source), methods, id, Object.keys(wiring).some(path => id === resolve(root, path)));
     }
   };
 }

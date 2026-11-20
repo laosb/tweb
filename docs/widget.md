@@ -365,15 +365,20 @@ retained glyph and observed icon with the original font, including editor/viewer
 
 ### Background manager contracts
 
-The widget replaces unused call, statistics, boost, business, website authorization and wallet
-managers with account-bound implementations in
-[`src/widget/managers/`](../src/widget/managers/). Ingestion and inherited entry
-points keep explicit typed contracts. The [contract guard](../scripts/widget-manager-contracts.ts)
+The widget replaces unused call, statistics, boost, business, website authorization, wallet,
+story, Community, gift, payment, translation, attach-menu bot, AI tone, promo, chat invite,
+saved music and password managers with account-bound implementations in
+[`src/widget/managers/`](../src/widget/managers/). They install no listeners, timers or
+startup requests. Ingestion and inherited entry points keep explicit typed contracts:
+profile intro stickers and collectible-gift theme documents keep their file references,
+state queries answer that nothing exists, and feature entry points reject with the DC's
+unknown-method error before any request. The [contract guard](../scripts/widget-manager-contracts.ts)
 checks page and worker call sites and requires a new audit when upstream manager
-or lifecycle wiring changes; aliases and dynamic method access fail closed.
-Profile intro stickers retain document ingestion and file references. Stories,
-payments, gifts, translations, inline/attach-menu bots and games retain their
-original managers for shared ingestion, caches and reference refreshes.
+or lifecycle wiring changes; aliases and dynamic method access fail closed, and only the
+pinned wiring may name a manager in a string. Their API methods then leave the worker
+schema. Privacy, inline bots (callback buttons), GIFs (Save to GIFs), games, polls,
+stickers and profiles retain their original managers for reachable behavior or shared
+ingestion.
 
 ### Language keys
 

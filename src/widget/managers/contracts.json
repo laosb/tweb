@@ -33,5 +33,60 @@
     "source": "src/lib/appManagers/appWalletManager.ts",
     "sha256": "e979cb3bbb890a60f62322ec2307296f477cc4608dd068235bd08992ac91ceff",
     "replacement": "src/widget/managers/wallet.ts"
+  },
+  "appCommunitiesManager": {
+    "source": "src/lib/appManagers/appCommunitiesManager.ts",
+    "sha256": "4c0cad49a01fe7aaa73fe05c01bbbeb042df274790bff1a04088de147dce4e40",
+    "replacement": "src/widget/managers/communities.ts"
+  },
+  "appStoriesManager": {
+    "source": "src/lib/appManagers/appStoriesManager.ts",
+    "sha256": "6437728b3865e34e33ea10c1d9400a175d4e7447da1869b08e479c15ad64b299",
+    "replacement": "src/widget/managers/stories.ts"
+  },
+  "appGiftsManager": {
+    "source": "src/lib/appManagers/appGiftsManager.ts",
+    "sha256": "45ee7337fcb23400b492ecd6d544f70fb04444079259856aaa1d87f1799c933d",
+    "replacement": "src/widget/managers/gifts.ts"
+  },
+  "appTranslationsManager": {
+    "source": "src/lib/appManagers/appTranslationsManager.ts",
+    "sha256": "7592c6f3e2b96cc181b76cb1b538cd0b68fc7c8a4ebb965ac9e97e5de26bb3af",
+    "replacement": "src/widget/managers/translations.ts"
+  },
+  "appPaymentsManager": {
+    "source": "src/lib/appManagers/appPaymentsManager.ts",
+    "sha256": "56e96f8fee5fa3f895cf9acea4f07e13c9430a85d28d70716b2976ca011a2109",
+    "replacement": "src/widget/managers/payments.ts"
+  },
+  "appAttachMenuBotsManager": {
+    "source": "src/lib/appManagers/appAttachMenuBotsManager.ts",
+    "sha256": "7e2f7cdea2fb398b40f8404ed57fbe7ab2f0e88ccdb2faffc19ed3be2c53b1e0",
+    "replacement": "src/widget/managers/attachMenuBots.ts"
+  },
+  "aiTonesManager": {
+    "source": "src/lib/appManagers/aiTonesManager.ts",
+    "sha256": "54ffae52ec2c13afc15f145a279a661ffce020e7e8051a4a4d493e5326a20a43",
+    "replacement": "src/widget/managers/aiTones.ts"
+  },
+  "appPromoManager": {
+    "source": "src/lib/appManagers/appPromoManager.ts",
+    "sha256": "1fc1f8fef35dff761d1810dad60b86287fe895f20387a05802afb5e90f94d253",
+    "replacement": "src/widget/managers/promo.ts"
+  },
+  "appChatInvitesManager": {
+    "source": "src/lib/appManagers/appChatInvitesManager.ts",
+    "sha256": "df46503a3cf987ffb36f32421124df0534acf8bf95472143b7c8fdb5afdefffb",
+    "replacement": "src/widget/managers/chatInvites.ts"
+  },
+  "appSavedMusicManager": {
+    "source": "src/lib/appManagers/appSavedMusicManager.ts",
+    "sha256": "032dd08c2a91033e46d1d1a6200334d9bab234e9304463c61bccc854419cf5ea",
+    "replacement": "src/widget/managers/savedMusic.ts"
+  },
+  "passwordManager": {
+    "source": "src/lib/appManagers/passwordManager.ts",
+    "sha256": "ccdeeeb7534258c782d1b91e3407f7a96a26ba3e0b835ae7496b405723043b20",
+    "replacement": "src/widget/managers/password.ts"
   }
 }
