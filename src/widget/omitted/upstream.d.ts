@@ -29,3 +29,21 @@ declare module '@components/wrappers/keyboardButton?widget-original' {
   export const getKeyboardButtonHandler: typeof import('@components/wrappers/keyboardButton').getKeyboardButtonHandler;
   export const getRichPageButtonHandler: typeof import('@components/wrappers/keyboardButton').getRichPageButtonHandler;
 }
+
+declare module '@components/mediaViewer/index?widget-original' {
+  const viewer: typeof import('@components/mediaViewer').default;
+  export default viewer;
+  export const onMediaCaptionClick: typeof import('@components/mediaViewer').onMediaCaptionClick;
+}
+
+declare module '@components/mediaViewer/static?widget-original' {
+  const viewer: typeof import('@components/mediaViewer/static').default;
+  export default viewer;
+}
+
+declare module '@components/popups/newMedia?widget-original' {
+  const show: typeof import('@components/popups/newMedia').default;
+  export default show;
+  export const getCurrentNewMediaPopup: typeof import('@components/popups/newMedia').getCurrentNewMediaPopup;
+  export const canSendNewMedia: typeof import('@components/popups/newMedia').canSendNewMedia;
+}

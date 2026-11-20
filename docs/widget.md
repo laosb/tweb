@@ -305,7 +305,12 @@ replaces omitted features without changing upstream client files. Runtime
 restrictions guard navigation and message actions before lookups or requests.
 Build guards reject changed replacement targets, eager omitted screens and
 unwanted assets. The unreferenced installable-app touch icon is omitted too;
-release HTML and manifests may not name it. Keep the
+release HTML and manifests may not name it. Screens a customer opens only by an
+action — the media viewer, the attachment preview and a few popups — build into one
+`deferred` script, fetched at the first interaction after the chat appears; small
+facades stand in for them in the client script, and the
+[deferred-module guard](../scripts/widget-deferred.ts) rejects one imported eagerly again.
+Keep the
 [theme CSS mapping](../scripts/widget-theme-css.ts) aligned with new surfaces and
 the circle exceptions documented above.
 

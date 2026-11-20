@@ -6,7 +6,7 @@ vi.mock('@components/mediaViewer', () => ({default: class {
   public setMessageActionVisibility(options: object) { upstream.actions(options); }
   public setBtnMenuToggle(buttons: unknown[], menuOnly: unknown[]) { upstream.menu(buttons, menuOnly); }
 }}));
-beforeAll(restrictMediaViewer);
+beforeAll(() => restrictMediaViewer(AppMediaViewer));
 afterEach(() => { vi.clearAllMocks(); });
 const viewer = () => Object.assign(Object.create(AppMediaViewer.prototype), {
   buttons: {forward: document.createElement('button')}
@@ -29,7 +29,7 @@ it('fails closed on an upstream rename', () => {
   const original = proto.setMessageActionVisibility;
   try {
     proto.setMessageActionVisibility = undefined;
-    expect(restrictMediaViewer).toThrow('WIDGET_RESTRICTION_TARGET_MISSING: setMessageActionVisibility');
+    expect(() => restrictMediaViewer(AppMediaViewer)).toThrow('WIDGET_RESTRICTION_TARGET_MISSING: setMessageActionVisibility');
   } finally {
     proto.setMessageActionVisibility = original;
   }

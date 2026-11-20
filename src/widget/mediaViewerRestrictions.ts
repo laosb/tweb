@@ -1,8 +1,9 @@
-import AppMediaViewer from '@components/mediaViewer';
+import type AppMediaViewer from '@components/mediaViewer';
 import type {ButtonMenuItemOptionsVerifiable} from '@components/buttonMenu';
 
-export function restrictMediaViewer() {
-  const viewer = AppMediaViewer.prototype as any;
+/** Applied to the upstream viewer as the deferred chunk delivers it (src/widget/deferred/mediaViewer.ts). */
+export function restrictMediaViewer(Viewer: typeof AppMediaViewer) {
+  const viewer = Viewer.prototype as any;
   for(const key of ['setMessageActionVisibility', 'setBtnMenuToggle']) {
     if(typeof(viewer[key]) !== 'function') throw new Error('WIDGET_RESTRICTION_TARGET_MISSING: ' + key);
   }

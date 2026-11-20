@@ -8,7 +8,6 @@ import {ChatReactionsMenu} from '@components/chat/reactionsMenu';
 import {restrictChatPresentation} from '@/widget/chatRestrictions';
 import {applyWidgetInsets} from '@/widget/insets';
 import {useWidgetSelfTitle} from '@/widget/selfTitle';
-import {restrictMediaViewer} from '@/widget/mediaViewerRestrictions';
 import {restrictChatStatus} from '@/widget/statusRestrictions';
 import {restrictMessageSelection} from '@/widget/selectionRestrictions';
 import {restrictInternalLinks} from '@/widget/linkRestrictions';
@@ -45,7 +44,6 @@ export function restrictToSupport(supportPeerId: PeerId, usernames: readonly str
   restrictChatPresentation();
   useWidgetSelfTitle();
   applyWidgetInsets();
-  restrictMediaViewer();
 
   // Every way into another chat, a profile or the chat list ends in these two.
   const isSupportChat = (options: {peerId?: PeerId, type?: ChatType}) => {

@@ -14,6 +14,7 @@ import {widgetThemeDeclaration, widgetCssSelector} from './scripts/widget-theme-
 import {assertWidgetEmojiSource, assertWidgetEmojiConsumer, assertWidgetEmojiModules} from './scripts/widget-emoji-guards';
 import {widgetStyles, widgetStyleSelector} from './scripts/widget-styles';
 import {assertWidgetServiceWorkerModules} from './scripts/widget-service-worker';
+import {assertWidgetDeferredModules, widgetDeferredFacade, WIDGET_DEFERRED_ORIGINAL} from './scripts/widget-deferred';
 import {assertWidgetCleanupAssets, assertWidgetCleanupModules, assertWidgetCleanupReferences, assertWidgetWalletOutput, assertWidgetUpstreamOutput} from './scripts/widget-cleanup-guards';
 // @ts-ignore no type declarations
 import keepAsset from './keepAsset.js';
@@ -255,13 +256,32 @@ const WIDGET_UNREACHABLE = [
   // Recording.
   /^src\/vendor\/recorder\.min\.js$/
 ];
+// Screens a customer opens only by an action build into one `deferred` chunk, fetched at the
+// first interaction (src/widget/deferred/warm.ts). Each module builds as a facade loading the
+// unchanged upstream module: a reviewed one from src/widget/deferred/, or, for `null`, one
+// generated from its exports (scripts/widget-deferred.ts).
+const deferred = (name: string) => resolve(__dirname, 'src/widget/deferred', name);
+const WIDGET_DEFERRED: Record<string, string | null> = {
+  'src/components/mediaViewer/index.ts': deferred('mediaViewer.ts'),
+  'src/components/mediaViewer/static.ts': deferred('mediaViewerStatic.ts'),
+  'src/components/popups/newMedia.tsx': deferred('newMedia.ts'),
+  'src/components/popups/checklist.tsx': null,
+  'src/components/popups/createLink.tsx': null,
+  'src/components/popups/deleteMessages.ts': null,
+  'src/components/popups/limit.ts': null,
+  'src/components/popups/reactedList.tsx': null,
+  'src/components/popups/richMessageLocation.tsx': null,
+  'src/components/popups/scheduleSendingPopup.tsx': null
+};
 const UNREACHABLE = '\0widget-unreachable';
 const omittedLazily = new Set<string>();
 const isUnreachable = (id: string) => WIDGET_UNREACHABLE.some((pattern) => pattern.test(relative(__dirname, id)));
 
 // Few files: the client builds as one chunk, apart from the media editor (loaded when a
-// customer edits a photo) and what the setup page shares with it; each worker is one file.
+// customer edits a photo), the deferred screens (WIDGET_DEFERRED) and what the setup page
+// shares with it; each worker is one file.
 const MEDIA_EDITOR = /\/src\/components\/mediaEditor\/|\/mediabunny\//;
+const LAZY = new RegExp(MEDIA_EDITOR.source + '|' + WIDGET_DEFERRED_ORIGINAL.replace('?', '\\?') + '$');
 const SETUP_ONLY = /\/src\/widget\/(setup|preview)|\.html$/;
 type ChunkingContext = {getModuleInfo(id: string): {importedIds: readonly string[], dynamicallyImportedIds: readonly string[]} | null};
 /** Modules `from` loads, following lazy imports except those into `lazyChunk`. */
@@ -280,15 +300,17 @@ function reachable(from: string, context: ChunkingContext, lazyChunk?: RegExp) {
 // (src/widget/earlyWorker.ts). Its own modules form a small chunk the client imports
 // back; what it shares with the setup page stays in 'shared', which the page loads anyway.
 const EARLY_ENTRY = 'src/widget/early.ts';
-let setupModules: Set<string>, earlyModules: Set<string>, clientModules: Set<string>, allModules: Set<string>;
+let setupModules: Set<string>, earlyModules: Set<string>, clientModules: Set<string>, deferredModules: Set<string>, allModules: Set<string>;
 function chunkName(id: string, context: ChunkingContext) {
   setupModules ??= reachable('widget/setup.html', context);
   earlyModules ??= reachable(EARLY_ENTRY, context);
-  clientModules ??= reachable('widget/index.html', context, MEDIA_EDITOR);
+  clientModules ??= reachable('widget/index.html', context, LAZY);
+  deferredModules ??= reachable('widget/index.html', context, MEDIA_EDITOR);
   allModules ??= reachable('widget/index.html', context);
   if(setupModules.has(id)) return SETUP_ONLY.test(id) ? null : 'shared';
   if(earlyModules.has(id)) return 'early';
   if(clientModules.has(id)) return /\.html$/.test(id) ? null : 'client';
+  if(deferredModules.has(id)) return 'deferred';
   return allModules.has(id) ? 'media-editor' : null;
 }
 
@@ -337,6 +359,11 @@ function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
         if(names.join(',') !== 'areAllEmojiNative,getEmojiImageUrl,getImageEmojis,isEmojiNative') this.error('widget native emoji contract changed');
       }
       if(path === 'src/scss/style.scss') return widgetStyles(readFileSync(id, 'utf8'));
+      if(path in WIDGET_DEFERRED) {
+        if(WIDGET_DEFERRED[path]) return readFileSync(WIDGET_DEFERRED[path], 'utf8');
+        const source = readFileSync(id, 'utf8');
+        return widgetDeferredFacade(this.parse(source, {lang: path.endsWith('x') ? 'tsx' : 'ts'}), source, id);
+      }
       if(path === 'src/lib/serviceWorker/rtmp.ts') {
         const names = exportNames(this.parse(readFileSync(id, 'utf8'), {lang: 'ts'})).sort();
         if(names.join(',') !== 'onRtmpFetch,onRtmpLeftCall') this.error('widget SW RTMP contract changed');
@@ -368,12 +395,18 @@ function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
         for(const path of paths) workerModulePaths.add(path);
         return;
       }
-      const missing = [...Object.keys(WIDGET_REPLACED), ...WIDGET_INERT, ...WIDGET_TRANSFORMED].filter((path) => !ids.has(resolve(__dirname, path)) && !workerModulePaths.has(path));
+      const missing = [...Object.keys(WIDGET_REPLACED), ...WIDGET_INERT, ...WIDGET_TRANSFORMED, ...Object.keys(WIDGET_DEFERRED)].filter((path) => !ids.has(resolve(__dirname, path)) && !workerModulePaths.has(path));
       if(missing.length) this.error('no longer in the build: ' + missing.join(', '));
       const eager = [...omittedLazily].filter((id) => ids.has(id)).map((id) => relative(__dirname, id));
       if(eager.length) this.error('omitted lazily but also imported eagerly: ' + eager.join(', '));
+      const facades = assertWidgetDeferredModules(ids, this, (id) => relative(__dirname, id));
+      if(facades !== Object.keys(WIDGET_DEFERRED).length) this.error(`${facades} deferred modules load, expected ${Object.keys(WIDGET_DEFERRED).length}`);
     },
     generateBundle(_, bundle) {
+      const chunks = Object.values(bundle).filter((item) => item.type === 'chunk');
+      const later = new Set(chunks.filter((item) => item.name === 'deferred' || item.name === 'media-editor').map((item) => item.fileName));
+      const eager = chunks.filter((item) => item.name === 'client' || item.isEntry).flatMap((item) => item.imports).filter((file) => later.has(file));
+      if(eager.length) this.error('lazily loaded chunks are imported eagerly: ' + eager.join(', '));
       assertWidgetCleanupAssets(Object.values(bundle).flatMap((item: any) => [item.fileName, ...(item.originalFileNames || [])]));
       for(const item of Object.values(bundle)) {
         if(/\.(?:js|css|html)$/.test(item.fileName)) {

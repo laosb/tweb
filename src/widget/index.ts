@@ -12,6 +12,7 @@ import {applyWidgetTheme} from '@/widget/theme';
 import {widgetRevision} from '@/widget/revision';
 import I18n, {LangPackKey} from '@lib/langPack';
 import {loadWidgetLanguage} from '@/widget/langPack';
+import {warmDeferredScreens} from '@/widget/deferred/warm';
 import '@/widget/style.scss';
 
 const AUTH_ERRORS = new Set(['ACCESS_TOKEN_INVALID', 'ACCESS_TOKEN_EXPIRED', 'AUTH_KEY_UNREGISTERED', 'MANAGED_ACCOUNT_REQUIRED']);
@@ -159,6 +160,7 @@ export async function startWidget(authState: AuthState) {
       document.getElementById('widget').replaceChildren();
       chats.inert = false;
       document.body.classList.remove('widget-starting');
+      warmDeferredScreens();
     })()]);
   } catch(error) {
     // Pending RPCs may still settle. They must neither advance startup nor clear this status.
