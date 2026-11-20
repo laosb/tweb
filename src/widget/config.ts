@@ -57,12 +57,17 @@ export function readConfig(doc = document): WidgetConfig {
   });
 }
 
+/** The page's pins and language, as its workers receive them. Throws when the pins are invalid. */
+export function readPageConfig(): WidgetConfig {
+  return {...readConfig(), lang: readWidgetLanguage(location.search)};
+}
+
 /** The Blah configuration of the widget build. Invalid pins leave no DC to dial. */
 export function widgetBlahConfig(): BlahConfig {
   let config: WidgetConfig;
   try {
     config = typeof(document) !== 'undefined' ?
-      {...readConfig(), lang: readWidgetLanguage(location.search)} :
+      readPageConfig() :
       validateConfig(JSON.parse(new URLSearchParams(self.location.search).get(WIDGET_CONFIG_QUERY_PARAM)));
   } catch{
     return {widget: {}, defaultDcId: 1, dcs: []};

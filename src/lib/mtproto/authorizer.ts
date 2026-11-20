@@ -24,6 +24,7 @@ import {bigIntFromBytes} from '@helpers/bigInt/bigIntConversion';
 import bigInt from 'big-integer';
 import Modes from '@config/modes';
 import blah from '@config/blah';
+import {takeEarlyAuthKey} from '@/widget/earlyAuthKey';
 import {randomBytes} from '@helpers/random';
 import {MTAuthKey} from '@lib/mtproto/authKey';
 import safeAssign from '@helpers/object/safeAssign';
@@ -649,7 +650,7 @@ export class Authorizer {
    * The permanent key of a DC, made once and kept.
    */
   public auth(dcId: DcId) {
-    return this.cached[dcId] ??= this._auth(dcId).catch((err) => {
+    return this.cached[dcId] ??= takeEarlyAuthKey(dcId, this.timeManager, () => this._auth(dcId)).catch((err) => {
       delete this.cached[dcId];
       throw err;
     });

@@ -118,6 +118,13 @@ proxy must forward those POSTs to the DC's MTProto listener with its configured
 real-IP header. Transport selection follows `.env`; `?http=1` selects HTTP only.
 A first visit creates its auth key over HTTPS without waiting for the WebSocket probe,
 which moves the session to a WebSocket once one opens within the probe's 2 seconds.
+A small first script starts the shared MTProto worker as soon as the page arrives,
+with the URL and options the client then uses, and the client attaches to that same
+worker. When the fragment holds a token and no key for the pinned DC is stored, the
+worker creates the auth key while the client script downloads; the client's first key
+request takes that exchange over instead of starting another. Its worker URL carries
+the same validated pins and never the token. Where the widget uses a dedicated worker
+(Safari, `noSharedWorker`), the client starts it as before.
 Query parameters such as `test=1` and `debug=1` cannot move the widget off its pinned
 DC or enable credential logging.
 Configure the support account in the DC's admin UI.

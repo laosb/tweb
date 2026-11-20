@@ -275,17 +275,37 @@ function reachable(from: string, context: ChunkingContext, lazyChunk?: RegExp) {
   }
   return modules;
 }
-let setupModules: Set<string>, clientModules: Set<string>, allModules: Set<string>;
+// The page's first script, which starts the main worker while the client downloads
+// (src/widget/earlyWorker.ts). Its own modules form a small chunk the client imports
+// back; what it shares with the setup page stays in 'shared', which the page loads anyway.
+const EARLY_ENTRY = 'src/widget/early.ts';
+let setupModules: Set<string>, earlyModules: Set<string>, clientModules: Set<string>, allModules: Set<string>;
 function chunkName(id: string, context: ChunkingContext) {
   setupModules ??= reachable('widget/setup.html', context);
+  earlyModules ??= reachable(EARLY_ENTRY, context);
   clientModules ??= reachable('widget/index.html', context, MEDIA_EDITOR);
   allModules ??= reachable('widget/index.html', context);
   if(setupModules.has(id)) return SETUP_ONLY.test(id) ? null : 'shared';
+  if(earlyModules.has(id)) return 'early';
   if(clientModules.has(id)) return /\.html$/.test(id) ? null : 'client';
   return allModules.has(id) ? 'media-editor' : null;
 }
 
 const WIDGET_TRANSFORMED = ['src/scss/style.scss'];
+
+/** The main worker of the widget also listens for its page's early key exchange (src/widget/earlyKeyExchange.ts). */
+const MAIN_WORKER = resolve(__dirname, 'src/lib/mainWorker/index.worker.ts');
+let earlyKeyExchangeInjected = false;
+function widgetEarlyKeyExchange(): import('vite').Plugin {
+  return {
+    name: 'widget-early-key-exchange',
+    transform(code, id) {
+      if(id.split('?')[0] !== MAIN_WORKER) return;
+      earlyKeyExchangeInjected = true;
+      return code + `\nimport ${JSON.stringify(resolve(__dirname, 'src/widget/earlyKeyExchange.ts'))};\n`;
+    }
+  };
+}
 const workerModulePaths = new Set<string>();
 function widgetOmittedModules(requireTargets = true): import('vite').Plugin {
   return {
@@ -379,7 +399,7 @@ export default mergeConfig(upstream, defineConfig({
     name: 'widget-entries',
     // The e2e fixture also builds its support-side driver with this config, as a library.
     config: (config) => config.build?.lib ? {} : {build: {rolldownOptions: {
-      input: {index: resolve(__dirname, 'widget/index.html'), setup: resolve(__dirname, 'widget/setup.html')},
+      input: {index: resolve(__dirname, 'widget/index.html'), setup: resolve(__dirname, 'widget/setup.html'), early: resolve(__dirname, EARLY_ENTRY)},
       output: {codeSplitting: {groups: [{name: chunkName, includeDependenciesRecursively: false}]}}
     }}}
   }, {
@@ -394,6 +414,30 @@ export default mergeConfig(upstream, defineConfig({
         return html
         .replace('<body>', `<body class="${body[1]}">`)
         .replace('<!-- blah-widget-client -->', body[2].replace('src="src/', 'src="../src/'));
+      }
+    }
+  }, {
+    name: 'widget-early-worker',
+    apply: (config, {command}) => command === 'serve' || !config.build?.lib,
+    buildStart() {
+      earlyKeyExchangeInjected = false;
+    },
+    // Workers are built along with the page's chunks.
+    generateBundle() {
+      if(!earlyKeyExchangeInjected) this.error('the main worker was built without the early key exchange');
+    },
+    // Its own script tag, ahead of the client's: inside the HTML entry it would wait for the whole client.
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, {filename, bundle, server}) {
+        if(!filename.endsWith('/widget/index.html')) return html;
+        const entry = resolve(__dirname, EARLY_ENTRY);
+        const built = Object.values(bundle || {}).find((item) => item.type === 'chunk' && item.isEntry && item.facadeModuleId === entry);
+        const src = server ? '/@fs' + entry : built && './' + built.fileName;
+        if(!src || !/<script /.test(html)) throw new Error('widget early worker script has no place in index.html');
+        const tag = `<script type="module" crossorigin src="${src}"></script>`;
+        // The client imports the chunk back, so Vite lists it among the client's own scripts too.
+        return html.split('\n').filter((line) => line.trim() !== tag).join('\n').replace(/<script /, tag + '\n    <script ');
       }
     }
   }, {
@@ -454,7 +498,7 @@ export default mergeConfig(upstream, defineConfig({
     emptyOutDir: true,
     sourcemap: false
   },
-  worker: {plugins: () => [widgetOmittedModules(false), widgetManagerContracts(__dirname), widgetWallet(false), widgetUpstream(false)], rolldownOptions: {output: {codeSplitting: false}}},
+  worker: {plugins: () => [widgetOmittedModules(false), widgetManagerContracts(__dirname), widgetWallet(false), widgetUpstream(false), widgetEarlyKeyExchange()], rolldownOptions: {output: {codeSplitting: false}}},
   // Upstream's bot HTML-widget suites belong to the main client, whose runtime
   // this build deliberately removes. Keep the support-widget suites here.
   test: {root: __dirname, include: ['src/tests/widget*.test.ts'], exclude: ['src/tests/widgetSandbox*.test.ts', 'src/tests/widgetMessageShell.test.ts'], provide: {widgetBuild: true}}
